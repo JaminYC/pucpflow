@@ -9,7 +9,7 @@
 .history
 .svn/
 migrate_working_dir/
-.env  # Exclude environment file containing sensitive information
+.env 
 
 # IntelliJ related
 *.iml

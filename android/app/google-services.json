@@ -1,0 +1,98 @@
+{
+  "project_info": {
+    "project_number": "547054267025",
+    "project_id": "pucp-flow",
+    "storage_bucket": "pucp-flow.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:547054267025:android:f443e5f4236c741ad8ed30",
+        "android_client_info": {
+          "package_name": "com.example.fitness"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "547054267025-pmdkgmgolr8e9bio0c5bqoa61gc2ssne.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.fitness",
+            "certificate_hash": "c87d8647e6b896a47aab355e841fadbfd0cbfc42"
+          }
+        },
+        {
+          "client_id": "547054267025-62eputqjlamebrmshg37rfohl9s10q0c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWNjPMkg7a9RmnQ4Rdj_Yxpw_tdqsAGws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "547054267025-62eputqjlamebrmshg37rfohl9s10q0c.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "547054267025-0joi368nbc4dg1ovu8il49i6fv26q7cg.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.pucpflow"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:547054267025:android:17008014fafdfff6d8ed30",
+        "android_client_info": {
+          "package_name": "com.example.pucpflow"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "547054267025-aca3345kbjr3f61uh9aqbn8fg4hnmi05.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pucpflow",
+            "certificate_hash": "c87d8647e6b896a47aab355e841fadbfd0cbfc42"
+          }
+        },
+        {
+          "client_id": "547054267025-62eputqjlamebrmshg37rfohl9s10q0c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWNjPMkg7a9RmnQ4Rdj_Yxpw_tdqsAGws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "547054267025-62eputqjlamebrmshg37rfohl9s10q0c.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "547054267025-0joi368nbc4dg1ovu8il49i6fv26q7cg.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.pucpflow"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

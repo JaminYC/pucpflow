@@ -12,6 +12,7 @@ class GoogleCalendarService {
     try {
       final GoogleSignInAccount? account = await _googleSignIn.signIn();
       if (account == null) {
+        // ignore: avoid_print
         print("User canceled the sign-in process");
         return null;
       }
@@ -20,6 +21,7 @@ class GoogleCalendarService {
       final client = GoogleAuthClient(headers);
       return calendar.CalendarApi(client);
     } catch (e) {
+      // ignore: avoid_print
       print("Error during Google Sign-In: $e");
       return null;
     }

@@ -9,7 +9,8 @@ import 'package:pucpflow/features/user_auth/presentation/pages/sign_up_page.dart
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env"); // Carga las variables de entorno
+  //await dotenv.load(fileName: ".env"); // Carga las variables de entorno
+  //print("OPENAI_API_KEY: ${dotenv.env['OPENAI_API_KEY']}"); // Verifica la carga
   await Firebase.initializeApp();
   runApp(const MyApp());
 }
@@ -25,7 +26,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/login': (context) => const LoginPage(),
         '/signUp': (context) => const SignUpPage(),
-        '/home': (context) => const HomePage(),
+        '/home': (context) =>  HomePage(),
       },
       home: const SplashScreen(), // Modificamos para que SplashScreen verifique el estado del usuario
     );

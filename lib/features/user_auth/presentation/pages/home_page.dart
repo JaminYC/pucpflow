@@ -1,26 +1,35 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Importa FirebaseAuth para logout
-import 'revistas.dart'; // Importa la pantalla de revistas
-import 'desarrolloinicio.dart'; // Importa la pantalla desarrolloinicio
-import 'calendar_events_page.dart'; // Importa la pantalla de eventos del calendario
-import 'login_page.dart'; // Importa la página de Login para redirigir después del logout
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'calendar_events_page.dart';
+import 'desarrolloinicio.dart';
+import 'login_page.dart';
+import 'revistas.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  HomePage({super.key});
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   Future<void> _signOut(BuildContext context) async {
-    await FirebaseAuth.instance.signOut(); // Cierra la sesión de Firebase
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginPage()), // Navega a la pantalla de login
-    );
+    try {
+      await FirebaseAuth.instance.signOut(); // Cierra sesión en Firebase
+      await _googleSignIn.signOut(); // Cierra sesión en Google
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al cerrar sesión: $e')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Obtén el usuario actual
     final user = FirebaseAuth.instance.currentUser;
     return Scaffold(
       appBar: AppBar(
@@ -30,30 +39,11 @@ class HomePage extends StatelessWidget {
         ),
         backgroundColor: Colors.deepPurple[700],
         elevation: 0,
-        actions: [
-          // Mostrar el correo y nombre del usuario autenticado
-          Padding(
-            padding: const EdgeInsets.only(right: 20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  user?.displayName ?? 'Usuario',
-                  style: const TextStyle(color: Colors.white),
-                ),
-                Text(
-                  user?.email ?? 'Correo no disponible',
-                  style: const TextStyle(color: Colors.white),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
-          children: <Widget>[
+          children: [
             DrawerHeader(
               decoration: BoxDecoration(
                 color: Colors.deepPurple[700],
@@ -70,6 +60,7 @@ class HomePage extends StatelessWidget {
               leading: const Icon(Icons.library_books),
               title: const Text('Revistas'),
               onTap: () {
+                // Navegar a la página de 
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const RevistasPage()),
@@ -80,14 +71,14 @@ class HomePage extends StatelessWidget {
               leading: const Icon(Icons.settings),
               title: const Text('Settings'),
               onTap: () {
-                Navigator.pop(context);
+                // Navegar a la página de configuración
               },
             ),
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Logout'),
               onTap: () {
-                _signOut(context); // Llama a la función de cierre de sesión
+                _signOut(context);
               },
             ),
           ],
@@ -97,23 +88,13 @@ class HomePage extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
-              "Bienvenido al University Dashboard",
-              style: TextStyle(
-                color: Colors.deepPurple,
-                fontSize: 18,
+            Text(
+              'Bienvenido, ${user?.displayName ?? 'Usuario'}',
+              style: const TextStyle(
+                fontSize: 20,
                 fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              "Selecciona una opción:",
-              style: TextStyle(
                 color: Colors.deepPurple,
-                fontSize: 16,
               ),
-              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
             // Círculos en forma de rombo
@@ -142,6 +123,7 @@ class HomePage extends StatelessWidget {
                 const SizedBox(height: 20),
                 GestureDetector(
                   onTap: () {
+                    // Navegar a otra pantalla si es necesario
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -158,6 +140,7 @@ class HomePage extends StatelessWidget {
                 // Botón para acceder al calendario de Google
                 GestureDetector(
                   onTap: () {
+                    // Navegar a la página del calendario si es necesario
                     Navigator.push(
                       context,
                       MaterialPageRoute(

@@ -25,7 +25,9 @@ class _CalendarEventsPageState extends State<CalendarEventsPage> {
   Future<void> _fetchCalendarEvents() async {
     final calendarApi = await _calendarService.signInAndGetCalendarApi();
     if (calendarApi == null) {
+      // ignore: avoid_print
       print("No se pudo obtener el acceso a Google Calendar.");
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("No se pudo obtener el acceso a Google Calendar")),
       );

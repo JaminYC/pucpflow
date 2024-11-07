@@ -37,7 +37,7 @@ class _SplashScreenState extends State<SplashScreen> {
         // Usuario autenticado, ir directamente a HomePage
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const HomePage()),
+          MaterialPageRoute(builder: (context) => HomePage()),
           (route) => false,
         );
       } else {

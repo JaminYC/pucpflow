@@ -8,8 +8,15 @@ import 'desarrolloinicio.dart';
 import 'login_page.dart';
 import 'revistas.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   HomePage({super.key});
+
+  @override
+  _HomePageState createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  bool isDarkMode = false; // Variable para alternar entre modo oscuro y claro
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   Future<void> _signOut(BuildContext context) async {
@@ -39,6 +46,16 @@ class HomePage extends StatelessWidget {
         ),
         backgroundColor: Colors.deepPurple[700],
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(isDarkMode ? Icons.wb_sunny : Icons.nights_stay),
+            onPressed: () {
+              setState(() {
+                isDarkMode = !isDarkMode; // Alterna entre modo oscuro y claro
+              });
+            },
+          ),
+        ],
       ),
       drawer: Drawer(
         child: ListView(
@@ -60,7 +77,6 @@ class HomePage extends StatelessWidget {
               leading: const Icon(Icons.library_books),
               title: const Text('Revistas'),
               onTap: () {
-                // Navegar a la página de 
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const RevistasPage()),
@@ -71,7 +87,7 @@ class HomePage extends StatelessWidget {
               leading: const Icon(Icons.settings),
               title: const Text('Settings'),
               onTap: () {
-                // Navegar a la página de configuración
+                Navigator.pop(context);
               },
             ),
             ListTile(
@@ -84,87 +100,88 @@ class HomePage extends StatelessWidget {
           ],
         ),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Bienvenido, ${user?.displayName ?? 'Usuario'}',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.deepPurple,
+      body: Container(
+        color: isDarkMode ? Colors.black : Colors.white, // Fondo dinámico
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Bienvenido, ${user?.displayName ?? 'Usuario'}',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: isDarkMode ? Colors.white : Colors.deepPurple, // Color dinámico del texto
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            // Círculos en forma de rombo
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircleAvatar(
-                  radius: 40,
-                  backgroundColor: Colors.yellow,
-                ),
-                const SizedBox(height: 20),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.green,
-                    ),
-                    SizedBox(width: 20),
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.black,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                GestureDetector(
-                  onTap: () {
-                    // Navegar a otra pantalla si es necesario
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const DesarrolloInicio(),
-                      ),
-                    );
-                  },
-                  child: const CircleAvatar(
+              const SizedBox(height: 20),
+              // Círculos en forma de rombo
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircleAvatar(
                     radius: 40,
-                    backgroundColor: Colors.blue,
+                    backgroundColor: Colors.yellow,
                   ),
-                ),
-                const SizedBox(height: 20),
-                // Botón para acceder al calendario de Google
-                GestureDetector(
-                  onTap: () {
-                    // Navegar a la página del calendario si es necesario
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const CalendarEventsPage(),
+                  const SizedBox(height: 20),
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircleAvatar(
+                        radius: 40,
+                        backgroundColor: Colors.green,
                       ),
-                    );
-                  },
-                  child: const CircleAvatar(
-                    radius: 40,
-                    backgroundColor: Colors.red,
-                    child: Icon(Icons.calendar_today, color: Colors.white),
+                      SizedBox(width: 20),
+                      CircleAvatar(
+                        radius: 40,
+                        backgroundColor: Color.fromARGB(255, 111, 111, 105),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  "Ver Calendario de Google",
-                  style: TextStyle(
-                    color: Colors.deepPurple,
-                    fontSize: 16,
+                  const SizedBox(height: 20),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const DesarrolloInicio(),
+                        ),
+                      );
+                    },
+                    child: const CircleAvatar(
+                      radius: 40,
+                      backgroundColor: Colors.blue,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                  const SizedBox(height: 20),
+                  // Botón para acceder al calendario de Google
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const CalendarEventsPage(),
+                        ),
+                      );
+                    },
+                    child: const CircleAvatar(
+                      radius: 40,
+                      backgroundColor: Colors.red,
+                      child: Icon(Icons.calendar_today, color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "Ver Calendario de Google",
+                    style: TextStyle(
+                      color: Colors.deepPurple,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,6 +1,7 @@
 // cursos_page.dart
 
 import 'package:flutter/material.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/psidinterfaz.dart';
 import 'ChatBotPage.dart'; // Importa la página del chatbot
 import 'psidrecursos.dart'; // Importa la página de PSID Recursos
 
@@ -25,7 +26,7 @@ class CursosPage extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const PSIDRecursosPage(),
+                    builder: (context) => Psidinterfaz(),
                   ),
                 );
               },

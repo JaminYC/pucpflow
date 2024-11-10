@@ -1,7 +1,7 @@
 // ignore_for_file: avoid_print, duplicate_ignore, library_private_types_in_public_api, use_build_context_synchronously
 
 import 'package:flutter/material.dart';
-import 'cursos_page.dart'; // Importa la página de cursos
+import 'cursos_page.dart';
 
 class DesarrolloInicio extends StatelessWidget {
   const DesarrolloInicio({super.key});
@@ -21,7 +21,6 @@ class DesarrolloInicio extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Botones "Cursos" y "Proyecto"
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -30,7 +29,7 @@ class DesarrolloInicio extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const CursosPage(),
+                        builder: (context) => CursosPage(),
                       ),
                     );
                   },

@@ -11,7 +11,7 @@ class DesarrolloInicio extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          "Desarrollo - Opciones",
+          "Desarrollo Académico",
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
         ),
         backgroundColor: Colors.deepPurple[700],

@@ -1,10 +1,11 @@
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, prefer_const_constructors_in_immutables
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'calendar_events_page.dart';
 import 'desarrolloinicio.dart';
+import 'interactive_map_page.dart';
 import 'login_page.dart';
 import 'revistas.dart';
 
@@ -119,9 +120,19 @@ class _HomePageState extends State<HomePage> {
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const CircleAvatar(
-                    radius: 40,
-                    backgroundColor: Colors.yellow,
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const InteractiveMapPage(),
+                        ),
+                      );
+                    },
+                    child: const CircleAvatar(
+                      radius: 40,
+                      backgroundColor: Colors.yellow,
+                    ),
                   ),
                   const SizedBox(height: 20),
                   const Row(

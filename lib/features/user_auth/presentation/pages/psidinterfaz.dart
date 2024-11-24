@@ -1,3 +1,5 @@
+// ignore_for_file: use_key_in_widget_constructors, prefer_const_constructors_in_immutables, prefer_const_constructors, unnecessary_to_list_in_spreads
+
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'psidrecursos.dart';
@@ -19,7 +21,7 @@ class Psidinterfaz extends StatelessWidget {
         appBar: AppBar(
           title: Text('Módulos de ${curso.nombre}'),
         ),
-        body: ModuleList(modulos: curso.modulos),
+       // body: ModuleList(modulos: curso.modulos),
       ),
     );
   }

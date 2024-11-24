@@ -1,10 +1,11 @@
+import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'google_calendar_service.dart';
 import 'package:googleapis/calendar/v3.dart' as calendar;
 
 class CalendarEventsPage extends StatefulWidget {
-  const CalendarEventsPage({super.key});
+  const CalendarEventsPage({Key? key}) : super(key: key);
 
   @override
   _CalendarEventsPageState createState() => _CalendarEventsPageState();
@@ -14,7 +15,11 @@ class _CalendarEventsPageState extends State<CalendarEventsPage> {
   final GoogleCalendarService _calendarService = GoogleCalendarService();
   List<calendar.Event> _events = [];
   DateTime _selectedDay = DateTime.now();
-  final Map<DateTime, List<calendar.Event>> _eventsByDay = {};
+  DateTime _focusedDay = DateTime.now();
+  LinkedHashMap<DateTime, List<calendar.Event>> _eventsByDay = LinkedHashMap<DateTime, List<calendar.Event>>(
+    equals: isSameDay,
+    hashCode: (date) => date.day * 1000000 + date.month * 10000 + date.year,
+  );
 
   @override
   void initState() {
@@ -25,9 +30,7 @@ class _CalendarEventsPageState extends State<CalendarEventsPage> {
   Future<void> _fetchCalendarEvents() async {
     final calendarApi = await _calendarService.signInAndGetCalendarApi();
     if (calendarApi == null) {
-      // ignore: avoid_print
       print("No se pudo obtener el acceso a Google Calendar.");
-      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("No se pudo obtener el acceso a Google Calendar")),
       );
@@ -35,6 +38,7 @@ class _CalendarEventsPageState extends State<CalendarEventsPage> {
     }
 
     final now = DateTime.now().toUtc();
+    print("Fetching events from Google Calendar...");
     final events = await calendarApi.events.list(
       "primary",
       timeMin: now,
@@ -45,6 +49,7 @@ class _CalendarEventsPageState extends State<CalendarEventsPage> {
 
     setState(() {
       _events = events.items ?? [];
+      print("Eventos obtenidos: ${_events.length}");
       _groupEventsByDay();
     });
   }
@@ -52,19 +57,22 @@ class _CalendarEventsPageState extends State<CalendarEventsPage> {
   void _groupEventsByDay() {
     _eventsByDay.clear();
     for (var event in _events) {
-      final eventDate = event.start?.dateTime ?? event.start?.date;
-      if (eventDate != null) {
-        final date = DateTime(eventDate.year, eventDate.month, eventDate.day);
+      final eventDateTime = event.start?.dateTime ?? event.start?.date;
+      if (eventDateTime != null) {
+        final date = DateTime(eventDateTime.year, eventDateTime.month, eventDateTime.day);
         if (_eventsByDay[date] == null) {
           _eventsByDay[date] = [];
         }
         _eventsByDay[date]!.add(event);
       }
     }
+    print("Eventos agrupados por día: ${_eventsByDay.length}");
   }
 
   List<calendar.Event> _getEventsForDay(DateTime day) {
-    return _eventsByDay[day] ?? [];
+    final events = _eventsByDay[day] ?? [];
+    print("Eventos para el día $day: ${events.length}");
+    return events;
   }
 
   @override
@@ -76,15 +84,27 @@ class _CalendarEventsPageState extends State<CalendarEventsPage> {
           TableCalendar(
             firstDay: DateTime.utc(2000, 1, 1),
             lastDay: DateTime.utc(2100, 12, 31),
-            focusedDay: _selectedDay,
-            calendarFormat: CalendarFormat.month,
+            focusedDay: _focusedDay,
             selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
             onDaySelected: (selectedDay, focusedDay) {
               setState(() {
                 _selectedDay = selectedDay;
+                _focusedDay = focusedDay;
               });
+              print("Día seleccionado: $selectedDay");
+              _getEventsForDay(selectedDay);
             },
             eventLoader: _getEventsForDay,
+            calendarFormat: CalendarFormat.month,
+            onFormatChanged: (format) {
+              setState(() {
+                print("Formato de calendario cambiado a: $format");
+              });
+            },
+            onPageChanged: (focusedDay) {
+              _focusedDay = focusedDay;
+              print("Página cambiada, día enfocado: $_focusedDay");
+            },
           ),
           const SizedBox(height: 8),
           Expanded(
@@ -98,6 +118,7 @@ class _CalendarEventsPageState extends State<CalendarEventsPage> {
   Widget _buildEventList() {
     final events = _getEventsForDay(_selectedDay);
     if (events.isEmpty) {
+      print("No hay eventos para el día: $_selectedDay");
       return const Center(child: Text("No hay eventos para este día."));
     }
     return ListView.builder(
@@ -107,7 +128,9 @@ class _CalendarEventsPageState extends State<CalendarEventsPage> {
         final eventTime = event.start?.dateTime ?? event.start?.date;
         return ListTile(
           title: Text(event.summary ?? "Sin título"),
-          subtitle: Text(eventTime?.toString() ?? "Sin fecha"),
+          subtitle: Text(eventTime != null
+              ? "Fecha y hora: ${eventTime.toLocal()}"
+              : "Sin fecha"),
         );
       },
     );

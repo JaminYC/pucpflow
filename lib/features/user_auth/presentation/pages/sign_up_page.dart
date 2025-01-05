@@ -55,7 +55,7 @@ class _SignUpPageState extends State<SignUpPage> {
               FormContainerWidget(
                 controller: _usernameController,
                 hintText: "Username",
-                isPasswordField: false,
+                isPasswordField: false, 
               ),
               const SizedBox(height: 10),
               FormContainerWidget(

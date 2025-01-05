@@ -57,7 +57,9 @@ dependencies:
   google_maps_flutter: ^2.10.0
   permission_handler: ^11.3.1
   flutter_google_maps_webservices: ^1.1.1
-  
+  flutter_google_places_sdk: ^0.3.10
+
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:
@@ -87,6 +89,7 @@ flutter:
      - assets/Mantanegro.jpg
      - assets/FondoCoheteNegro.jpg
      - assets/gatonegro.jpg
+     - assets/animation.gif
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

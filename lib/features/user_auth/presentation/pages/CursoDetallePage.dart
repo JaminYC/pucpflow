@@ -5,9 +5,9 @@ import 'curso_model.dart';
 
 class CursoDetallePage extends StatefulWidget {
   final Curso curso;
-  final String userId; // Identificador único del usuario
+  final String userId;
 
-  CursoDetallePage({required this.curso, required this.userId});
+  const CursoDetallePage({super.key, required this.curso, required this.userId});
 
   @override
   _CursoDetallePageState createState() => _CursoDetallePageState();
@@ -17,17 +17,13 @@ class _CursoDetallePageState extends State<CursoDetallePage> {
   List<Unidad> unidades = [];
   final googleSheetsService = GoogleSheetsService();
 
-  // Mapas para almacenar el estado de los checkboxes
   Map<String, bool> recursoChecked = {};
   Map<String, bool> practicaChecked = {};
 
-  // Contadores locales y globales
   int totalRecursos = 0;
   int totalPracticas = 0;
   int recursosMarcados = 0;
   int practicasMarcadas = 0;
-  int recursosGlobales = 0;
-  int practicasGlobales = 0;
 
   @override
   void initState() {
@@ -36,15 +32,36 @@ class _CursoDetallePageState extends State<CursoDetallePage> {
   }
 
   Future<void> fetchUnidades() async {
-    print("Spreadsheet ID del curso actual: ${widget.curso.spreadsheetId}");
-    
     final fetchedUnidades = await googleSheetsService.fetchUnidades(widget.curso.spreadsheetId, "UNIDAD1");
-    setState(() {
-      unidades = fetchedUnidades;
-      calculateTotals();
-      loadCheckboxStates(); // Cargar el estado de los checkboxes
-      loadGlobalProgress(); // Cargar el progreso global
-    });
+    print("Datos de unidades cargados: $fetchedUnidades"); // Depuración de datos cargados
+    if (fetchedUnidades.isNotEmpty) {
+      setState(() {
+        unidades = fetchedUnidades;
+        calculateTotals(); // Calcula los totales al cargar unidades
+        loadCheckboxStates();
+      });
+    } else {
+      print("Error: No se cargaron unidades.");
+    }
+  }
+
+  void calculateTotals() {
+    totalRecursos = 0;
+    totalPracticas = 0;
+
+    for (var unidad in unidades) {
+      print("Unidad: ${unidad.nombre}, Capítulos: ${unidad.capitulos.length}");
+      for (var capitulo in unidad.capitulos) {
+        print("  Capítulo: ${capitulo.nombre}, Temas: ${capitulo.temas.length}");
+        for (var tema in capitulo.temas) {
+          print("    Tema: ${tema.nombre}");
+          // Cada tema tiene una casilla de recurso y una de práctica
+          totalRecursos++;
+          totalPracticas++;
+        }
+      }
+    }
+    print("Total recursos: $totalRecursos, Total prácticas: $totalPracticas"); // Depuración de totales
   }
 
   Future<void> loadCheckboxStates() async {
@@ -65,128 +82,181 @@ class _CursoDetallePageState extends State<CursoDetallePage> {
     updateCounters();
   }
 
-  void calculateTotals() {
-    totalRecursos = 0;
-    totalPracticas = 0;
-
-    for (var unidad in unidades) {
-      for (var capitulo in unidad.capitulos) {
-        for (var tema in capitulo.temas) {
-          if (tema.recurso.isNotEmpty) totalRecursos++;
-          if (tema.practica.isNotEmpty) totalPracticas++;
-        }
-      }
-    }
-  }
-
   Future<void> updateCounters() async {
     recursosMarcados = recursoChecked.values.where((v) => v).length;
     practicasMarcadas = practicaChecked.values.where((v) => v).length;
 
-    // Guardar el progreso local de los checkboxes en SharedPreferences
-    final prefs = await SharedPreferences.getInstance();
-    recursoChecked.forEach((key, value) async {
-      await prefs.setBool('${widget.userId}_${key}_recurso', value);
-    });
-    practicaChecked.forEach((key, value) async {
-      await prefs.setBool('${widget.userId}_${key}_practica', value);
-    });
-
-    // Actualizar el progreso global
-    await prefs.setInt('${widget.userId}_recursosGlobales', recursosMarcados);
-    await prefs.setInt('${widget.userId}_practicasGlobales', practicasMarcadas);
-
-    // Cargar el progreso global actualizado
-    loadGlobalProgress();
     setState(() {});
-  }
-
-  Future<void> loadGlobalProgress() async {
-    final prefs = await SharedPreferences.getInstance();
-    recursosGlobales = prefs.getInt('${widget.userId}_recursosGlobales') ?? 0;
-    practicasGlobales = prefs.getInt('${widget.userId}_practicasGlobales') ?? 0;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.curso.nombre),
-        backgroundColor: Colors.deepPurple[700],
+        title: Text(
+          widget.curso.nombre,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 24,
+            color: Colors.white,
+            shadows: [
+              Shadow(
+                offset: Offset(2.0, 2.0),
+                blurRadius: 3.0,
+                color: Colors.black,
+              ),
+            ],
+          ),
+        ),
+        backgroundColor: Colors.blue[800],
+        elevation: 0,
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              'Recursos completados: $recursosMarcados / $totalRecursos\n'
-              'Prácticas completadas: $practicasMarcadas / $totalPracticas\n\n'
-              'Progreso Global:\n'
-              'Recursos globales completados: $recursosGlobales\n'
-              'Prácticas globales completadas: $practicasGlobales',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.black, Colors.blue[900]!],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
             ),
           ),
-          Expanded(
-            child: unidades.isEmpty
-                ? Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    padding: EdgeInsets.all(20.0),
-                    itemCount: unidades.length,
-                    itemBuilder: (context, index) {
-                      final unidad = unidades[index];
-                      return ExpansionTile(
-                        title: Text(unidad.nombre),
-                        subtitle: Text(unidad.descripcion),
-                        children: unidad.capitulos.map((capitulo) {
+          Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(color: Colors.blue, width: 2),
+                  ),
+                  padding: const EdgeInsets.all(10),
+                  child: Text(
+                    'Recursos completados: $recursosMarcados / $totalRecursos\n'
+                    'Prácticas completadas: $practicasMarcadas / $totalPracticas',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          offset: Offset(1.0, 1.0),
+                          blurRadius: 2.0,
+                          color: Colors.blue,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: unidades.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(20.0),
+                        itemCount: unidades.length,
+                        itemBuilder: (context, index) {
+                          final unidad = unidades[index];
                           return ExpansionTile(
-                            title: Text(capitulo.nombre),
-                            subtitle: Text(capitulo.descripcion),
-                            children: capitulo.temas.map((tema) {
-                              return ListTile(
-                                title: Text(tema.nombre),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text("Descripción: ${tema.descripcion}"),
-                                    Row(
-                                      children: [
-                                        Checkbox(
-                                          value: recursoChecked[tema.nombre] ?? false,
-                                          onChanged: (bool? value) {
-                                            setState(() {
-                                              recursoChecked[tema.nombre] = value ?? false;
-                                              updateCounters();
-                                            });
-                                          },
-                                        ),
-                                        Text("Recurso: ${tema.recurso}"),
-                                      ],
-                                    ),
-                                    Row(
-                                      children: [
-                                        Checkbox(
-                                          value: practicaChecked[tema.nombre] ?? false,
-                                          onChanged: (bool? value) {
-                                            setState(() {
-                                              practicaChecked[tema.nombre] = value ?? false;
-                                              updateCounters();
-                                            });
-                                          },
-                                        ),
-                                        Text("Práctica: ${tema.practica}"),
-                                      ],
-                                    ),
-                                    if (tema.ayuda.isNotEmpty) Text("Ayuda: ${tema.ayuda}"),
-                                  ],
+                            title: Text(
+                              unidad.nombre,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            subtitle: Text(
+                              unidad.descripcion,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.white70,
+                              ),
+                            ),
+                            backgroundColor: Colors.black.withOpacity(0.7),
+                            children: unidad.capitulos.map((capitulo) {
+                              return ExpansionTile(
+                                title: Text(
+                                  capitulo.nombre,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
                                 ),
+                                subtitle: Text(
+                                  capitulo.descripcion,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                backgroundColor: Colors.black.withOpacity(0.6),
+                                children: capitulo.temas.map((tema) {
+                                  return ListTile(
+                                    title: Text(
+                                      tema.nombre,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          "Descripción: ${tema.descripcion}",
+                                          style: const TextStyle(color: Colors.white70),
+                                        ),
+                                        Row(
+                                          children: [
+                                            Checkbox(
+                                              value: recursoChecked[tema.nombre] ?? false,
+                                              onChanged: (bool? value) {
+                                                setState(() {
+                                                  recursoChecked[tema.nombre] = value ?? false;
+                                                  updateCounters();
+                                                });
+                                              },
+                                            ),
+                                            const Text(
+                                              "Recurso",
+                                              style: TextStyle(color: Colors.white),
+                                            ),
+                                          ],
+                                        ),
+                                        Row(
+                                          children: [
+                                            Checkbox(
+                                              value: practicaChecked[tema.nombre] ?? false,
+                                              onChanged: (bool? value) {
+                                                setState(() {
+                                                  practicaChecked[tema.nombre] = value ?? false;
+                                                  updateCounters();
+                                                });
+                                              },
+                                            ),
+                                            const Text(
+                                              "Práctica",
+                                              style: TextStyle(color: Colors.white),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                    tileColor: Colors.black.withOpacity(0.5),
+                                  );
+                                }).toList(),
                               );
                             }).toList(),
                           );
-                        }).toList(),
-                      );
-                    },
-                  ),
+                        },
+                      ),
+              ),
+            ],
           ),
         ],
       ),

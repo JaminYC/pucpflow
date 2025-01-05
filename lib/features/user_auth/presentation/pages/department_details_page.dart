@@ -7,14 +7,13 @@ class DepartmentDetailsPage extends StatelessWidget {
   final List<String> students;
 
   const DepartmentDetailsPage({
-    Key? key,
+    super.key,
     required this.departmentName,
     required this.sectors,
     required List<String>? companies, // Cambiamos a nullable
     required List<String>? students, // Cambiamos a nullable
   })  : companies = companies ?? const [], // Valor predeterminado
-        students = students ?? const [], // Valor predeterminado
-        super(key: key);
+        students = students ?? const [];
 
   @override
   Widget build(BuildContext context) {
@@ -37,13 +36,13 @@ class DepartmentDetailsPage extends StatelessWidget {
               'Empresas:',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
-            ...companies.map((company) => Text('- $company')).toList(),
+            ...companies.map((company) => Text('- $company')),
             const SizedBox(height: 16),
             const Text(
               'Estudiantes:',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
-            ...students.map((student) => Text('- $student')).toList(),
+            ...students.map((student) => Text('- $student')),
           ],
         ),
       ),

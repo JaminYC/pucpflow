@@ -5,7 +5,7 @@ import 'google_calendar_service.dart';
 import 'package:googleapis/calendar/v3.dart' as calendar;
 
 class CalendarEventsPage extends StatefulWidget {
-  const CalendarEventsPage({Key? key}) : super(key: key);
+  const CalendarEventsPage({super.key});
 
   @override
   _CalendarEventsPageState createState() => _CalendarEventsPageState();
@@ -16,7 +16,7 @@ class _CalendarEventsPageState extends State<CalendarEventsPage> {
   List<calendar.Event> _events = [];
   DateTime _selectedDay = DateTime.now();
   DateTime _focusedDay = DateTime.now();
-  LinkedHashMap<DateTime, List<calendar.Event>> _eventsByDay = LinkedHashMap<DateTime, List<calendar.Event>>(
+  final LinkedHashMap<DateTime, List<calendar.Event>> _eventsByDay = LinkedHashMap<DateTime, List<calendar.Event>>(
     equals: isSameDay,
     hashCode: (date) => date.day * 1000000 + date.month * 10000 + date.year,
   );

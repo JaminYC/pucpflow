@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'google_sheets_service.dart';
 import 'curso_model.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/google_calendar_service.dart';
+
+import 'package:googleapis/calendar/v3.dart' as calendar;
+
+import 'create_event_page.dart';
 
 class CursoDetallePage extends StatefulWidget {
-  final Curso curso;
+  final Curso curso;  
   final String userId;
 
   const CursoDetallePage({super.key, required this.curso, required this.userId});
@@ -16,6 +21,7 @@ class CursoDetallePage extends StatefulWidget {
 class _CursoDetallePageState extends State<CursoDetallePage> {
   List<Unidad> unidades = [];
   final googleSheetsService = GoogleSheetsService();
+  final GoogleCalendarService _googleCalendarService = GoogleCalendarService();
 
   Map<String, bool> recursoChecked = {};
   Map<String, bool> practicaChecked = {};
@@ -30,6 +36,98 @@ class _CursoDetallePageState extends State<CursoDetallePage> {
     super.initState();
     fetchUnidades();
   }
+  Future<void> addEventAutomatically(
+    GoogleCalendarService calendarService, String calendarId) async {
+  try {
+    final calendarApi = await calendarService.signInAndGetCalendarApi();
+
+    if (calendarApi == null) {
+      print("Error: No se pudo autenticar con Google Calendar");
+      return;
+    }
+
+    // Define el rango de tiempo para buscar disponibilidad
+    final now = DateTime.now();
+    final oneWeekLater = now.add(Duration(days: 7));
+
+    // Consulta las horas ocupadas
+    final busyTimes = await calendarService.getBusyTimes(calendarApi, now, oneWeekLater);
+
+    // Encuentra un espacio libre
+    final freeSlot = calendarService.findFreeSlot(busyTimes, 60); // Duración en minutos
+
+    if (freeSlot == null) {
+      print("No hay espacios libres disponibles.");
+      return;
+    }
+
+    // Define las propiedades del evento
+    final newEvent = calendar.Event(
+      summary: "Evento automático",
+      description: "Este evento fue creado automáticamente.",
+      start: calendar.EventDateTime(
+        dateTime: freeSlot,
+        timeZone: "GMT-5:00", // Cambia según tu zona horaria
+      ),
+      end: calendar.EventDateTime(
+        dateTime: freeSlot.add(Duration(minutes: 60)), // Duración del evento
+        timeZone: "GMT-5:00",
+      ),
+      colorId: "5", // Personaliza el color del evento
+      reminders: calendar.EventReminders(
+        useDefault: false,
+        overrides: [
+          calendar.EventReminder(
+            method: "popup",
+            minutes: 10,
+          ),
+        ],
+      ),
+    );
+
+    // Inserta el evento en el calendario
+    final insertedEvent = await calendarApi.events.insert(newEvent, calendarId);
+    print("Evento creado: ${insertedEvent.htmlLink}");
+  } catch (e) {
+    print("Error al añadir el evento: $e");
+  }
+}
+
+
+  Future<void> _addEventToCalendar(Tema tema) async {
+      try {
+        final calendarApi = await _googleCalendarService.signInAndGetCalendarApi();
+        if (calendarApi == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("No se pudo conectar a Google Calendar")),
+          );
+          return;
+        }
+
+        final event = calendar.Event(
+          summary: tema.nombre,
+          description: tema.descripcion,
+          start: calendar.EventDateTime(
+            dateTime: DateTime.now().add(const Duration(days: 1)),
+            timeZone: "GMT-5:00",
+          ),
+          end: calendar.EventDateTime(
+            dateTime: DateTime.now().add(const Duration(days: 1, hours: 1)),
+            timeZone: "GMT-5:00",
+          ),
+        );
+
+        await calendarApi.events.insert(event, "primary");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Evento '${tema.nombre}' añadido al calendario")),
+        );
+      } catch (e) {
+        print("Error al añadir evento al calendario: $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error al añadir evento: $e")),
+        );
+      }
+    }
 
   Future<void> fetchUnidades() async {
     final fetchedUnidades = await googleSheetsService.fetchUnidades(widget.curso.spreadsheetId, "UNIDAD1");
@@ -231,21 +329,93 @@ class _CursoDetallePageState extends State<CursoDetallePage> {
                                         Row(
                                           children: [
                                             Checkbox(
-                                              value: practicaChecked[tema.nombre] ?? false,
-                                              onChanged: (bool? value) {
-                                                setState(() {
-                                                  practicaChecked[tema.nombre] = value ?? false;
-                                                  updateCounters();
-                                                });
-                                              },
+                                                  value: practicaChecked[tema.nombre] ?? false,
+                                                  onChanged: (bool? value) {
+                                                    setState(() {
+                                                      practicaChecked[tema.nombre] = value ?? false;
+                                                      updateCounters();
+                                                    });
+                                                  },
+                                                ),
+                                                const Text(
+                                                  "Práctica",
+                                                  style: TextStyle(color: Colors.white),
+                                                ),
+                                              ],
                                             ),
-                                            const Text(
-                                              "Práctica",
-                                              style: TextStyle(color: Colors.white),
+                                         const SizedBox(height: 8),
+                                         ElevatedButton(
+                                            onPressed: () async {
+                                              final calendarApi = await GoogleCalendarService().signInAndGetCalendarApi();
+                                              if (calendarApi == null) {
+                                                // Mostrar un mensaje si el inicio de sesión falla
+                                                print("No se pudo autenticar al usuario.");
+                                                return;
+                                              }
+
+                                              // Define las fechas de inicio y fin para buscar espacios libres
+                                              final now = DateTime.now();
+                                              final endOfDay = DateTime(now.year, now.month, now.day, 23, 59);
+
+                                              // Obtiene los tiempos ocupados
+                                              final busyTimes = await GoogleCalendarService().getBusyTimes(calendarApi, now, endOfDay);
+
+                                              // Define la duración del evento en minutos (puedes ajustar esto)
+                                              const durationMinutes = 60;
+
+                                              // Encuentra un espacio libre
+                                              final freeSlot = GoogleCalendarService().findFreeSlot(busyTimes, durationMinutes);
+
+                                              if (freeSlot != null) {
+                                                // Crea el evento automáticamente
+                                                final event = calendar.Event(
+                                                  summary: tema.nombre,
+                                                  description: tema.descripcion,
+                                                  start: calendar.EventDateTime(
+                                                    dateTime: freeSlot,
+                                                    timeZone: "America/Lima", // Cambia según la zona horaria
+                                                  ),
+                                                  end: calendar.EventDateTime(
+                                                    dateTime: freeSlot.add(Duration(minutes: durationMinutes)),
+                                                    timeZone: "America/Lima",
+                                                  ),
+                                                );
+
+                                                try {
+                                                  // Inserta el evento en el calendario principal
+                                                  await calendarApi.events.insert(event, "primary");
+                                                  print("Evento añadido al calendario con éxito.");
+                                                } catch (e) {
+                                                  print("Error al añadir el evento: $e");
+                                                }
+                                              } else {
+                                                print("No se encontró un espacio libre para añadir el evento.");
+                                              }
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              foregroundColor: Colors.white,
+                                              backgroundColor: Colors.blue, // Color de fondo del botón
                                             ),
-                                          ],
+                                            child: const Text("Añadir al Calendario"),
+                                          ),
+                                        // Nuevo botón para agregar eventos manualmente
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          // Navegar a la página `CreateEventPage`
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(builder: (context) => const CreateEventPage()),
+
+                                          );
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          foregroundColor: Colors.white,
+                                          backgroundColor: Colors.green, // Color de fondo del botón
                                         ),
+                                        child: const Text("Agregar Manualmente"),
+                                         ),
                                       ],
+                                      
                                     ),
                                     tileColor: Colors.black.withOpacity(0.5),
                                   );
@@ -263,3 +433,6 @@ class _CursoDetallePageState extends State<CursoDetallePage> {
     );
   }
 }
+
+
+

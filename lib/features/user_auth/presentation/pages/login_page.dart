@@ -1,10 +1,10 @@
-// ignore_for_file: prefer_const_constructors
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_page.dart';
 import 'sign_up_page.dart';
+import 'UserProfileForm.dart';
 import 'package:pucpflow/global/common/toast.dart';
 
 class LoginPage extends StatefulWidget {
@@ -17,32 +17,86 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<void> _signInWithGoogle() async {
-    try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        showToast(message: "Inicio de sesión cancelado");
-        return;
-      }
+  try {
+    final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+    if (googleUser == null) {
+      showToast(message: "Sign-in canceled");
+      return;
+    }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+    final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+    final AuthCredential credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
 
-      UserCredential userCredential = await _firebaseAuth.signInWithCredential(credential);
-      if (userCredential.user != null) {
+    UserCredential userCredential = await _firebaseAuth.signInWithCredential(credential);
+    User? user = userCredential.user;
+
+    if (user != null) {
+      // Verificar si el usuario ya existe en Firestore
+      DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
+
+      if (!userDoc.exists) {
+        // Crear un perfil inicial para el usuario
+        await _firestore.collection('users').doc(user.uid).set({
+          'username': user.displayName ?? "New User",
+          'email': user.email,
+          'created_at': FieldValue.serverTimestamp(),
+          'lifestyle': {
+            'wake_up_time': "06:30 AM",
+            'sleep_time': "11:00 PM",
+            'exercise_days': ["Monday", "Wednesday", "Friday"],
+            'exercise_type': "Cardio",
+          },
+          'preferences': {
+            'theme': 'light',
+            'language': 'en',
+            'notifications': true,
+          },
+          'performance': {
+            'global_score': 0,
+            'tasks_completed': 0,
+            'tasks_pending': 0,
+          },
+          'schedule': {
+            'monday': [],
+            'tuesday': [],
+            'wednesday': [],
+            'thursday': [],
+            'friday': [],
+            'saturday': [],
+            'sunday': [],
+          },
+        });
+
+        // Confirmación de guardado
+        print("User data saved successfully in Firestore!");
+
+        // Redirigir a la pantalla de completar perfil
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => UserProfileForm(userId: user.uid),
+          ),
+        );
+      } else {
+        // Usuario ya existe, redirigir al HomePage
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => HomePage()),
         );
       }
-    } catch (e) {
-      showToast(message: "Error al iniciar sesión con Google: $e");
     }
+  } catch (e) {
+    showToast(message: "Error during Google Sign-In: $e");
+    print("Error during Google Sign-In: $e");
   }
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -74,21 +128,20 @@ class _LoginPageState extends State<LoginPage> {
                   const Text(
                     "PUCP FLOW",
                     style: TextStyle(
-                      fontSize: 36, // Tamaño de fuente más grande
-                      fontWeight: FontWeight.w900, // Fuente más gruesa y llamativa
-                      color: Color.fromARGB(255, 255, 255, 255), // Color blanco para mayor contraste
-                      letterSpacing: 2.0, // Espaciado entre letras para darle un toque moderno
+                      fontSize: 36,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: 2.0,
                       shadows: [
                         Shadow(
-                          blurRadius: 8.0, // Suaviza el borde de la sombra
-                          color: Color.fromARGB(66, 187, 132, 183), // Sombra suave en negro con opacidad
-                          offset: Offset(2, 2), // Desplazamiento de la sombra
+                          blurRadius: 8.0,
+                          color: Color.fromARGB(66, 187, 132, 183),
+                          offset: Offset(2, 2),
                         ),
                       ],
-                      fontFamily: 'Roboto', // Cambia la fuente si tienes una fuente minimalista cargada
+                      fontFamily: 'Roboto',
                     ),
                   ),
-
                   const SizedBox(height: 20),
                   // Campos de entrada para Usuario y Contraseña
                   TextField(
@@ -131,8 +184,8 @@ class _LoginPageState extends State<LoginPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: const [
-                      Text("Become a member",style: TextStyle(color: Colors.white),),
-                      Text("Forgot password?",style: TextStyle(color: Colors.white),),
+                      Text("Become a member", style: TextStyle(color: Colors.white)),
+                      Text("Forgot password?", style: TextStyle(color: Colors.white)),
                     ],
                   ),
                 ],

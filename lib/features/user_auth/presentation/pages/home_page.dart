@@ -4,12 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/CustomLoginPage.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/DashboardPage.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/UserProfileForm.dart';
 import 'dart:io';
+import 'Dashboard.dart';
+import 'HealthPage.dart';
+import 'PomodoroPage.dart';
 import 'calendar_events_page.dart';
 import 'desarrolloinicio.dart';
-import 'interactive_map_page.dart';
 import 'login_page.dart';
+import 'profile_preferences_page.dart';
 import 'revistas.dart';  
+import 'SocialPage.dart'; 
 
 class HomePage extends StatefulWidget {
   HomePage({super.key});
@@ -70,7 +77,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const LoginPage()),
+        MaterialPageRoute(builder: (context) => const CustomLoginPage()),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -141,26 +148,32 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.library_books, color: Color(0xFFF2D64B)),
+              leading: const Icon(Icons.data_usage_rounded, color: Color.fromARGB(255, 0, 0, 0)),
               title: const Text(
-                'Tu ventana al Mundo',
+                'Preferencias',
                 style: TextStyle(
-                  color: Color(0xFFF2D64B), // Color del texto cambiado a dorado
+                  color: Color.fromARGB(255, 0, 0, 0), // Color del texto cambiado a dorado
                 ),
               ),
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const RevistasPage()),
+                  MaterialPageRoute(
+                    builder: (context) => DashboardVisual(      
+                      userId: FirebaseAuth.instance.currentUser!.uid, // Usa el UID autenticado
+    ),
+                    
+                  ),
                 );
+
               },
             ),
             ListTile(
-              leading: const Icon(Icons.settings, color: Color(0xFFF2D64B)),
+              leading: const Icon(Icons.settings, color: Color.fromARGB(255, 0, 0, 0)),
               title: const Text(
                 'Settings',
                 style: TextStyle(
-                  color: Color(0xFFF2D64B), // Mismo ajuste de color
+                  color: Color.fromARGB(255, 0, 0, 0), // Mismo ajuste de color
                 ),
               ),
               onTap: () {
@@ -172,7 +185,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               title: const Text(
                 'Logout',
                 style: TextStyle(
-                  color: Color(0xFFF2D64B), // Mismo ajuste de color
+                  color: Color.fromARGB(255, 0, 0, 0), // Mismo ajuste de color
                 ),
               ),
               onTap: () {
@@ -180,8 +193,21 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               },
             ),
           ],
-        ),
+        ),  
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const PomodoroPage(),
+            ),
+          );
+        },
+        backgroundColor: Colors.red,
+        child: Icon(Icons.timer, color: Colors.white),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
       body: Container(
         decoration: BoxDecoration(
@@ -194,8 +220,32 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             end: Alignment.bottomRight,
           ),
         ),
+
+        
         child: Column(
           children: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const CalendarEventsPage()),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                foregroundColor: Colors.black, backgroundColor: const Color(0xFFF2D64B), // Color del texto
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.0),
+                ),
+              ),
+              child: const Text(
+                "Ver Calendario",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
             Container(
               margin: const EdgeInsets.all(16.0),
               padding: const EdgeInsets.all(16.0),
@@ -270,58 +320,91 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             ),
             Expanded(
               child: Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                child: Stack(
+                  alignment: Alignment.center,
                   children: [
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const InteractiveMapPage(),
-                          ),
-                        );
-                      },
-                      child: CircleAvatar(
-                        radius: 40,
-                        backgroundColor: const Color(0xFFF2D64B),
-                        child: Icon(Icons.star, color: Colors.black, size: 30),
+
+                    // Botón superior
+                    Positioned(
+                      top: 60,
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SocialPage(),
+                            ),
+                          );
+                        },
+                        child: CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.pink, // Color asociado al ámbito social
+                          child: Icon(Icons.group, color: Colors.white, size: 30),
+                        ),
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const DesarrolloInicio(),
-                          ),
-                        );
-                      },
-                      child: CircleAvatar(
-                        radius: 40,
-                        backgroundColor: const Color(0xFFF2D64B),
-                        child: Icon(Icons.settings, color: Colors.black),
+                    // Botón izquierdo
+                    Positioned(
+                      left: 40,
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const DesarrolloInicio(),
+                            ),
+                          );
+                        },
+                        child: CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.blue, // Azul para desarrollo de proyectos
+                          child: Icon(Icons.settings, color: Colors.white, size: 30),
+                        ),
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const RevistasPage(),
-                          ),
-                        );
-                      },
-                      child: CircleAvatar(
-                        radius: 40,
-                        backgroundColor: const Color(0xFFF2D64B),
-                        child: Icon(Icons.map, color: Colors.black),
+                    // Botón derecho
+                    Positioned(
+                      right: 40,
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const RevistasPage(),
+                            ),
+                          );
+                        },
+                        child: CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.orange, // Naranja para curiosidad
+                          child: Icon(Icons.library_books, color: Colors.white, size: 30),
+                        ),
+                      ),
+                    ),
+                    // Botón inferior 
+                    Positioned(
+                      bottom: 30,
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const HealthPage(),
+                            ),
+                          );
+                        },
+                        child: CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.green, // Verde para salud
+                          child: Icon(Icons.health_and_safety, color: Colors.white, size: 30),
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
             ),
+
           ],
         ),
       ),

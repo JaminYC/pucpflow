@@ -58,11 +58,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "547054267025-aca3345kbjr3f61uh9aqbn8fg4hnmi05.apps.googleusercontent.com",
+          "client_id": "547054267025-lrrutv0sgk08ftglepkaahb0q4v0njr0.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.example.pucpflow",
-            "certificate_hash": "c87d8647e6b896a47aab355e841fadbfd0cbfc42"
+            "certificate_hash": "424c5c3953249751f2205d960f64cce480967124"
           }
         },
         {

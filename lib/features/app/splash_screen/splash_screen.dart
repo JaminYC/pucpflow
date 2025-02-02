@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/CustomLoginPage.dart';
 import 'package:video_player/video_player.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/home_page.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/login_page.dart';
@@ -44,7 +45,7 @@ class _SplashScreenState extends State<SplashScreen> {
         // Usuario no autenticado, ir a LoginPage
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const LoginPage()),
+          MaterialPageRoute(builder: (context) => const CustomLoginPage()),
           (route) => false,
         );
       }

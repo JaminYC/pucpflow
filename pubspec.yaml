@@ -30,18 +30,24 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
-
+  flutter_local_notifications: ^17.0.0
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
+
+  # Dependencias Para identificiacion
+  cloud_firestore: ^5.6.2
+  firebase_core: ^3.10.1
+  firebase_auth: ^5.4.1
+  firebase_storage: ^12.4.1
+  google_sign_in: ^6.2.2
+
   cupertino_icons: ^1.0.8
-  cloud_firestore: ^5.4.4
-  firebase_auth: ^5.3.1
-  firebase_storage: ^12.3.4
-  fluttertoast: ^8.2.8
+  
+
+  fluttertoast: ^8.2.10
   font_awesome_flutter: ^10.8.0
-  google_sign_in: ^6.2.1
-  firebase_core: ^3.6.0
+ 
+
   video_player: ^2.9.2
   webview_flutter: ^4.10.0
   webview_flutter_android: ^4.0.1
@@ -60,6 +66,16 @@ dependencies:
   flutter_google_places_sdk: ^0.3.10
 
   image_picker: ^1.1.2
+  fl_chart: ^0.70.2
+  lottie: ^3.2.0
+  animations: ^2.0.11
+  flutter_neumorphic_plus: ^3.4.0
+  liquid_swipe: ^3.1.0
+  glassmorphism_ui: ^0.3.0
+  
+  flutter_sliding_up_panel: ^2.1.1
+  flutter_staggered_animations: ^1.1.1
+  motion: ^2.0.1
 
 dev_dependencies:
   flutter_test:
@@ -70,7 +86,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^4.0.0
+  flutter_lints: ^5.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -90,6 +106,8 @@ flutter:
      - assets/FondoCoheteNegro.jpg
      - assets/gatonegro.jpg
      - assets/animation.gif
+     - assets/fonts/
+     - assets/logo.webp
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
@@ -103,6 +121,13 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
+  fonts:
+  - family: Montserrat
+    fonts:
+      - asset: assets/fonts/Montserrat-Regular.ttf
+      - asset: assets/fonts/Montserrat-Bold.ttf
+        weight: 700
+
   # fonts:
   #   - family: Schyler
   #     fonts:

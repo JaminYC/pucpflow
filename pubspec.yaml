@@ -59,7 +59,6 @@ dependencies:
   table_calendar: ^3.1.2
   flutter_dotenv: ^5.2.1
 
-  shared_preferences: ^2.3.3
   google_maps_flutter: ^2.10.0
   permission_handler: ^11.3.1
   flutter_google_maps_webservices: ^1.1.1
@@ -76,7 +75,7 @@ dependencies:
   flutter_sliding_up_panel: ^2.1.1
   flutter_staggered_animations: ^1.1.1
   motion: ^2.0.1
-
+  shared_preferences: ^2.5.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -108,6 +107,7 @@ flutter:
      - assets/animation.gif
      - assets/fonts/
      - assets/logo.webp
+     - assets/animation.json
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

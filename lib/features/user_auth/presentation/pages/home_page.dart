@@ -17,6 +17,8 @@ import 'login_page.dart';
 import 'profile_preferences_page.dart';
 import 'revistas.dart';  
 import 'SocialPage.dart'; 
+import 'package:pucpflow/features/user_auth/presentation/pages/Ranking/RankingPage.dart'; 
+import 'package:pucpflow/features/user_auth/presentation/pages/Alerta/AlertPage.dart'; 
 
 class HomePage extends StatefulWidget {
   HomePage({super.key});
@@ -30,7 +32,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   late AnimationController _controller;
   bool isControllerInitialized = false; // Nueva bandera para evitar problemas
+
   int _selectedIndex = 0; // Índice para la barra de navegación inferior
+
+
   String? userProfilePhoto;
   File? _profileImage; // Imagen seleccionada del perfil
 
@@ -209,7 +214,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
-      body: Container(
+    body: _selectedIndex == 1
+      ? const RankingPage() // ✅ Página de Rankings
+      : _selectedIndex == 2
+        ? const AlertPage() // ✅ Página de Alertas
+        : Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
@@ -427,8 +436,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         currentIndex: _selectedIndex,
         selectedItemColor: Colors.white,
         unselectedItemColor: const Color(0xFFF2D64B),
-        onTap: _onItemTapped,
+        onTap: _onItemTapped, // ✅ Ya está correcto
       ),
+
     );
   }
 }

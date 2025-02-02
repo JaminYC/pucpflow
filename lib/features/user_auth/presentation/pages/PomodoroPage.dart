@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/proyecto_model.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectoDetallePage.dart';
 
 class PomodoroPage extends StatefulWidget {
   const PomodoroPage({Key? key}) : super(key: key);
@@ -9,61 +13,99 @@ class PomodoroPage extends StatefulWidget {
   _PomodoroPageState createState() => _PomodoroPageState();
 }
 
-class _PomodoroPageState extends State<PomodoroPage> {
-  int workDuration = 25; // Duración del trabajo en minutos
-  int breakDuration = 5; // Duración del descanso en minutos
-  int remainingSeconds = 1500; // Tiempo restante en segundos
-  bool isRunning = false; // Estado del temporizador
-  bool isWorkInterval = true; // Intervalo de trabajo o descanso
+class _PomodoroPageState extends State<PomodoroPage> with WidgetsBindingObserver {
+  int workDuration = 25;
+  int breakDuration = 5;
+  int remainingSeconds = 1500;
+  bool isRunning = false;
+  bool isWorkInterval = true;
   Timer? timer;
-  int completedPomodoros = 0; // Pomodoros completados
-  String currentTask = "Sin Tarea"; // Tarea actual
-  List<Map<String, dynamic>> pomodoroHistory = []; // Historial de pomodoros
+  int completedPomodoros = 0;
+  String currentTask = "Sin Tarea";
+  List<Map<String, dynamic>> pomodoroHistory = [];
 
   final FlutterLocalNotificationsPlugin localNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  List<Proyecto> proyectos = [];
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     initNotifications();
+    loadProyectos();
+    loadPomodoroHistory();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (timer != null) timer!.cancel();
+    super.dispose();
   }
 
   void initNotifications() {
-    final initializationSettings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    );
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initializationSettings = InitializationSettings(android: androidSettings);
     localNotificationsPlugin.initialize(initializationSettings);
   }
 
+  Future<void> loadProyectos() async {
+    final prefs = await SharedPreferences.getInstance();
+    final proyectosData = prefs.getStringList('proyectos') ?? [];
+
+    setState(() {
+      proyectos = proyectosData
+          .map((proyectoJson) => Proyecto.fromJson(jsonDecode(proyectoJson)))
+          .toList();
+    });
+  }
+
+  Future<void> loadPomodoroHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final historyData = prefs.getStringList('pomodoroHistory') ?? [];
+    setState(() {
+      pomodoroHistory = historyData
+          .map((item) => jsonDecode(item) as Map<String, dynamic>)
+          .toList();
+    });
+  }
+
+  Future<void> savePomodoroHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final historyData = pomodoroHistory.map((item) => jsonEncode(item)).toList();
+    await prefs.setStringList('pomodoroHistory', historyData);
+  }
+
   void showNotification(String title, String body) async {
-    final androidDetails = AndroidNotificationDetails(
+    const androidDetails = AndroidNotificationDetails(
       'pomodoro_channel',
       'Pomodoro',
       channelDescription: 'Notificaciones para el Pomodoro',
       importance: Importance.high,
       priority: Priority.high,
-      playSound: true, // Habilita sonido predeterminado
+      playSound: true,
     );
 
-    final notificationDetails = NotificationDetails(android: androidDetails);
+    const notificationDetails = NotificationDetails(android: androidDetails);
     await localNotificationsPlugin.show(0, title, body, notificationDetails);
   }
 
   void startTimer() {
-    if (timer != null) timer!.cancel(); // Cancela el temporizador previo
+    if (timer != null) timer!.cancel();
     timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         if (remainingSeconds > 0) {
           remainingSeconds--;
         } else {
-          // Cambia entre intervalos de trabajo y descanso
           if (isWorkInterval) {
             completedPomodoros++;
             pomodoroHistory.add({
               "task": currentTask,
-              "completedAt": DateTime.now(),
+              "completedAt": DateTime.now().toIso8601String(),
             });
+            savePomodoroHistory();
             showNotification("¡Descanso!", "Relájate antes del próximo ciclo.");
           } else {
             showNotification("¡Tiempo de trabajar!", "Enfócate en tu tarea.");
@@ -94,10 +136,37 @@ class _PomodoroPageState extends State<PomodoroPage> {
     });
   }
 
-  String formatTime(int seconds) {
-    final minutes = seconds ~/ 60;
-    final remainingSeconds = seconds % 60;
-    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
+  void setTask(String task) {
+    setState(() {
+      currentTask = task;
+    });
+  }
+
+  void openTaskDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Seleccionar Tarea"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: proyectos.map((proyecto) {
+            return ListTile(
+              title: Text(proyecto.nombre),
+              onTap: () {
+                setTask(proyecto.nombre);
+                Navigator.pop(context);
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancelar"),
+          ),
+        ],
+      ),
+    );
   }
 
   void openCustomizationDialog() {
@@ -141,47 +210,51 @@ class _PomodoroPageState extends State<PomodoroPage> {
     );
   }
 
-  void openTaskDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Establecer Tarea"),
-        content: TextField(
-          decoration: const InputDecoration(labelText: "Tarea Actual"),
-          onChanged: (value) {
-            currentTask = value;
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar"),
-          ),
-          TextButton(
-            onPressed: () {
-              setState(() {});
-              Navigator.pop(context);
-            },
-            child: const Text("Guardar"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void viewHistory() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PomodoroHistoryPage(history: pomodoroHistory),
-      ),
-    );
+  String formatTime(int seconds) {
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
   @override
-  void dispose() {
-    if (timer != null) timer!.cancel();
-    super.dispose();
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused && isRunning) {
+      showNotification(
+        "¡No te distraigas!",
+        "Vuelve al Pomodoro y mantente enfocado 😡"
+      );
+      Future.delayed(const Duration(seconds: 2), () => showFocusWarning());
+    }
+  }
+
+  void showFocusWarning() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.red.shade100,
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.warning, size: 100, color: Colors.red),
+                const SizedBox(height: 20),
+                const Text(
+                  "¡Vuelve a concentrarte!",
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: const Text("Regresar al Pomodoro"),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -191,6 +264,16 @@ class _PomodoroPageState extends State<PomodoroPage> {
       appBar: AppBar(
         title: const Text("Pomodoro Timer"),
         backgroundColor: isWorkInterval ? Colors.red : Colors.green,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.assignment),
+            onPressed: openTaskDialog,
+          ),
+          IconButton(
+            icon: const Icon(Icons.timer),
+            onPressed: openCustomizationDialog,
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -232,50 +315,12 @@ class _PomodoroPageState extends State<PomodoroPage> {
               ],
             ),
             const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: openCustomizationDialog,
-              child: const Text("Personalizar Duraciones"),
-            ),
-            ElevatedButton(
-              onPressed: openTaskDialog,
-              child: const Text("Establecer Tarea"),
-            ),
-            ElevatedButton(
-              onPressed: viewHistory,
-              child: const Text("Ver Historial"),
-            ),
-            const SizedBox(height: 30),
             Text(
               "Pomodoros Completados: $completedPomodoros",
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class PomodoroHistoryPage extends StatelessWidget {
-  final List<Map<String, dynamic>> history;
-
-  const PomodoroHistoryPage({Key? key, required this.history}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Historial de Pomodoros"),
-      ),
-      body: ListView.builder(
-        itemCount: history.length,
-        itemBuilder: (context, index) {
-          final item = history[index];
-          return ListTile(
-            title: Text("Tarea: ${item['task']}"),
-            subtitle: Text("Completado: ${item['completedAt']}"),
-          );
-        },
       ),
     );
   }

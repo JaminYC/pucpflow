@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'cursos_page.dart';
+import 'Proyectos/ProyectosPage.dart';
 
 class DesarrolloInicio extends StatelessWidget {
   const DesarrolloInicio({super.key});
@@ -142,14 +143,10 @@ class DesarrolloInicio extends StatelessWidget {
                   ),
                   ElevatedButton(
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Redirigiendo a Proyecto...',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                          duration: Duration(seconds: 2),
-                          backgroundColor: Colors.black,
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ProyectosPage(),
                         ),
                       );
                     },

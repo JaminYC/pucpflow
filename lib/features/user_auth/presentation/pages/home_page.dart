@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/AsistenteIA/AsistentePage.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/CustomLoginPage.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/DashboardPage.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/UserProfileForm.dart';
@@ -386,6 +387,25 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         child: CircleAvatar(
                           radius: 60,
                           backgroundColor: Colors.orange, // Naranja para curiosidad
+                          child: Icon(Icons.library_books, color: Colors.white, size: 30),
+                        ),
+                      ),
+                    ),
+                    // Botón para Asistente Virtual 
+                    Positioned(
+                      top: 90,
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => AsistentePage(),
+                            ),
+                          );
+                        },
+                        child: CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.white, // Naranja para curiosidad
                           child: Icon(Icons.library_books, color: Colors.white, size: 30),
                         ),
                       ),

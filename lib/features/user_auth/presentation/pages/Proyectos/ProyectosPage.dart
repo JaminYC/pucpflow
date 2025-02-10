@@ -33,12 +33,14 @@ class _ProyectosPageState extends State<ProyectosPage> {
   Future<void> _addProyecto(Proyecto proyecto) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      proyectos = List<Proyecto>.from(proyectos)..add(proyecto);
+      proyectos.add(proyecto);
     });
 
+    // 🔹 Guardar proyectos sin importar si tienen tareas o no
     final proyectosData = proyectos.map((p) => jsonEncode(p.toJson())).toList();
     await prefs.setStringList('proyectos', proyectosData);
   }
+
 
   Future<void> _deleteProyecto(Proyecto proyecto) async {
     final prefs = await SharedPreferences.getInstance();

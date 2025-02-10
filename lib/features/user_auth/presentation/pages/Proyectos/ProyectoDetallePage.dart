@@ -1,10 +1,11 @@
+
 import 'package:flutter/material.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/AsistenteIA/comando_service.dart' show ComandoService;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import 'proyecto_model.dart';
 import 'package:googleapis/calendar/v3.dart' as calendar;
-import 'package:pucpflow/features/user_auth/presentation/pages/create_event_page.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/google_calendar_service.dart';
-
 
 class ProyectoDetallePage extends StatefulWidget {
   final Proyecto proyecto;
@@ -17,99 +18,118 @@ class ProyectoDetallePage extends StatefulWidget {
 
 class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
   final GoogleCalendarService _googleCalendarService = GoogleCalendarService();
-  Map<String, bool> tareaCompletada = {};
   List<Tarea> tareas = [];
 
   @override
   void initState() {
     super.initState();
     tareas = widget.proyecto.tareas;
-    loadCheckboxStates();
+    loadTareas();
   }
 
-  Future<void> loadCheckboxStates() async {
-    final prefs = await SharedPreferences.getInstance();
-    for (var tarea in tareas) {
-      final key = '${widget.proyecto.id}_${tarea.titulo}';
-      tareaCompletada[tarea.titulo] = prefs.getBool(key) ?? false;
-    }
-    setState(() {});
+Future<void> loadTareas() async {
+  final prefs = await SharedPreferences.getInstance();
+  final tareasData = prefs.getStringList('tareas_${widget.proyecto.id}') ?? [];
+
+  if (tareasData.isEmpty && widget.proyecto.tareas.isEmpty) {
+    print("🔹 Generando tareas automáticas para ${widget.proyecto.nombre}");
+    widget.proyecto.tareas = ComandoService().generarTareasPorDefecto(widget.proyecto);
+    
+    // ✅ Solo guardar tareas si se generaron nuevas
+    await saveTareas();
   }
-Future<void> _addEventToCalendar(Tarea tarea) async {
-  try {
-    final calendarApi = await _googleCalendarService.signInAndGetCalendarApi();
-    if (calendarApi == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("No se pudo conectar a Google Calendar")),
-      );
-      return;
-    }
 
-    final now = DateTime.now();
-    final oneWeekLater = now.add(const Duration(days: 7));
-    final busyTimes = await _googleCalendarService.getBusyTimes(calendarApi, now, oneWeekLater);
-    final freeSlot = _googleCalendarService.findFreeSlot(busyTimes, 60);
-
-    if (freeSlot == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("No se encontraron horarios disponibles.")),
-      );
-      return;
-    }
-
-    final event = calendar.Event(
-      summary: tarea.titulo,
-      description: 'Tarea del Proyecto: ${widget.proyecto.nombre}',
-      start: calendar.EventDateTime(
-        dateTime: freeSlot,
-        timeZone: "America/Lima",
-      ),
-      end: calendar.EventDateTime(
-        dateTime: freeSlot.add(const Duration(hours: 1)),
-        timeZone: "America/Lima",
-      ),
-      colorId: tarea.colorId.toString(), // ✅ Asignar el color seleccionado
-    );
-
-    await calendarApi.events.insert(event, "primary");
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Evento '${tarea.titulo}' añadido al calendario")),
-    );
-  } catch (e) {
-    print("Error al añadir evento al calendario: $e");
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Error al añadir evento: $e")),
-    );
-  }
+  setState(() {
+    tareas = widget.proyecto.tareas;
+  });
 }
 
-  void _addNewTarea(String titulo, int colorId) {
-    setState(() {
-      tareas.add(Tarea(
-        titulo: titulo,
-        fecha: DateTime.now(),
-        colorId: colorId, // ✅ Guardar el color seleccionado
-      ));
-    });
+
+  Future<void> saveTareas() async {
+    final prefs = await SharedPreferences.getInstance();
+    final tareasData = tareas.map((tarea) => jsonEncode(tarea.toJson())).toList();
+    await prefs.setStringList('tareas_${widget.proyecto.id}', tareasData);
   }
 
+  void _addOrUpdateTarea(Tarea tarea) {
+    setState(() {
+      final index = tareas.indexWhere((t) => t.titulo == tarea.titulo);
+      if (index != -1) {
+        tareas[index] = tarea;
+      } else {
+        tareas.add(tarea);
+      }
+    });
+    saveTareas();
+  }
 
   void _deleteTarea(Tarea tarea) {
     setState(() {
       tareas.remove(tarea);
     });
+    saveTareas();
   }
-void _showAddTareaDialog() {
-  TextEditingController titleController = TextEditingController();
-  int selectedColorId = 1; // Color por defecto
 
-  showDialog(
-    context: context,
-    builder: (context) {
-      return StatefulBuilder( // ✅ Agregado para actualizar el estado del color seleccionado
-        builder: (context, setState) {
-          return AlertDialog(
-            title: const Text("Nueva Tarea"),
+  Future<void> _addEventToCalendar(Tarea tarea, {bool automatico = false}) async {
+    final calendarApi = await _googleCalendarService.signInAndGetCalendarApi();
+    if (calendarApi != null) {
+      final busyTimes = await _googleCalendarService.getBusyTimes(
+        calendarApi, tarea.fecha, tarea.fecha.add(Duration(days: 1)));
+
+      if (!automatico && busyTimes.any((bt) => tarea.fecha.isAfter(bt.start!) && tarea.fecha.isBefore(bt.end!))) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Este horario ya está ocupado.")),
+        );
+        return;
+      }
+
+      final event = calendar.Event(
+        summary: tarea.titulo,
+        start: calendar.EventDateTime(
+          dateTime: tarea.fecha,
+          timeZone: "America/Lima",
+        ),
+        end: calendar.EventDateTime(
+          dateTime: tarea.fecha.add(Duration(minutes: tarea.duracion)),
+          timeZone: "America/Lima",
+        ),
+        colorId: tarea.colorId.toString(),
+      );
+
+      await calendarApi.events.insert(event, "primary");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Tarea añadida al calendario")),
+      );
+    }
+  }
+
+  void _showAddOrEditTareaDialog({Tarea? tarea}) async {
+    final titleController = TextEditingController(text: tarea?.titulo ?? '');
+    final durationController = TextEditingController(text: tarea?.duracion.toString() ?? '');
+    DateTime selectedDate = tarea?.fecha ?? DateTime.now();
+    int selectedColorId = tarea?.colorId ?? 1;
+
+    final date = await showDatePicker(
+      context: context,
+      initialDate: selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+
+    if (date != null) {
+      final availableTimes = await _googleCalendarService.getAvailableTimes(date);
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(availableTimes.first),
+      );
+
+      if (time != null) {
+        selectedDate = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(tarea == null ? "Nueva Tarea" : "Editar Tarea"),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -117,22 +137,23 @@ void _showAddTareaDialog() {
                   controller: titleController,
                   decoration: const InputDecoration(hintText: "Título de la tarea"),
                 ),
-                const SizedBox(height: 10),
-                const Text("Selecciona un color:"),
+                TextField(
+                  controller: durationController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(hintText: "Duración en minutos"),
+                ),
                 Wrap(
                   spacing: 10,
-                  children: List.generate(11, (index) {
+                  children: List.generate(4, (index) {
                     return GestureDetector(
                       onTap: () {
-                        setState(() { // ✅ Esto permite que el color se actualice dinámicamente
+                        setState(() {
                           selectedColorId = index + 1;
                         });
                       },
                       child: CircleAvatar(
                         backgroundColor: _getColorFromId(index + 1),
-                        child: selectedColorId == index + 1
-                            ? const Icon(Icons.check, color: Colors.white)
-                            : null,
+                        child: selectedColorId == index + 1 ? const Icon(Icons.check, color: Colors.white) : null,
                       ),
                     );
                   }),
@@ -146,33 +167,31 @@ void _showAddTareaDialog() {
               ),
               ElevatedButton(
                 onPressed: () {
-                  _addNewTarea(titleController.text, selectedColorId);
-                  Navigator.of(context).pop();
+                  final title = titleController.text;
+                  final duration = int.tryParse(durationController.text) ?? 0;
+
+                  if (title.isNotEmpty) {
+                    _addOrUpdateTarea(Tarea(
+                      titulo: title,
+                      colorId: selectedColorId,
+                      fecha: selectedDate,
+                      duracion: duration,
+                    ));
+                    Navigator.of(context).pop();
+                  }
                 },
-                child: const Text("Agregar"),
+                child: const Text("Guardar"),
               ),
             ],
-          );
-        },
-      );
-    },
-  );
-}
-
+          ),
+        );
+      }
+    }
+  }
 
   Color _getColorFromId(int colorId) {
     const colors = [
-      Colors.red,
-      Colors.orange,
-      Colors.yellow,
-      Colors.green,
-      Colors.blue,
-      Colors.purple,
-      Colors.pink,
-      Colors.teal,
-      Colors.brown,
-      Colors.grey,
-      Colors.black,
+      Colors.red, Colors.orange, Colors.yellow, Colors.green
     ];
     return colors[(colorId - 1) % colors.length];
   }
@@ -182,11 +201,11 @@ void _showAddTareaDialog() {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.proyecto.nombre),
-        backgroundColor: const Color.fromARGB(255, 41, 128, 191),
+        backgroundColor: const Color(0xFF2980BF),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: _showAddTareaDialog,
+            onPressed: () => _showAddOrEditTareaDialog(),
           ),
         ],
       ),
@@ -204,31 +223,28 @@ void _showAddTareaDialog() {
                       tarea.titulo,
                       style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                     ),
-                    subtitle: Text('Fecha: ${tarea.fecha.toLocal()}',
-                        style: const TextStyle(color: Colors.white)),
+                    subtitle: Text(
+                      'Fecha: ${tarea.fecha.toLocal()} - Duración: ${tarea.duracion} minutos',
+                      style: const TextStyle(color: Colors.white),
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Checkbox(
-                          value: tareaCompletada[tarea.titulo] ?? false,
-                          onChanged: (bool? value) async {
-                            final prefs = await SharedPreferences.getInstance();
-                            final key = '${widget.proyecto.id}_${tarea.titulo}';
-
-                            setState(() {
-                              tareaCompletada[tarea.titulo] = value ?? false;
-                            });
-
-                            await prefs.setBool(key, value ?? false);
-                          },
-                        ),
                         IconButton(
-                          icon: const Icon(Icons.calendar_today, color: Colors.white),
-                          onPressed: () => _addEventToCalendar(tarea),
+                          icon: const Icon(Icons.edit, color: Colors.white),
+                          onPressed: () => _showAddOrEditTareaDialog(tarea: tarea),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.white),
                           onPressed: () => _deleteTarea(tarea),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.event_available, color: Colors.white),
+                          onPressed: () => _addEventToCalendar(tarea, automatico: true),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.event, color: Colors.white),
+                          onPressed: () => _addEventToCalendar(tarea, automatico: false),
                         ),
                       ],
                     ),

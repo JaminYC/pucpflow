@@ -37,29 +37,37 @@ class Proyecto {
   }
 }
 class Tarea {
-  final String titulo;
-  final DateTime fecha;
-  final int colorId; // ✅ Añadido
+  String titulo;
+  DateTime fecha;
+  int colorId;
+  int duracion;
+  bool completado;
 
   Tarea({
     required this.titulo,
     required this.fecha,
-    required this.colorId, // ✅ Añadido
+    required this.colorId,
+    required this.duracion,
+    this.completado = false,
   });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'titulo': titulo,
-      'fecha': fecha.toIso8601String(),
-      'colorId': colorId, // ✅ Guardar el color
-    };
-  }
 
   factory Tarea.fromJson(Map<String, dynamic> json) {
     return Tarea(
       titulo: json['titulo'],
       fecha: DateTime.parse(json['fecha']),
-      colorId: json['colorId'] ?? 1, // ✅ Cargar el color
+      colorId: json['colorId'],
+      duracion: json['duracion'],
+      completado: json['completado'] ?? false,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'titulo': titulo,
+      'fecha': fecha.toIso8601String(),
+      'colorId': colorId,
+      'duracion': duracion,
+      'completado': completado,
+    };
   }
 }

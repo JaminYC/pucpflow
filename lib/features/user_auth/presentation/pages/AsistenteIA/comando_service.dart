@@ -13,7 +13,8 @@ class ComandoService {
 
     if (command.contains("organizar eventos de la semana")) {
       print("📅 Organizando eventos de la semana automáticamente...");
-      ComandoService().asignarTareasAutomaticamenteAProyectos();// ✅ Llama a la función
+      GoogleCalendarService().asignarTareasAutomaticamenteAProyectos();
+// ✅ Llama a la función
       return {"completo": true};
     }
 
@@ -41,7 +42,7 @@ class ComandoService {
       "completo": true,
     };
   }
-
+  
     /// Genera tareas predeterminadas si el proyecto no tiene
   List<Tarea> generarTareasPorDefecto(Proyecto proyecto) {
     if (proyecto.tareas.isNotEmpty) return proyecto.tareas; // Evita sobreescribir tareas existentes
@@ -49,12 +50,12 @@ class ComandoService {
     List<Tarea> nuevasTareas = [];
     DateTime fechaInicio = DateTime.now();
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 6; i++) {
       nuevasTareas.add(Tarea(
-        titulo: "Tarea Automática ${i + 1} - ${proyecto.nombre}",
+        titulo: "Tarea ${i + 1} - ${proyecto.nombre}",
         fecha: fechaInicio.add(Duration(days: i)),
         duracion: 60,
-        colorId: (i % 4) + 1,
+        colorId: (i % 7) + 1,
       ));
     }
     return nuevasTareas;
@@ -77,30 +78,6 @@ class ComandoService {
     final updatedData = proyectos.map((p) => jsonEncode(p.toJson())).toList();
     await prefs.setStringList('proyectos', updatedData);
   }
-Future<void> asignarTareasAutomaticamenteAProyectos() async {
-  final prefs = await SharedPreferences.getInstance();
-  final proyectosData = prefs.getStringList('proyectos') ?? [];
-  List<Proyecto> proyectos = proyectosData.map((p) => Proyecto.fromJson(jsonDecode(p))).toList();
-
-  for (var proyecto in proyectos) {
-    await asignarTareasAProyecto(proyecto);
-    for (var tarea in proyecto.tareas) {
-      print("📌 Intentando agendar: ${tarea.titulo} el ${tarea.fecha}");
-      
-      final calendarApi = await _calendarService.signInAndGetCalendarApi();
-      if (calendarApi == null) {
-        print("❌ No se pudo conectar con Google Calendar.");
-        continue; // Si no hay conexión, no intentar crear el evento
-      }
-
-      await _calendarService.addEventWithExactTime(
-        calendarApi, "primary", tarea.titulo, "", tarea.fecha
-      );
-
-      print("✅ Evento enviado a Google Calendar: ${tarea.titulo}");
-    }
-  }
-}
 
 
   DateTime _obtenerProximaHoraDisponible() {

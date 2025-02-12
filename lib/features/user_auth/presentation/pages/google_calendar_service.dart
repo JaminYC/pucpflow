@@ -86,41 +86,85 @@ class GoogleCalendarService {
       if (horariosDisponibles.isEmpty) break; // No hay más espacios disponibles
 
       DateTime slot = horariosDisponibles.removeAt(0);
-      await _agendarEventoEnCalendario(calendarApi, tarea, slot);
+      await _agendarEventoEnCalendario(calendarApi, tarea, slot as List<DateTime>);
     }
 
     print("✅ Eventos organizados correctamente.");
   }
+Future<void> asignarTareasAutomaticamenteAProyectos() async {
+  final calendarApi = await signInAndGetCalendarApi();
+  if (calendarApi == null) return;
+
+  final prefs = await SharedPreferences.getInstance();
+  final proyectosData = prefs.getStringList('proyectos') ?? [];
+  List<Proyecto> proyectos = proyectosData.map((p) => Proyecto.fromJson(jsonDecode(p))).toList();
+
+  List<Tarea> tareasPendientes = [];
+
+  // 🔹 Extraer todas las tareas de los proyectos
+  for (var proyecto in proyectos) {
+    if (proyecto.tareas.isEmpty) {
+      proyecto.tareas = ComandoService().generarTareasPorDefecto(proyecto);
+    }
+    tareasPendientes.addAll(proyecto.tareas);
+  }
+
+  // 🔹 Buscar horarios en la semana
+  List<DateTime> availableTimes = [];
+  for (int i = 0; i < 7; i++) {
+    DateTime date = DateTime.now().add(Duration(days: i));
+    availableTimes.addAll(await getAvailableTimes(date));
+  }
+
+  if (availableTimes.isEmpty) {
+    print("❌ No hay horarios disponibles en la semana.");
+    return;
+  }
+
+  // 🔹 Asignar cada tarea a un horario disponible
+  for (Tarea tarea in tareasPendientes) {
+    if (availableTimes.isEmpty) break;
+    await _agendarEventoEnCalendario(calendarApi, tarea, availableTimes);
+  }
+
+  print("✅ Tareas asignadas automáticamente.");
+}
 
   // 🔹 Agendar un evento en Google Calendar con fecha exacta
-  Future<void> _agendarEventoEnCalendario(
-      calendar.CalendarApi calendarApi, Tarea tarea, DateTime startTime) async {
-    try {
-      final event = calendar.Event(
-        summary: tarea.titulo,
-        start: calendar.EventDateTime(
-          dateTime: startTime.toUtc(),
-          timeZone: "America/Lima",
-        ),
-        end: calendar.EventDateTime(
-          dateTime: startTime.toUtc().add(Duration(minutes: tarea.duracion)),
-          timeZone: "America/Lima",
-        ),
-        colorId: tarea.colorId.toString(),
-        reminders: calendar.EventReminders(
-          useDefault: false,
-          overrides: [
-            calendar.EventReminder(method: "popup", minutes: 10),
-          ],
-        ),
-      );
-
-      await calendarApi.events.insert(event, "primary");
-      print("✅ Evento '${tarea.titulo}' agendado en ${startTime.toLocal()}.");
-    } catch (e) {
-      print("❌ Error al agendar evento: $e");
-    }
+Future<void> _agendarEventoEnCalendario(
+    calendar.CalendarApi calendarApi, Tarea tarea, List<DateTime> availableTimes) async {
+  if (availableTimes.isEmpty) {
+    print("❌ No hay horarios disponibles para '${tarea.titulo}'.");
+    return;
   }
+
+  // Toma el primer horario libre
+  DateTime selectedTime = availableTimes.removeAt(0);
+
+  try {
+    final event = calendar.Event(
+      summary: tarea.titulo,
+      start: calendar.EventDateTime(
+        dateTime: selectedTime.toUtc(),
+        timeZone: "America/Lima",
+      ),
+      end: calendar.EventDateTime(
+        dateTime: selectedTime.toUtc().add(Duration(minutes: tarea.duracion)),
+        timeZone: "America/Lima",
+      ),
+      colorId: tarea.colorId.toString(),
+      reminders: calendar.EventReminders(
+        useDefault: false,
+        overrides: [calendar.EventReminder(method: "popup", minutes: 10)],
+      ),
+    );
+
+    await calendarApi.events.insert(event, "primary");
+    print("✅ Evento '${tarea.titulo}' agendado en ${selectedTime.toLocal()}.");
+  } catch (e) {
+    print("❌ Error al agendar evento: $e");
+  }
+}
 
   // 🔹 Obtener tiempos ocupados en Google Calendar
   Future<List<calendar.TimePeriod>> getBusyTimes(
@@ -218,31 +262,41 @@ class GoogleCalendarService {
 }
 
 
-  // 🔹 Obtener horarios disponibles
-  Future<List<DateTime>> getAvailableTimes(DateTime date) async {
-    final calendarApi = await signInAndGetCalendarApi();
-    if (calendarApi == null) return [];
+ Future<List<DateTime>> getAvailableTimes(DateTime date) async {
+  final calendarApi = await signInAndGetCalendarApi();
+  if (calendarApi == null) return [];
 
-    final startOfDay = DateTime(date.year, date.month, date.day, 7, 0);
-    final endOfDay = DateTime(date.year, date.month, date.day, 12, 0);
+  // Rango de búsqueda: 7 AM a 10 PM
+  final startOfDay = DateTime(date.year, date.month, date.day, 7, 0);
+  final endOfDay = DateTime(date.year, date.month, date.day, 22, 0);
 
-    final busyTimes = await getBusyTimes(calendarApi, startOfDay, endOfDay);
-    final availableTimes = <DateTime>[];
+  // Obtener eventos ocupados en ese día
+  final busyTimes = await getBusyTimes(calendarApi, startOfDay, endOfDay);
+  final availableTimes = <DateTime>[];
 
-    DateTime current = startOfDay;
-    for (final busy in busyTimes) {
-      if (busy.start != null && current.isBefore(busy.start!)) {
+  DateTime current = startOfDay;
+
+  for (final busy in busyTimes) {
+    if (busy.start != null && current.isBefore(busy.start!)) {
+      // Agregar múltiples intervalos de tiempo antes del evento ocupado
+      while (current.add(Duration(hours: 1)).isBefore(busy.start!)) {
         availableTimes.add(current);
+        current = current.add(Duration(hours: 1));
       }
-      current = busy.end ?? current;
     }
-
-    if (current.isBefore(endOfDay)) {
-      availableTimes.add(current);
-    }
-
-    return availableTimes;
+    current = busy.end ?? current;
   }
+
+  // Agregar intervalos después del último evento hasta el final del día
+  while (current.add(Duration(hours: 1)).isBefore(endOfDay)) {
+    availableTimes.add(current);
+    current = current.add(Duration(hours: 1));
+  }
+
+  return availableTimes;
+}
+
+
     // Método para añadir un evento automáticamente
     Future<void> addEventAutomatically(
         calendar.CalendarApi calendarApi, String calendarId, String title, String description, int durationMinutes) async {

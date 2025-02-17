@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/google_calendar_service.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectoDetallePage.dart';  
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectosPage.dart'; 
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/proyecto_model.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 class ComandoService {
   final GoogleCalendarService _calendarService = GoogleCalendarService();
@@ -13,7 +15,7 @@ class ComandoService {
 
     if (command.contains("organizar eventos de la semana")) {
       print("📅 Organizando eventos de la semana automáticamente...");
-      GoogleCalendarService().asignarTareasAutomaticamenteAProyectos();
+
 // ✅ Llama a la función
       return {"completo": true};
     }
@@ -50,14 +52,6 @@ class ComandoService {
     List<Tarea> nuevasTareas = [];
     DateTime fechaInicio = DateTime.now();
 
-    for (int i = 0; i < 6; i++) {
-      nuevasTareas.add(Tarea(
-        titulo: "Tarea ${i + 1} - ${proyecto.nombre}",
-        fecha: fechaInicio.add(Duration(days: i)),
-        duracion: 60,
-        colorId: (i % 7) + 1,
-      ));
-    }
     return nuevasTareas;
   }
 
@@ -65,20 +59,65 @@ class ComandoService {
   Future<void> asignarTareasAProyecto(Proyecto proyecto) async {
     if (proyecto.tareas.isEmpty) {
       proyecto.tareas = generarTareasPorDefecto(proyecto);
-      await _guardarProyectos(); // Guardar cambios en SharedPreferences
+      await guardarProyectos(); // Guardar cambios en SharedPreferences
     }
   }
 
-  /// Guarda la lista de proyectos en SharedPreferences
-  Future<void> _guardarProyectos() async {
-    final prefs = await SharedPreferences.getInstance();
-    final proyectosData = prefs.getStringList('proyectos') ?? [];
-    List<Proyecto> proyectos = proyectosData.map((p) => Proyecto.fromJson(jsonDecode(p))).toList();
+    Future<void> guardarProyectos([List<Proyecto>? proyectos]) async { 
+      final prefs = await SharedPreferences.getInstance();
+      List<String> proyectosData = prefs.getStringList('proyectos') ?? [];
+      List<Proyecto> proyectosGuardados = proyectosData.map((p) => Proyecto.fromJson(jsonDecode(p))).toList();
 
-    final updatedData = proyectos.map((p) => jsonEncode(p.toJson())).toList();
-    await prefs.setStringList('proyectos', updatedData);
+      // Si proyectos es null, recuperar desde SharedPreferences
+      if (proyectos == null) {
+        final proyectosData = prefs.getStringList('proyectos') ?? [];
+        proyectos = proyectosData.map((p) => Proyecto.fromJson(jsonDecode(p))).toList();
+      }
+      // Busca y reemplaza el proyecto modificado en la lista
+      for (var p in proyectos) {
+        int index = proyectosGuardados.indexWhere((proyecto) => proyecto.id == p.id);
+        if (index != -1) {
+          proyectosGuardados[index] = p;
+        }
+      }
+      // Serializar los proyectos y guardar en SharedPreferences
+      final updatedData = proyectosGuardados.map((p) => jsonEncode(p.toJson())).toList();
+      await prefs.setStringList('proyectos', updatedData);
+    }
+
+    void iniciarRevisionAutomatica() {
+    Timer.periodic(Duration(hours: 24), (timer) async {
+      DateTime now = DateTime.now();
+      if (now.hour == 23) { // Ejecutar revisión a las 11 PM
+        await verificarTareasPendientesYReagendar();
+      }
+    });
+    }
+Future<void> verificarTareasPendientesYReagendar() async {
+  final prefs = await SharedPreferences.getInstance();
+  final proyectosData = prefs.getStringList('proyectos') ?? [];
+  List<Proyecto> proyectos = proyectosData.map((p) => Proyecto.fromJson(jsonDecode(p))).toList();
+
+  DateTime now = DateTime.now();
+  List<DateTime> availableTimes = [];
+
+  for (int i = 0; i < 7; i++) {
   }
 
+  for (var proyecto in proyectos) {
+    for (var tarea in proyecto.tareas) {
+      if (!tarea.completado && tarea.fecha.isBefore(now)) {
+        print("⏳ Reagendando tarea pendiente: ${tarea.titulo}");
+        if (availableTimes.isNotEmpty) {
+          tarea.fecha = availableTimes.removeAt(0);
+        }
+      }
+    }
+  }
+
+  await guardarProyectos(proyectos); // 🔹 Ahora pasamos los proyectos
+  print("✅ Tareas no completadas han sido reagendadas.");
+}
 
   DateTime _obtenerProximaHoraDisponible() {
     DateTime now = DateTime.now();
@@ -147,7 +186,7 @@ class ComandoService {
     }
 
     print("📅 Agendando evento con fecha y hora exactas: $nombre el ${fechaHora.toLocal()}");
-    await _calendarService.addEventWithExactTime(calendarApi, "primary", nombre, "", fechaHora);
+
   }
 
 }

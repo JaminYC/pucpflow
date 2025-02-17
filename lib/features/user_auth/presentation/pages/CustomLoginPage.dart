@@ -80,7 +80,7 @@ class _CustomLoginPageState extends State<CustomLoginPage> {
     }
   }
 
-  Future<void> _signInWithGoogle() async {
+Future<void> _signInWithGoogle() async {
   try {
     final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
     if (googleUser == null) {
@@ -97,63 +97,68 @@ class _CustomLoginPageState extends State<CustomLoginPage> {
     UserCredential userCredential = await _firebaseAuth.signInWithCredential(credential);
 
     if (userCredential.user != null) {
-      // Obtener el UID del usuario actual
+      // 🔹 Obtener UID y datos del usuario
       String userId = userCredential.user!.uid;
+      String userEmail = userCredential.user!.email ?? googleUser.email ?? "No email";
+      String userName = userCredential.user!.displayName ?? googleUser.displayName ?? "No name";
 
-      // Verificar si el usuario ya existe en Firestore
+      // 🔹 Verificar si el usuario ya existe en Firestore
       DocumentSnapshot userDoc = await _firestore.collection('users').doc(userId).get();
 
       if (!userDoc.exists) {
-        // Crear el documento en Firestore para el usuario
+        // 📝 Crear el documento en Firestore para el usuario
         await _firestore.collection('users').doc(userId).set({
-          'email': userCredential.user!.email ?? "No email",
-          'full_name': googleUser.displayName ?? "No name",
-          'created_at': FieldValue.serverTimestamp(),
-          'lifestyle': {
-            'wake_up_time': "06:30 AM",
-            'sleep_time': "11:00 PM",
-            'exercise_days': ["Monday", "Wednesday", "Friday"],
-            'exercise_type': "Cardio",
+          "uid": userId,
+          "email": userEmail,
+          "full_name": userName,
+          "created_at": FieldValue.serverTimestamp(),
+          "lifestyle": {
+            "wake_up_time": "06:30 AM",
+            "sleep_time": "11:00 PM",
+            "exercise_days": ["Monday", "Wednesday", "Friday"],
+            "exercise_type": "Cardio",
           },
-          'preferences': {
-            'theme': 'light',
-            'language': 'en',
-            'notifications': true,
+          "preferences": {
+            "theme": "light",
+            "language": "en",
+            "notifications": true,
           },
-          'performance': {
-            'global_score': 0,
-            'tasks_completed': 0,
-            'tasks_pending': 0,
+          "performance": {
+            "global_score": 0,
+            "tasks_completed": 0,
+            "tasks_pending": 0,
           },
-          'schedule': {
-            'monday': [],
-            'tuesday': [],
-            'wednesday': [],
-            'thursday': [],
-            'friday': [],
-            'saturday': [],
-            'sunday': [],
+          "schedule": {
+            "monday": [],
+            "tuesday": [],
+            "wednesday": [],
+            "thursday": [],
+            "friday": [],
+            "saturday": [],
+            "sunday": [],
           },
         });
-        // Redirigir al formulario de perfil
+
+        // 🔹 Redirigir al formulario de perfil
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (context) => UserProfileForm(userId: userId),
-          ),
+          MaterialPageRoute(builder: (context) => UserProfileForm(userId: userId)),
         );
       } else {
-        // Si el usuario ya existe, redirigir a la HomePage
+        // 🔹 Usuario ya registrado → Redirigir a la HomePage
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => HomePage()),
         );
       }
     }
-  } catch (e) {
+  } on FirebaseAuthException catch (e) {
+    showToast(message: "FirebaseAuth Error: ${e.message}");
+  } on Exception catch (e) {
     showToast(message: "Error during Google sign-in: $e");
   }
 }
+
 
 
   @override

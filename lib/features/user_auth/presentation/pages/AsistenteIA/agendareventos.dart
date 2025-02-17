@@ -117,8 +117,6 @@ Future<void> _agendarEvento() async {
     return;
   }
 
-  // 🔹 Crea el evento en Google Calendar con la fecha/hora correctas
-  await _calendarService.addEventWithExactTime(calendarApi, "primary", _nombreController.text, "", fechaHoraEvento);
 
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text("✅ Evento '${_nombreController.text}' agendado correctamente.")),

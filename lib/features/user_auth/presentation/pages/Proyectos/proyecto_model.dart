@@ -1,8 +1,13 @@
+import 'dart:convert';
+import 'tarea_model.dart';
+
 class Proyecto {
   final String id;
   final String nombre;
   final String descripcion;
   final DateTime fechaInicio;
+  final String propietario;  // 🔹 ID del creador del proyecto
+  final List<String> participantes; // 🔹 Lista de IDs de usuarios
   List<Tarea> tareas;
 
   Proyecto({
@@ -10,15 +15,36 @@ class Proyecto {
     required this.nombre,
     required this.descripcion,
     required this.fechaInicio,
+    required this.propietario,
+    required this.participantes,
     this.tareas = const [],
   });
-
+   // ✅ Método copyWith para actualizar propiedades sin perder los valores originales
+  Proyecto copyWith({
+    String? id,
+    String? nombre,
+    String? descripcion,
+    DateTime? fechaInicio,
+    String? propietario,
+    List<String>? participantes,
+  }) {
+    return Proyecto(
+      id: id ?? this.id,
+      nombre: nombre ?? this.nombre,
+      descripcion: descripcion ?? this.descripcion,
+      fechaInicio: fechaInicio ?? this.fechaInicio,
+      propietario: propietario ?? this.propietario,
+      participantes: participantes ?? this.participantes,
+    );
+  }
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'nombre': nombre,
       'descripcion': descripcion,
       'fechaInicio': fechaInicio.toIso8601String(),
+      'propietario': propietario,
+      'participantes': participantes,
       'tareas': tareas.map((t) => t.toJson()).toList(),
     };
   }
@@ -29,45 +55,11 @@ class Proyecto {
       nombre: json['nombre'],
       descripcion: json['descripcion'],
       fechaInicio: DateTime.parse(json['fechaInicio']),
+      propietario: json['propietario'],
+      participantes: List<String>.from(json['participantes'] ?? []),
       tareas: (json['tareas'] as List<dynamic>?)
               ?.map((tareaJson) => Tarea.fromJson(tareaJson))
-              .toList() ??
-          [],
+              .toList() ?? [],
     );
-  }
-}
-class Tarea {
-  String titulo;
-  DateTime fecha;
-  int colorId;
-  int duracion;
-  bool completado;
-
-  Tarea({
-    required this.titulo,
-    required this.fecha,
-    required this.colorId,
-    required this.duracion,
-    this.completado = false,
-  });
-
-  factory Tarea.fromJson(Map<String, dynamic> json) {
-    return Tarea(
-      titulo: json['titulo'],
-      fecha: DateTime.parse(json['fecha']),
-      colorId: json['colorId'],
-      duracion: json['duracion'],
-      completado: json['completado'] ?? false,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'titulo': titulo,
-      'fecha': fecha.toIso8601String(),
-      'colorId': colorId,
-      'duracion': duracion,
-      'completado': completado,
-    };
   }
 }

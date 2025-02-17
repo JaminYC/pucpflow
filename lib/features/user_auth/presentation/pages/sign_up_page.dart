@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pucpflow/features/app/splash_screen/welcome_screen.dart';
+import 'package:pucpflow/features/user_auth/Usuario/UserModel.dart';
 import 'package:pucpflow/features/user_auth/firebase_auth_implementation/firebase_auth_services.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/login_page.dart';
 import 'package:pucpflow/global/common/toast.dart';
@@ -53,15 +54,15 @@ class _SignUpPageState extends State<SignUpPage> {
     String email = _emailController.text.trim();
     String password = _passwordController.text;
 
-    try {
+    try { 
       // Registro en Firebase Authentication
-      User? user = await _auth.signUpWithEmailAndPassword(email, password,username,);
+      UserModel? user = await _auth.signUpWithEmailAndPassword(email, password, username);
 
       if (user != null) {
         // Guardar datos adicionales en Firestore
-        await _userProfileService.createUserProfile(user.uid, {
-          'username': username,
-          'email': email,
+        await _userProfileService.createUserProfile(user.id, {
+          'username': user.nombre,  // Usar el nombre real del usuario desde UserModel
+          'email': user.correoElectronico,
           'google_calendar_events': [],
           'performance': {
             'global_score': 0,
@@ -93,13 +94,12 @@ class _SignUpPageState extends State<SignUpPage> {
         showToast(message: "User successfully created!");
 
         // Navegar a la pantalla de bienvenida
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => UserProfileForm(userId: user!.uid),
-        ),
-      );
-
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => UserProfileForm(userId: user.id), // Cambio a `id`
+          ),
+        );
       } else {
         showToast(message: "Registration failed. Please try again.");
       }
@@ -109,7 +109,7 @@ class _SignUpPageState extends State<SignUpPage> {
       setState(() {
         _isSigningUp = false;
       });
-    }
+    } 
   }
 
   @override

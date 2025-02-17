@@ -1,24 +1,26 @@
-  import 'package:google_sign_in/google_sign_in.dart';
-  import 'package:googleapis/calendar/v3.dart' as calendar;
-  import 'package:googleapis_auth/auth_io.dart';
-  import 'package:http/http.dart' as http;
-import 'package:pucpflow/features/user_auth/presentation/pages/AsistenteIA/comando_service.dart';
-  import 'dart:convert';
-  import 'package:shared_preferences/shared_preferences.dart';
-  import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectoDetallePage.dart';  
-  import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectosPage.dart'; 
-  import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/proyecto_model.dart';
+import 'package:google_sign_in/google_sign_in.dart'; 
+import 'package:googleapis/calendar/v3.dart' as calendar;
+import 'package:googleapis_auth/auth_io.dart';
+import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/proyecto_model.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
+
 class GoogleCalendarService {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: [calendar.CalendarApi.calendarScope],
   );
+  
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // 🔹 Inicia sesión y obtiene la API de Google Calendar
+  /// 🔹 **Corrección de `signInAndGetCalendarApi()`**
   Future<calendar.CalendarApi?> signInAndGetCalendarApi() async {
     try {
       final GoogleSignInAccount? account = await _googleSignIn.signIn();
       if (account == null) {
-        print("⚠️ El usuario canceló el inicio de sesión");
+        print("⚠️ No se pudo iniciar sesión en Google.");
         return null;
       }
 
@@ -30,145 +32,61 @@ class GoogleCalendarService {
       return null;
     }
   }
-
-  // 🔹 Extraer tareas pendientes de los proyectos almacenados
-  Future<List<Tarea>> _obtenerTareasPendientes() async {
-    final prefs = await SharedPreferences.getInstance();
-    final proyectosData = prefs.getStringList('proyectos') ?? [];
-
-    List<Tarea> tareasPendientes = [];
-
-    for (String proyectoJson in proyectosData) {
-      Proyecto proyecto = Proyecto.fromJson(jsonDecode(proyectoJson));
-      for (Tarea tarea in proyecto.tareas) {
-        if (!tarea.completado) {
-          tareasPendientes.add(tarea);
-        }
-      }
-    }
-
-    return tareasPendientes;
-  }
-
-  // 🔹 Obtiene los horarios disponibles en la semana
-  Future<List<DateTime>> _obtenerHorariosDisponiblesSemana() async {
-    final calendarApi = await signInAndGetCalendarApi();
-    if (calendarApi == null) return [];
-
-    List<DateTime> horariosDisponibles = [];
-
-    for (int i = 0; i < 7; i++) {
-      DateTime fecha = DateTime.now().add(Duration(days: i));
-      final horarios = await getAvailableTimes(fecha);
-      horariosDisponibles.addAll(horarios);
-    }
-
-    return horariosDisponibles;
-  }
-
-  // 🔹 Organiza automáticamente eventos en la semana
-  Future<void> organizarEventosSemana() async {
-    final calendarApi = await signInAndGetCalendarApi();
-    if (calendarApi == null) {
-      print("⚠️ No se pudo conectar con Google Calendar.");
-      return;
-    }
-
-    List<Tarea> tareasPendientes = await _obtenerTareasPendientes();
-    List<DateTime> horariosDisponibles = await _obtenerHorariosDisponiblesSemana();
-
-    if (tareasPendientes.isEmpty) {
-      print("✅ No hay tareas pendientes para organizar.");
-      return;
-    }
-
-    for (Tarea tarea in tareasPendientes) {
-      if (horariosDisponibles.isEmpty) break; // No hay más espacios disponibles
-
-      DateTime slot = horariosDisponibles.removeAt(0);
-      await _agendarEventoEnCalendario(calendarApi, tarea, slot as List<DateTime>);
-    }
-
-    print("✅ Eventos organizados correctamente.");
-  }
-Future<void> asignarTareasAutomaticamenteAProyectos() async {
-  final calendarApi = await signInAndGetCalendarApi();
-  if (calendarApi == null) return;
-
-  final prefs = await SharedPreferences.getInstance();
-  final proyectosData = prefs.getStringList('proyectos') ?? [];
-  List<Proyecto> proyectos = proyectosData.map((p) => Proyecto.fromJson(jsonDecode(p))).toList();
-
-  List<Tarea> tareasPendientes = [];
-
-  // 🔹 Extraer todas las tareas de los proyectos
-  for (var proyecto in proyectos) {
-    if (proyecto.tareas.isEmpty) {
-      proyecto.tareas = ComandoService().generarTareasPorDefecto(proyecto);
-    }
-    tareasPendientes.addAll(proyecto.tareas);
-  }
-
-  // 🔹 Buscar horarios en la semana
-  List<DateTime> availableTimes = [];
-  for (int i = 0; i < 7; i++) {
-    DateTime date = DateTime.now().add(Duration(days: i));
-    availableTimes.addAll(await getAvailableTimes(date));
-  }
-
-  if (availableTimes.isEmpty) {
-    print("❌ No hay horarios disponibles en la semana.");
-    return;
-  }
-
-  // 🔹 Asignar cada tarea a un horario disponible
-  for (Tarea tarea in tareasPendientes) {
-    if (availableTimes.isEmpty) break;
-    await _agendarEventoEnCalendario(calendarApi, tarea, availableTimes);
-  }
-
-  print("✅ Tareas asignadas automáticamente.");
-}
-
-  // 🔹 Agendar un evento en Google Calendar con fecha exacta
-Future<void> _agendarEventoEnCalendario(
-    calendar.CalendarApi calendarApi, Tarea tarea, List<DateTime> availableTimes) async {
-  if (availableTimes.isEmpty) {
-    print("❌ No hay horarios disponibles para '${tarea.titulo}'.");
-    return;
-  }
-
-  // Toma el primer horario libre
-  DateTime selectedTime = availableTimes.removeAt(0);
-
+  Future<bool> verificarTareaEnCalendario(calendar.CalendarApi calendarApi, Tarea tarea) async {
   try {
-    final event = calendar.Event(
-      summary: tarea.titulo,
-      start: calendar.EventDateTime(
-        dateTime: selectedTime.toUtc(),
-        timeZone: "America/Lima",
-      ),
-      end: calendar.EventDateTime(
-        dateTime: selectedTime.toUtc().add(Duration(minutes: tarea.duracion)),
-        timeZone: "America/Lima",
-      ),
-      colorId: tarea.colorId.toString(),
-      reminders: calendar.EventReminders(
-        useDefault: false,
-        overrides: [calendar.EventReminder(method: "popup", minutes: 10)],
-      ),
+    final events = await calendarApi.events.list(
+      "primary",
+      timeMin: tarea.fecha.subtract(const Duration(minutes: 1)), 
+      timeMax: tarea.fecha.add(const Duration(minutes: 1)), 
     );
 
-    await calendarApi.events.insert(event, "primary");
-    print("✅ Evento '${tarea.titulo}' agendado en ${selectedTime.toLocal()}.");
+    for (var event in events.items ?? []) {
+      if (event.summary == tarea.titulo) {
+        return true; // ✅ La tarea ya existe en el calendario
+      }
+    }
   } catch (e) {
-    print("❌ Error al agendar evento: $e");
+    print("❌ Error al verificar tarea en Google Calendar: $e");
   }
+  return false; // ❌ No se encontró la tarea en el calendario
 }
 
-  // 🔹 Obtener tiempos ocupados en Google Calendar
-  Future<List<calendar.TimePeriod>> getBusyTimes(
-      calendar.CalendarApi calendarApi, DateTime start, DateTime end) async {
+  /// 🔹 **Corrección en Firestore**
+  Future<DateTime?> encontrarHorarioParaProyecto(String proyectoId, int duracionMinutos) async {
+    final calendarApi = await signInAndGetCalendarApi();
+    if (calendarApi == null) return null;
+
+    DocumentSnapshot proyectoDoc = await _firestore.collection("proyectos").doc(proyectoId).get();
+
+    if (!proyectoDoc.exists) {
+      print("⚠️ Proyecto no encontrado.");
+      return null;
+    }
+
+    Proyecto proyecto = Proyecto.fromJson(proyectoDoc.data() as Map<String, dynamic>);
+    List<String> participantes = proyecto.participantes;
+
+    if (participantes.isEmpty) {
+      print("⚠️ No hay participantes en el proyecto.");
+      return null;
+    }
+
+    DateTime fechaReunion = DateTime.now().add(Duration(days: 2));
+    List<calendar.TimePeriod> horariosOcupadosTotales = [];
+
+    for (String usuario in participantes) {
+      print("🔍 Verificando disponibilidad para $usuario...");
+      List<calendar.TimePeriod> busyTimes =
+          await getBusyTimes(calendarApi, fechaReunion, fechaReunion.add(Duration(days: 1)));
+
+      horariosOcupadosTotales.addAll(busyTimes);
+    }
+
+    return findFreeSlot(horariosOcupadosTotales, duracionMinutos);
+  }
+
+  /// 🔹 **Obtener horarios ocupados de Google Calendar**
+  Future<List<calendar.TimePeriod>> getBusyTimes(calendar.CalendarApi calendarApi, DateTime start, DateTime end) async {
     try {
       final request = calendar.FreeBusyRequest(
         timeMin: start.toUtc(),
@@ -185,26 +103,23 @@ Future<void> _agendarEventoEnCalendario(
         return response.calendars!["primary"]!.busy!;
       }
     } catch (e) {
-      print("Error al obtener tiempos ocupados: $e");
+      print("❌ Error al obtener tiempos ocupados: $e");
     }
 
     return [];
   }
 
-  // 🔹 Encontrar espacio libre en los horarios
+  /// 🔹 **Buscar espacio libre en horarios**
   DateTime? findFreeSlot(List<calendar.TimePeriod> busyTimes, int durationMinutes) {
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day, 7, 0);
-    final endOfDay = DateTime(now.year, now.month, now.day, 12, 0);
+    final endOfDay = DateTime(now.year, now.month, now.day, 22, 0);
 
     try {
       busyTimes.sort((a, b) {
         final aStart = a.start;
         final bStart = b.start;
-
-        if (aStart == null || bStart == null) {
-          return 0;
-        }
+        if (aStart == null || bStart == null) return 0;
         return aStart.compareTo(bStart);
       });
 
@@ -225,131 +140,41 @@ Future<void> _agendarEventoEnCalendario(
         return previousEnd;
       }
     } catch (e) {
-      print("Error al buscar espacio libre: $e");
+      print("❌ Error al buscar espacio libre: $e");
     }
 
     return null;
   }
+    /// ✅ **Agendar evento en Google Calendar**
+  Future<void> agendarEventoEnCalendario(calendar.CalendarApi calendarApi, Tarea tarea) async {
+    try {
+      final event = calendar.Event(
+        summary: tarea.titulo,
+        start: calendar.EventDateTime(
+          dateTime: tarea.fecha.toUtc(),
+          timeZone: "America/Lima",
+        ),
+        end: calendar.EventDateTime(
+          dateTime: tarea.fecha.toUtc().add(Duration(minutes: tarea.duracion)),
+          timeZone: "America/Lima",
+        ),
+      );
 
-  Future<void> addEventWithExactTime(
-    calendar.CalendarApi calendarApi, String calendarId, String title, String description, DateTime startTime) async {
-  try {
-    print("📡 Enviando evento a Google Calendar: $title el $startTime");
-
-    final event = calendar.Event(
-      summary: title,
-      description: description,
-      start: calendar.EventDateTime(
-        dateTime: startTime.toUtc(),
-        timeZone: "America/Lima",
-      ),
-      end: calendar.EventDateTime(
-        dateTime: startTime.toUtc().add(Duration(minutes: 60)),
-        timeZone: "America/Lima",
-      ),
-      colorId: "5",
-      reminders: calendar.EventReminders(
-        useDefault: false,
-        overrides: [calendar.EventReminder(method: "popup", minutes: 10)],
-      ),
-    );
-
-    final insertedEvent = await calendarApi.events.insert(event, calendarId);
-    print("✅ Evento creado exitosamente: ${insertedEvent.htmlLink}");
-  } catch (e) {
-    print("❌ Error al añadir el evento en Google Calendar: $e");
-  }
-}
-
-
- Future<List<DateTime>> getAvailableTimes(DateTime date) async {
-  final calendarApi = await signInAndGetCalendarApi();
-  if (calendarApi == null) return [];
-
-  // Rango de búsqueda: 7 AM a 10 PM
-  final startOfDay = DateTime(date.year, date.month, date.day, 7, 0);
-  final endOfDay = DateTime(date.year, date.month, date.day, 22, 0);
-
-  // Obtener eventos ocupados en ese día
-  final busyTimes = await getBusyTimes(calendarApi, startOfDay, endOfDay);
-  final availableTimes = <DateTime>[];
-
-  DateTime current = startOfDay;
-
-  for (final busy in busyTimes) {
-    if (busy.start != null && current.isBefore(busy.start!)) {
-      // Agregar múltiples intervalos de tiempo antes del evento ocupado
-      while (current.add(Duration(hours: 1)).isBefore(busy.start!)) {
-        availableTimes.add(current);
-        current = current.add(Duration(hours: 1));
-      }
+      await calendarApi.events.insert(event, "primary");
+      print("✅ Evento agregado a Google Calendar correctamente.");
+    } catch (e) {
+      print("❌ Error al agendar evento: $e");
     }
-    current = busy.end ?? current;
   }
 
-  // Agregar intervalos después del último evento hasta el final del día
-  while (current.add(Duration(hours: 1)).isBefore(endOfDay)) {
-    availableTimes.add(current);
-    current = current.add(Duration(hours: 1));
-  }
 
-  return availableTimes;
+
+
+
 }
+  
 
-
-    // Método para añadir un evento automáticamente
-    Future<void> addEventAutomatically(
-        calendar.CalendarApi calendarApi, String calendarId, String title, String description, int durationMinutes) async {
-      try {
-        // Define el rango de tiempo para buscar disponibilidad
-        final now = DateTime.now();
-        final oneWeekLater = now.add(Duration(days: 7));
-
-        // Obtén los tiempos ocupados
-        final busyTimes = await getBusyTimes(calendarApi, now, oneWeekLater);
-
-        // Encuentra un espacio libre
-        final freeSlot = findFreeSlot(busyTimes, durationMinutes);
-
-        if (freeSlot == null) {
-          print("No se encontró espacio libre para el evento.");
-          return;
-        }
-
-        // Define el evento
-        final event = calendar.Event(
-          summary: title,
-          description: description,
-          start: calendar.EventDateTime(
-            dateTime: freeSlot,
-            timeZone: "GMT-5:00",
-          ),
-          end: calendar.EventDateTime(
-            dateTime: freeSlot.add(Duration(minutes: durationMinutes)),
-            timeZone: "GMT-5:00",
-          ),
-          colorId: "5", // Personaliza el color del evento
-          reminders: calendar.EventReminders(
-            useDefault: false,
-            overrides: [
-              calendar.EventReminder(
-                method: "popup",
-                minutes: 10,
-              ),
-            ],
-          ),
-        );
-
-        // Inserta el evento
-        final insertedEvent = await calendarApi.events.insert(event, calendarId);
-        print("Evento creado exitosamente: ${insertedEvent.htmlLink}");
-      } catch (e) {
-        print("Error al añadir el evento: $e");
-      }
-    }
-
-  }
-
+/// 🔹 **Clase para manejar autenticación de Google**
 class GoogleAuthClient extends http.BaseClient {
   final Map<String, String> _headers;
   final http.Client _client = http.Client();

@@ -2,8 +2,10 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.INTERNET"/>
-
+    
     <application
+        android:enableOnBackInvokedCallback="true"
+        android:allowBackup="true"
         android:label="pucpflow"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

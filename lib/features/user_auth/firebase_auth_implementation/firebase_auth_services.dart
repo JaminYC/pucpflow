@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:googleapis/authorizedbuyersmarketplace/v1.dart';
+import 'package:pucpflow/features/user_auth/Usuario/UserModel.dart';
 
 import '../../../global/common/toast.dart';
 
@@ -9,146 +11,173 @@ class FirebaseAuthService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Registro de usuario con email y contraseña
-  Future<User?> signUpWithEmailAndPassword(String email, String password, String username) async {
-    try {
-      UserCredential credential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
+Future<UserModel?> signUpWithEmailAndPassword(String email, String password, String nombre) async {
+  try {
+    UserCredential credential = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+
+    User? user = credential.user;
+    if (user != null) {
+      UserModel newUser = UserModel(
+        id: user.uid,
+        nombre: nombre,
+        correoElectronico: email,
+        fotoPerfil: null,
+        fechaNacimiento: null,
+        periodoEjercicio: "Mañana",
+        horaEjercicio: TimeOfDay(hours: 7, minutes: 0),
+        horaDormir:  TimeOfDay(hours: 23, minutes: 0),
+        nivelActividad: 5.0,
+        habitoHidratacion: "1-2 litros",
+        preferenciasFitness: ["Cardio", "Pesas"],
+        calidadSueno: 7.5,
+        horasSueno: 7,
+        usaWearables: false,
+        frecuenciaInteracciones: "Moderada",
+        hobbyPrincipal: "Leer",
+        horaSalida:  TimeOfDay(hours: 18, minutes: 0),
+        horaRegreso:  TimeOfDay(hours: 22, minutes: 0),
+        actividadSocialFavorita: "Salir con amigos",
+        usoRedesSociales: "1-2 horas",
+        tipoEventosPreferidos: "Reuniones pequeñas",
+        interaccionesSignificativas: 5,
+        canalesComunicacion: ["Llamadas", "Mensajes"],
+        nivelEstres: 4.5,
+        estadoAnimo: "Neutral",
+        estrategiasManejoEstres: "Meditación y ejercicio",
+        frecuenciaAbrumamiento: 3.0,
+        metodoEstudio: "Visual",
+        habilidadTecnologica: 8.0,
+        appsFavoritas: ["Notion", "Duolingo"],
+        horasEstudio: 4,
+        objetivoAprendizaje: "Mejorar habilidades técnicas",
+        formatoContenidoPreferido: "Videos",
+        metasPersonales: "Aprender desarrollo móvil",
+        entornoEstudio: "Ambiente silencioso y organizado",
+        fechaCreacion: DateTime.now(),
+        fechaActualizacion: DateTime.now(),
+        historialInteracciones: [],
+        preferenciasNotificaciones: {
+          "email": true,
+          "push": true,
+          "sms": false,
+        },
+        tareasHechas: [],
+        tareasAsignadas: [],
+        tareasPorHacer: [],
       );
 
+      await _firestore.collection('users').doc(user.uid).set(newUser.toMap());
+      return newUser;
+    }
+    return null;
+  } catch (e) {
+    print("Error al registrar usuario: $e");
+    return null;
+  }
+}
+
+
+  Future<UserModel?> signInWithEmailAndPassword(String email, String password) async {
+    try {
+      UserCredential credential = await _auth.signInWithEmailAndPassword(email: email, password: password);
       User? user = credential.user;
-
       if (user != null) {
-        await _firestore.collection('users').doc(user.uid).set({
-          'username': username,
-          'email': email,
-          'created_at': FieldValue.serverTimestamp(),
-          'lifestyle': {
-            'wake_up_time': "06:30 AM",
-            'sleep_time': "11:00 PM",
-            'exercise_days': ["Monday", "Wednesday", "Friday"],
-            'exercise_type': "Cardio"
-          },
-          'preferences': {
-            'theme': 'light',
-            'language': 'en',
-            'notifications': true,
-          },
-          'performance': {
-            'global_score': 0,
-            'tasks_completed': 0,
-            'tasks_pending': 0,
-          },
-          'schedule': {
-            'monday': [],
-            'tuesday': [],
-            'wednesday': [],
-            'thursday': [],
-            'friday': [],
-            'saturday': [],
-            'sunday': []
-          },
-        });
-
-        print("User data saved successfully in Firestore!");
+        return await getUserFromFirestore(user.uid);
       }
-
-      return user;
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'email-already-in-use') {
-        showToast(message: 'The email address is already in use.');
-      } else {
-        showToast(message: 'An error occurred: ${e.code}');
-      }
-    }
-    return null;
-  }
-
-  // Inicio de sesión con email y contraseña
-  Future<User?> signInWithEmailAndPassword(String email, String password) async {
-    try {
-      UserCredential credential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      return credential.user;
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found' || e.code == 'wrong-password') {
-        showToast(message: 'Invalid email or password.');
-      } else {
-        showToast(message: 'An error occurred: ${e.code}');
-      }
-    }
-    return null;
-  }
-
-  // Sign-In con Google
-  Future<User?> signInWithGoogle() async {
-    try {
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        clientId: "547054267025-aca3345kbjr3f61uh9aqbn8fg4hnmi05.apps.googleusercontent.com",
-      );
-
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-      if (googleUser == null) {
-        showToast(message: 'Sign-in cancelled by user.');
-        return null;
-      }
-
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      UserCredential userCredential = await _auth.signInWithCredential(credential);
-      User? user = userCredential.user;
-
-      if (user != null) {
-        final doc = await _firestore.collection('users').doc(user.uid).get();
-        if (!doc.exists) {
-          await _firestore.collection('users').doc(user.uid).set({
-            'username': googleUser.displayName ?? "User",
-            'email': user.email,
-            'created_at': FieldValue.serverTimestamp(),
-            'lifestyle': {
-              'wake_up_time': "06:30 AM",
-              'sleep_time': "11:00 PM",
-              'exercise_days': ["Monday", "Wednesday", "Friday"],
-              'exercise_type': "Cardio"
-            },
-            'preferences': {
-              'theme': 'light',
-              'language': 'en',
-              'notifications': true,
-            },
-            'performance': {
-              'global_score': 0,
-              'tasks_completed': 0,
-              'tasks_pending': 0,
-            },
-            'schedule': {
-              'monday': [],
-              'tuesday': [],
-              'wednesday': [],
-              'thursday': [],
-              'friday': [],
-              'saturday': [],
-              'sunday': []
-            },
-          });
-
-          print("Google user data saved successfully in Firestore!");
-        }
-      }
-
-      return user;
-    } on FirebaseAuthException catch (e) {
-      showToast(message: 'FirebaseAuthException: ${e.message}');
       return null;
     } catch (e) {
-      showToast(message: 'Error during Google Sign-In: $e');
+      print("Error en inicio de sesión: $e");
       return null;
     }
   }
+  
+  // Cuando obtenemos un usuario desde Firestore
+  Future<UserModel?> getUserFromFirestore(String uid) async {
+  DocumentSnapshot doc = await _firestore.collection('users').doc(uid).get();
+  if (doc.exists) {
+    return UserModel.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+  }
+  return null;
+}
+
+  // Sign-In con Google
+  Future<UserModel?> signInWithGoogle() async {
+  try {
+    final GoogleSignIn googleSignIn = GoogleSignIn();
+    final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+    if (googleUser == null) return null;
+
+    final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+    final AuthCredential credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+
+    UserCredential userCredential = await _auth.signInWithCredential(credential);
+    User? user = userCredential.user;
+
+    if (user != null) {
+      final userRef = _firestore.collection('users').doc(user.uid);
+      final doc = await userRef.get();
+
+      if (!doc.exists) {
+        UserModel newUser = UserModel(
+          id: user.uid,
+          nombre: googleUser.displayName ?? "Usuario",
+          correoElectronico: user.email!,
+          fotoPerfil: user.photoURL,
+          fechaNacimiento: null,
+          periodoEjercicio: "Mañana",
+          horaEjercicio:  TimeOfDay(hours: 7, minutes: 0),
+          horaDormir:  TimeOfDay(hours: 23, minutes: 0),
+          nivelActividad: 5.0,
+          habitoHidratacion: "1-2 litros",
+          preferenciasFitness: ["Cardio", "Pesas"],
+          calidadSueno: 7.5,
+          horasSueno: 7,
+          usaWearables: false,
+          frecuenciaInteracciones: "Moderada",
+          hobbyPrincipal: "Leer",
+          horaSalida:  TimeOfDay(hours: 18, minutes: 0),
+          horaRegreso:  TimeOfDay(hours: 22, minutes: 0),
+          actividadSocialFavorita: "Salir con amigos",
+          usoRedesSociales: "1-2 horas",
+          tipoEventosPreferidos: "Reuniones pequeñas",
+          interaccionesSignificativas: 5,
+          canalesComunicacion: ["Llamadas", "Mensajes"],
+          nivelEstres: 4.5,
+          estadoAnimo: "Neutral",
+          estrategiasManejoEstres: "Meditación y ejercicio",
+          frecuenciaAbrumamiento: 3.0,
+          metodoEstudio: "Visual",
+          habilidadTecnologica: 8.0,
+          appsFavoritas: ["Notion", "Duolingo"],
+          horasEstudio: 4,
+          objetivoAprendizaje: "Mejorar habilidades técnicas",
+          formatoContenidoPreferido: "Videos",
+          metasPersonales: "Aprender desarrollo móvil",
+          entornoEstudio: "Ambiente silencioso y organizado",
+          fechaCreacion: DateTime.now(),
+          fechaActualizacion: DateTime.now(),
+          historialInteracciones: [],
+          preferenciasNotificaciones: {"email": true, "push": true},
+          tareasHechas: [],
+          tareasAsignadas: [],
+          tareasPorHacer: [],
+        );
+
+        await userRef.set(newUser.toMap());
+      }
+      return await getUserFromFirestore(user.uid);
+    }
+    return null;
+  } catch (e) {
+    print("Error en Google Sign-In: $e");
+    return null;
+  }
+}
+
 }

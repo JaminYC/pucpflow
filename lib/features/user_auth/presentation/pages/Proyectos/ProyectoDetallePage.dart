@@ -1,679 +1,824 @@
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/google_calendar_service.dart';
-import 'proyecto_model.dart';
-import 'tarea_model.dart';
+import 'package:pucpflow/features/user_auth/Usuario/UserModel.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
+import 'package:pucpflow/features/user_auth/TareaFormWidget.dart';
+import 'package:pucpflow/features/user_auth/tarea_service.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+
+
+Color _colorDesdeUID(String uid) {
+  final int hash = uid.hashCode;
+  final double hue = 40 + (hash % 280); // evita rojos/verdes planos
+  return HSLColor.fromAHSL(1.0, hue, 0.7, 0.7).toColor();
+}
+
 
 class ProyectoDetallePage extends StatefulWidget {
-  final Proyecto proyecto;
+  final String proyectoId;
 
-  const ProyectoDetallePage({super.key, required this.proyecto});
+  const ProyectoDetallePage({super.key, required this.proyectoId});
 
   @override
-  _ProyectoDetallePageState createState() => _ProyectoDetallePageState();
+  State<ProyectoDetallePage> createState() => _ProyectoDetallePageState();
 }
 
 class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleCalendarService _calendarService = GoogleCalendarService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final TareaService _tareaService = TareaService();
+
   List<Tarea> tareas = [];
+  Map<String, String> nombreResponsables = {};
+  List<Map<String, String>> participantes = [];
+  bool loading = true;
+  bool participantesExpandido = true;
 
   @override
   void initState() {
     super.initState();
     _cargarTareas();
+    _cargarParticipantes();
   }
 
-  /// ✅ **Carga las tareas desde Firebase Firestore**
   Future<void> _cargarTareas() async {
-    final proyectoDoc = await _firestore.collection("proyectos").doc(widget.proyecto.id).get();
+    tareas = await _tareaService.obtenerTareasDelProyecto(widget.proyectoId);
+    await _cargarNombresResponsables();
+    setState(() => loading = false);
+  }
 
-    if (proyectoDoc.exists) {
-      final data = proyectoDoc.data();
-      if (data != null && data.containsKey("tareas")) {
-        setState(() {
-          tareas = (data["tareas"] as List<dynamic>)
-              .map((tareaJson) => Tarea.fromJson(tareaJson))
-              .toList();
-        });
+  Future<void> _cargarNombresResponsables() async {
+    final uids = tareas.expand((t) => t.responsables).toSet();
+    for (String uid in uids) {
+      final doc = await _firestore.collection("users").doc(uid).get();
+      if (doc.exists) {
+        nombreResponsables[uid] = doc.data()!["full_name"] ?? "Usuario";
       }
     }
   }
-    /// ✅ **Elimina una tarea del proyecto**
-  Future<void> _eliminarTarea(Tarea tarea) async {
-    await _firestore.collection("proyectos").doc(widget.proyecto.id).update({
-      "tareas": FieldValue.arrayRemove([tarea.toJson()])
-    });
 
-    setState(() {
-      tareas.remove(tarea);
-    });
+  Future<void> _cargarParticipantes() async {
+    final doc = await _firestore.collection("proyectos").doc(widget.proyectoId).get();
+    if (doc.exists) {
+      final data = doc.data()!;
+      final List<dynamic> uids = data["participantes"] ?? [];
+      final List<Map<String, String>> temp = [];
 
-    print("❌ Tarea eliminada");
-  }
-  /// ✅ **Agrega un participante al proyecto**
-  void _mostrarDialogoAgregarParticipante() {
-  String email = "";
-
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      backgroundColor: Colors.blue[900], // ✅ Fondo azul oscuro
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-        side: const BorderSide(color: Colors.white, width: 2), // ✅ Contorno blanco
-      ),
-      title: const Text(
-        "Agregar Participante",
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      content: TextField(
-        style: const TextStyle(color: Colors.white), // ✅ Texto blanco
-        cursorColor: Colors.white,
-        decoration: InputDecoration(
-          hintText: "Ingrese el email del participante",
-          hintStyle: TextStyle(color: Colors.white70),
-          enabledBorder: OutlineInputBorder(
-            borderSide: const BorderSide(color: Colors.white, width: 1.5),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          filled: true,
-          fillColor: Colors.black.withOpacity(0.3), // ✅ Caja de entrada oscura
-        ),
-        onChanged: (value) => email = value,
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Cancelar", style: TextStyle(color: Colors.white)),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (email.isNotEmpty) {
-              _agregarParticipante(email);
-              Navigator.pop(context);
-            }
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.greenAccent,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-          child: const Text(
-            "Agregar",
-            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-
-  Future<void> _agregarParticipante(String email) async {
-    final userQuery = await _firestore.collection("users").where("email", isEqualTo: email).get();
-
-    if (userQuery.docs.isEmpty) {
-      print("⚠️ Usuario no encontrado");
-      return;
-    }
-
-    final nuevoParticipanteId = userQuery.docs.first.id;
-
-    await _firestore.collection("proyectos").doc(widget.proyecto.id).update({
-      "participantes": FieldValue.arrayUnion([nuevoParticipanteId])
-    });
-
-    print("✅ Usuario agregado al proyecto");
-  }
-
-  /// ✅ Mostrar lista de participantes con nombres en la UI en tiempo real
-/// ✅ Mostrar lista de participantes con nombres en la UI en tiempo real
-Widget _mostrarParticipantes() {
-  return Container(
-    padding: const EdgeInsets.all(12),
-    margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-    decoration: BoxDecoration(
-      color: Colors.black.withOpacity(0.7), // ✅ Fondo oscuro semitransparente
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.white, width: 2), // ✅ Contorno blanco
-    ),
-    child: StreamBuilder<DocumentSnapshot>(
-      stream: _firestore.collection("proyectos").doc(widget.proyecto.id).snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-
-        final proyectoData = snapshot.data!.data() as Map<String, dynamic>;
-        List<dynamic> participantes = proyectoData["participantes"] ?? [];
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "👥 Integrantes",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-            ),
-            const SizedBox(height: 8),
-            if (participantes.isNotEmpty)
-              FutureBuilder<List<Map<String, String>>>(
-                future: _obtenerParticipantesConNombres(participantes),
-                builder: (context, AsyncSnapshot<List<Map<String, String>>> snapshot) {
-                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-
-                  final listaParticipantes = snapshot.data!;
-                  return Column(
-                    children: listaParticipantes.map((usuario) {
-                      return Card(
-                        color: Colors.blue[900], // ✅ Fondo azul para cada participante
-                        margin: const EdgeInsets.symmetric(vertical: 5),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          side: const BorderSide(color: Colors.white, width: 2), // ✅ Contorno blanco
-                        ),
-                        child: ListTile(
-                          leading: const Icon(Icons.person, color: Colors.white),
-                          title: Text(
-                            usuario["nombre"]!,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            usuario["email"]!,
-                            style: const TextStyle(color: Colors.white70),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.redAccent),
-                            onPressed: () => _confirmarEliminarParticipante(usuario["uid"]!),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  );
-                },
-              )
-            else
-              const Text("⚠️ No hay participantes aún", style: TextStyle(color: Colors.white)),
-            const SizedBox(height: 10),
-
-            /// 🔹 **Botón para agregar participante**
-            Center(
-              child: ElevatedButton(
-                onPressed: _mostrarDialogoAgregarParticipante,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue[900], // ✅ Fondo azul oscuro
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: const BorderSide(color: Colors.white, width: 2), // ✅ Contorno blanco
-                  ),
-                  elevation: 5, // ✅ Sutil sombra para destacar
-                ),
-                child: const Text(
-                  "Agregar Participante",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    ),
-  );
-}
-
-
-
-
-
-/// ✅ Obtiene los nombres y correos de los participantes desde Firestore
-  Future<List<Map<String, String>>> _obtenerParticipantesConNombres(List<dynamic> idsParticipantes) async {
-    List<Map<String, String>> participantes = [];
-
-    for (String id in idsParticipantes) {
-      final usuarioDoc = await _firestore.collection("users").doc(id).get();
-      if (usuarioDoc.exists) {
-        participantes.add({
-          "uid": id,
-          "nombre": usuarioDoc["full_name"] ?? "Usuario Desconocido",
-          "email": usuarioDoc["email"] ?? "No Email",
-        });
+      for (String uid in uids) {
+        final userDoc = await _firestore.collection("users").doc(uid).get();
+        if (userDoc.exists) {
+          temp.add({
+            "uid": uid,
+            "nombre": userDoc["full_name"] ?? "Usuario",
+            "email": userDoc["email"] ?? "",
+          });
+        }
       }
+
+      setState(() {
+        participantes = temp;
+      });
     }
-
-    return participantes;
   }
 
-
-
-/// ✅ Diálogo de confirmación antes de eliminar un participante
-void _confirmarEliminarParticipante(String participanteId) {
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text("Eliminar Participante"),
-      content: const Text("¿Estás seguro de que quieres eliminar a este participante del proyecto?"),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Cancelar"),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            _eliminarParticipante(participanteId);
-            Navigator.pop(context);
-          },
-          child: const Text("Eliminar"),
-        ),
-      ],
-    ),
-  );
-}
-
-
-
-Future<void> _eliminarParticipante(String participanteId) async {
-  final proyectoDoc = await _firestore.collection("proyectos").doc(widget.proyecto.id).get();
-  if (!proyectoDoc.exists) {
-    print("⚠️ Proyecto no encontrado.");
-    return;
-  }
-
-  List<dynamic> participantes = proyectoDoc.data()?["participantes"] ?? [];
-
-  if (!participantes.contains(participanteId)) {
-    print("⚠️ El participante no existe en este proyecto.");
-    return;
-  }
-
-  await _firestore.collection("proyectos").doc(widget.proyecto.id).update({
-    "participantes": FieldValue.arrayRemove([participanteId])
-  });
-
-  setState(() {}); // ✅ Refresca la pantalla
-  print("✅ Participante eliminado del proyecto.");
-}
-
-/// ✅ **Agrega una tarea con fecha, hora y responsable**
-void _mostrarDialogoNuevaTarea() {
-  String titulo = "";
-  int duracion = 60;
-  String? responsableSeleccionado;
-  DateTime? fechaSeleccionada;
-
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      backgroundColor: Colors.black.withOpacity(0.8), // ✅ Fondo oscuro semitransparente
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15), // ✅ Bordes redondeados
-        side: const BorderSide(color: Colors.white, width: 2), // ✅ Contorno blanco
-      ),
-      title: const Text(
-        "Nueva Tarea",
-        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          /// 🔹 **Campo para título**
-          TextField(
-            style: const TextStyle(color: Colors.white), // ✅ Texto en blanco
-            decoration: InputDecoration(
-              hintText: "Título de la tarea",
-              hintStyle: TextStyle(color: Colors.white70), // ✅ Texto de ayuda tenue
-              filled: true,
-              fillColor: Colors.blue[900], // ✅ Fondo azul oscuro
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Colors.white, width: 2), // ✅ Contorno blanco
-              ),
-            ),
-            onChanged: (value) => titulo = value,
-          ),
-          const SizedBox(height: 10),
-
-          /// 🔹 **Campo para duración**
-          TextField(
-            style: const TextStyle(color: Colors.white),
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              hintText: "Duración en minutos",
-              hintStyle: TextStyle(color: Colors.white70),
-              filled: true,
-              fillColor: Colors.blue[900],
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Colors.white, width: 2),
-              ),
-            ),
-            onChanged: (value) => duracion = int.tryParse(value) ?? 60,
-          ),
-          const SizedBox(height: 10),
-
-          /// 🔹 **Botón para seleccionar fecha y hora**
-          ElevatedButton(
-            onPressed: () async {
-              DateTime now = DateTime.now();
-
-              // ✅ Seleccionar Fecha
-              final DateTime? pickedDate = await showDatePicker(
-                context: context,
-                initialDate: now,
-                firstDate: now,
-                lastDate: DateTime(now.year + 5),
-              );
-
-              if (pickedDate != null) {
-                // ✅ Seleccionar Hora
-                final TimeOfDay? pickedTime = await showTimePicker(
-                  context: context,
-                  initialTime: TimeOfDay.now(),
-                );
-
-                if (pickedTime != null) {
-                  fechaSeleccionada = DateTime(
-                    pickedDate.year,
-                    pickedDate.month,
-                    pickedDate.day,
-                    pickedTime.hour,
-                    pickedTime.minute,
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[900],
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: Colors.white, width: 2), // ✅ Contorno blanco
-              ),
-              elevation: 5,
-            ),
-            child: const Text(
-              "📅 Seleccionar Fecha y Hora",
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          /// 🔹 **Dropdown para seleccionar responsable**
-          FutureBuilder<DocumentSnapshot>(
-            future: _firestore.collection("proyectos").doc(widget.proyecto.id).get(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const CircularProgressIndicator();
-              }
-
-              final data = snapshot.data!.data() as Map<String, dynamic>;
-              List<String> participantes = List<String>.from(data["participantes"] ?? []);
-
-              return FutureBuilder<List<Map<String, String>>>(
-                future: _obtenerParticipantesConNombres(participantes),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const CircularProgressIndicator();
-                  List<Map<String, String>> participantesInfo = snapshot.data!;
-
-                  return DropdownButtonFormField<String>(
-                    decoration: InputDecoration(
-                      labelText: "Asignar a Participante",
-                      labelStyle: const TextStyle(color: Colors.white),
-                      filled: true,
-                      fillColor: Colors.blue[900],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Colors.white, width: 2),
-                      ),
-                    ),
-                    dropdownColor: Colors.blue[900], // ✅ Fondo del dropdown azul oscuro
-                    style: const TextStyle(color: Colors.white),
-                    items: participantesInfo.map((usuario) {
-                      return DropdownMenuItem<String>(
-                        value: usuario["uid"],
-                        child: Text(usuario["nombre"]!, style: const TextStyle(color: Colors.white)), // ✅ Texto blanco
-                      );
-                    }).toList(),
-                    onChanged: (String? value) {
-                      setState(() {
-                        responsableSeleccionado = value;
-                      });
-                    },
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Cancelar", style: TextStyle(color: Colors.white)),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (titulo.isNotEmpty && fechaSeleccionada != null && responsableSeleccionado != null) {
-              _agregarTarea(titulo, duracion, responsableSeleccionado!, fechaSeleccionada!);
-              Navigator.pop(context);
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("⚠️ Debes ingresar todos los datos"))
-              );
-            }
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green[700],
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: Colors.white, width: 2),
-            ),
-            elevation: 5,
-          ),
-          child: const Text(
-            "Agregar",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-
-
-    /// ✅ **Marca una tarea como completada**
-  Future<void> _marcarTareaCompletada(Tarea tarea, bool completado) async {
-    final userId = _auth.currentUser!.uid;
-
-    // ✅ Verificamos que el usuario sea el responsable
-    if (userId != tarea.responsable) {
+  Future<void> _agregarParticipantePorEmail(String email) async {
+    final snapshot = await _firestore.collection("users").where("email", isEqualTo: email).get();
+    if (snapshot.docs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("❌ Solo el responsable de la tarea puede marcarla como completada.")),
+        const SnackBar(content: Text("Usuario no encontrado")),
       );
       return;
     }
+    final uid = snapshot.docs.first.id;
+    await _firestore.collection("proyectos").doc(widget.proyectoId).update({
+      "participantes": FieldValue.arrayUnion([uid])
+    });
+    await _cargarParticipantes();
+  }
 
-    tarea.completado = completado;
+  Future<void> _eliminarParticipante(String uid) async {
+    await _firestore.collection("proyectos").doc(widget.proyectoId).update({
+      "participantes": FieldValue.arrayRemove([uid])
+    });
+    await _cargarParticipantes();
+  }
 
-    await _firestore.collection("proyectos").doc(widget.proyecto.id).update({
-      "tareas": tareas.map((t) => t.toJson()).toList()
+  Future<void> _agregarTarea(Tarea tarea) async {
+    if (tarea.tipoTarea == "Libre" && tarea.responsables.isNotEmpty) {
+      tarea.tipoTarea = "Asignada";
+    }
+    await _tareaService.agregarTareaAProyecto(widget.proyectoId, tarea);
+    await _cargarTareas();
+  }
+
+  Future<void> _eliminarTarea(Tarea tarea) async {
+    await _tareaService.eliminarTareaDeProyecto(widget.proyectoId, tarea);
+    await _cargarTareas();
+  }
+
+  Future<void> _editarTarea(Tarea original, Tarea editada) async {
+    if (editada.tipoTarea == "Libre" && editada.responsables.isNotEmpty) {
+      editada.tipoTarea = "Asignada";
+    }
+    await _tareaService.actualizarTareaEnProyecto(widget.proyectoId, original, editada);
+    await _cargarTareas();
+  }
+
+Future<void> _marcarTareaCompletada(Tarea tarea, bool completado) async {
+    final userId = _auth.currentUser!.uid;
+    if (!tarea.responsables.contains(userId)) return;
+
+    final querySnapshot = await _firestore.collection("proyectos").get();
+
+    for (var doc in querySnapshot.docs) {
+      final data = doc.data();
+      List<dynamic> tareas = data["tareas"] ?? [];
+
+      for (int i = 0; i < tareas.length; i++) {
+        if (tareas[i]["titulo"] == tarea.titulo) {
+          tareas[i]["completado"] = true;
+        }
+      }
+      await _firestore.collection("proyectos").doc(doc.id).update({"tareas": tareas});
+    }
+
+    await _actualizarPuntosUsuario(userId, tarea);
+    setState(() {});
+  }
+
+  Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
+    final userDoc = _firestore.collection("users").doc(userId);
+    final userSnapshot = await userDoc.get();
+    if (!userSnapshot.exists) return;
+
+    final userData = userSnapshot.data() as Map<String, dynamic>;
+    int puntosActuales = userData["puntosTotales"] ?? 0;
+    Map<String, dynamic> habilidades = Map.from(userData["habilidades"] ?? {});
+
+    int puntosGanados = 10;
+    if (tarea.dificultad == "media") puntosGanados += 5;
+    if (tarea.dificultad == "alta") puntosGanados += 10;
+
+    tarea.requisitos.forEach((habilidad, impacto) {
+      habilidades[habilidad] = (habilidades[habilidad] ?? 0) + impacto;
     });
 
-    setState(() {});
-
-    print("✅ Tarea marcada como ${completado ? 'completada' : 'pendiente'}");
+    await userDoc.update({
+      "puntosTotales": puntosActuales + puntosGanados,
+      "habilidades": habilidades,
+    });
   }
-  
 
- Future<void> _agregarTarea(String titulo, int duracion, String responsableUid, DateTime fecha) async {
-  final nuevaTarea = Tarea(
-    titulo: titulo,
-    fecha: fecha,
-    duracion: duracion,
-    colorId: 1,
-    responsable: responsableUid,
-  );
+void _mostrarDialogoNuevaTarea() {
+  showDialog(
+    context: context,
+    builder: (context) {
+      bool cargando = false;
 
-  await _firestore.collection("proyectos").doc(widget.proyecto.id).update({
-    "tareas": FieldValue.arrayUnion([nuevaTarea.toJson()])
-  });
-
-  setState(() {
-    tareas.add(nuevaTarea);
-  });
-
-  print("✅ Tarea agregada en Firestore para el usuario $responsableUid");
-
-  // 🔹 Si el creador de la tarea también es el responsable, la agenda inmediatamente
-  final userId = _auth.currentUser!.uid;
-  if (responsableUid == userId) {
-    final calendarApi = await _calendarService.signInAndGetCalendarApi();
-    if (calendarApi != null) {
-      bool existeEnCalendario = await _calendarService.verificarTareaEnCalendario(calendarApi, nuevaTarea);
-      if (!existeEnCalendario) {
-        await _calendarService.agendarEventoEnCalendario(calendarApi, nuevaTarea);
-        print("✅ Tarea '${nuevaTarea.titulo}' agregada inmediatamente al Google Calendar del creador.");
-      }
-    }
-  }
-}
-Future<String> _obtenerNombreUsuario(String uid) async {
-  final usuarioDoc = await _firestore.collection("users").doc(uid).get();
-  if (usuarioDoc.exists) {
-    return usuarioDoc["full_name"] ?? "Desconocido";
-  }
-  return "Desconocido";
-}
- /// ✅ **Mostrar lista de tareas con diseño mejorado**
-  Widget _mostrarListaTareas() {
-    return Expanded(
-      child: tareas.isEmpty
-          ? const Center(child: Text("No hay tareas en este proyecto"))
-          : ListView.builder(
-              itemCount: tareas.length,
-              itemBuilder: (context, index) {
-                final tarea = tareas[index];
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: tarea.completado ? Colors.green[100] : Colors.white,
-                    border: Border.all(color: Colors.white, width: 2), // ✅ Contorno blanco
-                    borderRadius: BorderRadius.circular(10), // 🔹 Bordes redondeados
-                  ),
-                  child: ListTile(
-                    title: Text(
-                      tarea.titulo,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: tarea.completado ? Colors.green : Colors.black,
-                      ),
+      return StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            content: SizedBox(
+              width: double.maxFinite,
+              child: cargando
+                  ? const SizedBox(
+                      height: 100,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : TareaFormWidget(
+                      participantes: participantes, 
+                      onSubmit: (nuevaTarea) async {
+                        setStateDialog(() => cargando = true);
+                        await _agregarTarea(nuevaTarea);
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("✅ Tarea agregada")),
+                          );
+                        }
+                      },
                     ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("📅 Fecha: ${tarea.fecha}"),
-                        FutureBuilder<String>(
-                          future: _obtenerNombreUsuario(tarea.responsable), // ✅ Obtiene el nombre en tiempo real
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData) return const Text("Cargando...");
-                            return Text("👤 Responsable: ${snapshot.data}");
-                          },
-                        ),
-                        Text("⏳ Estado: ${tarea.completado ? '✅ Completado' : '❌ Pendiente'}"),
-                      ],
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Checkbox(
-                          value: tarea.completado,
-                          onChanged: (tarea.responsable == _auth.currentUser!.uid)
-                              ? (bool? newValue) {
-                                  _marcarTareaCompletada(tarea, newValue ?? false);
-                                }
-                              : null,
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => _eliminarTarea(tarea),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
             ),
-    );
+          );
+        },
+      );
+    },
+  );
+}
+
+
+void _mostrarDialogoEditarTarea(Tarea tareaExistente) {
+  showDialog(
+    context: context,
+    builder: (context) {
+      bool cargando = false;
+
+      return StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            content: SizedBox(
+              width: double.maxFinite,
+              child: cargando
+                  ? const SizedBox(
+                      height: 100,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : TareaFormWidget(
+                      tareaInicial: tareaExistente,
+                      participantes: participantes,
+                      onSubmit: (tareaEditada) async {
+                        setStateDialog(() => cargando = true);
+                        await _editarTarea(tareaExistente, tareaEditada);
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("✅ Tarea actualizada")),
+                          );
+                        }
+                      },
+                    ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+
+Color _colorPorResponsable(Tarea tarea) {
+  // ✅ Tareas completadas en verde suave
+  if (tarea.completado) return Colors.green[100]!;
+
+  // ✅ Tareas libres en gris claro
+  if (tarea.tipoTarea == "Libre") return Colors.grey[200]!;
+
+  // ✅ Si hay responsables, genera color único desde el UID
+  if (tarea.responsables.isNotEmpty) {
+    final uid = tarea.responsables.first;
+    final int hash = uid.hashCode;
+
+    // 🎨 Generar un matiz (hue) entre 40° y 320° (evita rojo y verde chillón)
+    final double hue = 40 + (hash % 280);
+    final HSLColor hslColor = HSLColor.fromAHSL(1.0, hue, 0.6, 0.75);
+
+    return hslColor.toColor(); // 🎨 Retorna color pastel vibrante
   }
-  @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    body: Stack(
+
+  // 🔙 Por defecto, blanco
+  return Colors.white;
+}
+
+  Widget _buildTareaCard(Tarea tarea) {
+  final esResponsable = tarea.responsables.contains(_auth.currentUser!.uid);
+  final responsablesNombres = tarea.responsables
+      .map((id) => nombreResponsables[id] ?? "-usuario-")
+      .join(", ");
+
+  Color colorIndicador = tarea.responsables.isNotEmpty
+      ? _colorDesdeUID(tarea.responsables.first)
+      : Colors.grey;
+
+  return Card(
+    margin: const EdgeInsets.all(8),
+    color: tarea.completado ? Colors.green[100] : Colors.white,
+    elevation: 3,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    child: Row(
       children: [
-        /// 🔹 **Fondo con degradado**
+        // 🎨 Indicador de color tipo “pin” o banda lateral
         Container(
+          width: 8,
+          height: 140,
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.black, Colors.blue[900]!],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+            color: colorIndicador,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(12),
+              bottomLeft: Radius.circular(12),
             ),
           ),
         ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                /// ✅ Título + checkbox
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        tarea.titulo,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    Checkbox(
+                      value: tarea.completado,
+                      onChanged: esResponsable
+                          ? (value) async {
+                              showDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (_) => const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
+                              await _marcarTareaCompletada(tarea, value!);
+                              if (context.mounted) Navigator.pop(context);
+                            }
+                          : null,
+                    )
+                  ],
+                ),
 
-        Column(
-          children: [
-            /// 🔹 **AppBar con título del proyecto**
-            AppBar(
-              title: Text(widget.proyecto.nombre),
-              backgroundColor: Colors.blue[800],
-              elevation: 0,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-              ),
+                /// ✅ Chips de tipo y dificultad
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    Chip(
+                      backgroundColor: Colors.black,
+                      avatar: const Icon(Icons.category, color: Colors.white, size: 18),
+                      label: Text(
+                        tarea.tipoTarea,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    if (tarea.dificultad != null)
+                      Chip(
+                        backgroundColor: Colors.black,
+                        avatar: const Icon(Icons.trending_up, color: Colors.white, size: 18),
+                        label: Text(
+                          "Dificultad: ${tarea.dificultad}",
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                  ],
+                ),
+
+                /// ✅ Descripción (si existe)
+                if (tarea.descripcion != null && tarea.descripcion!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text("📋 ${tarea.descripcion}"),
+                  ),
+
+                /// ✅ Responsables
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text("👤 Responsables: $responsablesNombres"),
+                ),
+
+                /// ✅ Acciones
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.group_add, color: Colors.blue),
+                      onPressed: () => _mostrarDialogoAsignarParticipantes(tarea),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.orange),
+                        onPressed: () async {
+                          await showDialog(
+                              context: context,
+                              builder: (context) {
+                                bool cargando = false;
+
+                                return StatefulBuilder(
+                                  builder: (context, setStateDialog) {
+                                    return AlertDialog(
+                                      backgroundColor: Colors.white,
+                                      content: SizedBox(
+                                        width: double.maxFinite,
+                                        child: cargando
+                                            ? const SizedBox(
+                                                height: 100,
+                                                child: Center(child: CircularProgressIndicator()),
+                                              )
+                                            : TareaFormWidget(
+                                                tareaInicial: tarea,
+                                                participantes: participantes, 
+                                                onSubmit: (tareaEditada) async {
+                                                  setStateDialog(() => cargando = true);
+                                                  await _editarTarea(tarea, tareaEditada);
+                                                  if (mounted) {
+                                                    Navigator.of(context).pop(); // cerrar todo
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      const SnackBar(content: Text("✅ Tarea actualizada")),
+                                                    );
+                                                  }
+                                                },
+                                              ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            );
+
+                        },
+
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text("¿Eliminar tarea?"),
+                              content: const Text("Esta acción no se puede deshacer."),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text("Cancelar"),
+                                ),
+                                ElevatedButton(
+                                    onPressed: () async {
+                                      Navigator.pop(context); // Cerramos confirmación
+
+                                      // Esperamos un frame antes de abrir el loader (evita conflictos con pop anterior)
+                                      await Future.delayed(Duration(milliseconds: 50));
+
+                                      // Creamos referencia al context del loader
+                                      late BuildContext loaderContext;
+
+                                      // Mostramos loader
+                                      showDialog(
+                                        context: context,
+                                        barrierDismissible: false,
+                                        builder: (ctx) {
+                                          loaderContext = ctx;
+                                          return const Center(child: CircularProgressIndicator());
+                                        },
+                                      );
+
+                                      // Ejecutamos la eliminación
+                                      await _eliminarTarea(tarea);
+
+                                      // Cerramos el loader usando su context original
+                                      Navigator.of(loaderContext).pop();
+
+                                      // Feedback
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text("✅ Tarea eliminada")),
+                                      );
+                                    },
+
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                  child: const Text("Eliminar"),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+
+                    ),
+                  ],
+                )
+              ],
             ),
-
-            const SizedBox(height: 10),
-
-            /// 🔹 **Sección de participantes**
-            _mostrarParticipantes(),
-
-            /// 🔹 **Lista de tareas con diseño mejorado**
-            Expanded(child: _mostrarListaTareas()), 
-          ],
-        ),
+          ),
+        )
       ],
-    ),
-
-    /// ✅ **Botón para agregar nueva tarea con diseño mejorado**
-    floatingActionButton: FloatingActionButton(
-      onPressed: _mostrarDialogoNuevaTarea,
-      backgroundColor: Colors.blue[800],
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-        side: const BorderSide(color: Colors.white, width: 2), // ✅ Contorno blanco
-      ),
-      child: const Icon(Icons.add, color: Colors.white),
     ),
   );
 }
 
+void _mostrarDialogoAsignarParticipantes(Tarea tarea) {
+  List<String> seleccionados = List<String>.from(tarea.responsables);
 
+  showDialog(
+    context: context,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            backgroundColor: const Color(0xFFF4EFFA),
+            title: const Text("Asignar Participantes", style: TextStyle(fontSize: 18)),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: participantes.map((p) {
+                  final uid = p["uid"]!;
+                  return CheckboxListTile(
+                    value: seleccionados.contains(uid),
+                    title: Text(p["nombre"] ?? ""),
+                    controlAffinity: ListTileControlAffinity.trailing,
+                    onChanged: (checked) {
+                      setStateDialog(() {
+                        if (checked == true && !seleccionados.contains(uid)) {
+                          seleccionados.add(uid);
+                        } else {
+                          seleccionados.remove(uid);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(), // ✅ Cierra correctamente
+                child: const Text("Cancelar", style: TextStyle(color: Colors.deepPurple)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+                onPressed: () async {
+                  final editada = Tarea(
+                    titulo: tarea.titulo,
+                    duracion: tarea.duracion,
+                    colorId: tarea.colorId,
+                    tipoTarea: seleccionados.isEmpty ? "Libre" : "Asignada",
+                    requisitos: tarea.requisitos,
+                    dificultad: tarea.dificultad,
+                    descripcion: tarea.descripcion,
+                    responsables: seleccionados,
+                    completado: tarea.completado,
+                    prioridad: tarea.prioridad,
+                  );
+                  await _editarTarea(tarea, editada);
+                  if (context.mounted) Navigator.of(context).pop(); // ✅ Cierra sin errores
+                },
+                child: const Text("Guardar"),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
+
+  Widget _buildParticipantesSection() {
+  String nuevoEmail = "";
+
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            GestureDetector(
+              onTap: () => setState(() => participantesExpandido = !participantesExpandido),
+              child: Row(
+                children: [
+                  const Icon(Icons.people, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text(
+                    participantesExpandido ? "Ocultar participantes" : "Mostrar participantes",
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  )
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.person_add, color: Colors.white),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text("Agregar Participante"),
+                    content: TextField(
+                      decoration: const InputDecoration(hintText: "Correo del participante"),
+                      onChanged: (value) => nuevoEmail = value,
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text("Cancelar"),
+                      ),
+                      ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await _agregarParticipantePorEmail(nuevoEmail);
+                        },
+                        child: const Text("Agregar"),
+                      )
+                    ],
+                  ),
+                );
+              },
+            )
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // PARTICIPANTES
+        if (participantesExpandido)
+          ...participantes.map((p) {
+            final uid = p["uid"]!;
+            final nombre = p["nombre"] ?? "-";
+            final email = p["email"] ?? "";
+            final colorUsuario = _colorDesdeUID(uid);
+
+            // Filtrar tareas por usuario
+            final tareasAsignadas = tareas.where((t) => t.responsables.contains(uid)).toList();
+            final tareasCompletadas = tareasAsignadas.where((t) => t.completado).toList();
+            final tareasPendientes = tareasAsignadas.where((t) => !t.completado).toList();
+
+            return Card(
+              elevation: 2,
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: colorUsuario, width: 2),
+              ),
+              child: ListTile(
+                contentPadding: const EdgeInsets.all(12),
+                leading: CircleAvatar(
+                  backgroundColor: colorUsuario,
+                  child: Text(
+                    nombre.isNotEmpty ? nombre[0].toUpperCase() : "?",
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                title: GestureDetector(
+                  onTap: () => _mostrarTareasDelParticipante(uid, nombre),
+                  child: Text(
+                    nombre,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.underline,
+                      color: Colors.blue,
+                    ),
+                  ),
+                ),
+
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(email),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        _chipResumen("Asignadas: ${tareasAsignadas.length}", Colors.black),
+                        const SizedBox(width: 4),
+                        _chipResumen("Hechas: ${tareasCompletadas.length}", Colors.green),
+                        const SizedBox(width: 4),
+                        _chipResumen("Pendientes: ${tareasPendientes.length}", Colors.orange),
+                      ],
+                    )
+                  ],
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.remove_circle, color: Colors.red),
+                  onPressed: () async {
+                    await _eliminarParticipante(uid);
+                  },
+                ),
+              ),
+            );
+          })
+
+      ],
+    ),
+  );
+}
+void _mostrarTareasDelParticipante(String uid, String nombre) {
+  final tareasUsuario = tareas.where((t) => t.responsables.contains(uid)).toList();
+
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text("Tareas de $nombre"),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: tareasUsuario.isEmpty
+              ? const Text("No tiene tareas asignadas.")
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: tareasUsuario.length,
+                  itemBuilder: (context, index) {
+                    final tarea = tareasUsuario[index];
+                    return ListTile(
+                      leading: Icon(
+                        tarea.completado ? Icons.check_circle : Icons.hourglass_bottom,
+                        color: tarea.completado ? Colors.green : Colors.orange,
+                      ),
+                      title: Text(tarea.titulo),
+                      subtitle: tarea.descripcion != null && tarea.descripcion!.isNotEmpty
+                          ? Text(tarea.descripcion!)
+                          : null,
+                      trailing: Chip(
+                        backgroundColor: tarea.completado ? Colors.green[100] : Colors.orange[100],
+                        label: Text(tarea.completado ? "Hecha" : "Pendiente"),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cerrar"),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+Widget _chipResumen(String texto, Color color) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.1),
+      border: Border.all(color: color),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      texto,
+      style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
+    ),
+  );
+}
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text("Detalle del Proyecto", style: TextStyle(color: Colors.white)),
+        backgroundColor: const Color.fromARGB(255, 0, 0, 0),
+        elevation: 0,
+      ),
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.black, Colors.blueAccent],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
+          loading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  children: [
+                    const SizedBox(height: 80),
+                    _buildParticipantesSection(),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.only(bottom: 100),
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: tareas
+                                .where((t) => !t.completado)
+                                .map((t) => SizedBox(
+                                      width: MediaQuery.of(context).size.width / 2 - 24,
+                                      child: _buildTareaCard(t),
+                                    ))
+                                .toList(),
+                          ),
+                          ExpansionTile(
+                            title: const Text("Tareas Completadas", style: TextStyle(color: Colors.white)),
+                            initiallyExpanded: false,
+                            backgroundColor: Colors.white10,
+                            collapsedIconColor: Colors.white,
+                            iconColor: Colors.white,
+                            children: tareas
+                                .where((t) => t.completado)
+                                .map((t) => _buildTareaCard(t))
+                                .toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: Colors.white,
+        label: const Text("Nueva tarea", style: TextStyle(color: Colors.black)),
+        icon: const Icon(Icons.add, color: Colors.black),
+        onPressed: _mostrarDialogoNuevaTarea,
+      ),
+    );
+  }
 }

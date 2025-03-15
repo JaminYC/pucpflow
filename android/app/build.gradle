@@ -3,6 +3,7 @@ plugins {
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
     id "com.google.gms.google-services"
+    id 'org.jetbrains.kotlin.android' version '2.1.0' apply false
 }
 
 android {
@@ -45,6 +46,7 @@ dependencies {
     implementation "com.google.firebase:firebase-auth"
     implementation "com.google.firebase:firebase-firestore"
     implementation "com.google.firebase:firebase-storage"
+     implementation 'com.google.android.gms:play-services-auth:20.7.0'
     implementation "com.google.firebase:firebase-messaging"  // Notificaciones push
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 }

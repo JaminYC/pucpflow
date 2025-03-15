@@ -1,12 +1,15 @@
 buildscript {
+    ext.kotlin_version = '2.1.0' // Define la versión de Kotlin
+
     repositories {
         google()
         mavenCentral()
     }
+
     dependencies {
         classpath("com.android.tools.build:gradle:8.2.1")
-        classpath("com.google.gms:google-services:4.4.2") // Añade el plugin aquí
-        // Otras dependencias de clase si las tienes
+        classpath("com.google.gms:google-services:4.4.2")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version") // Usa la variable de Kotlin
     }
 }
 
@@ -18,11 +21,10 @@ allprojects {
 }
 
 rootProject.buildDir = "../build"
+
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
-}
-subprojects {
-    project.evaluationDependsOn(":app")
+    project.evaluationDependsOn(":app") // Combina en un solo bloque
 }
 
 tasks.register("clean", Delete) {

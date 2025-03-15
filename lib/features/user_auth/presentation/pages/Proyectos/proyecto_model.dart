@@ -6,8 +6,10 @@ class Proyecto {
   final String nombre;
   final String descripcion;
   final DateTime fechaInicio;
-  final String propietario;  // 🔹 ID del creador del proyecto
-  final List<String> participantes; // 🔹 Lista de IDs de usuarios
+  final String propietario;
+  final List<String> participantes;
+  final String visibilidad; // "Publico" o "Privado"
+  final String? imagenUrl;
   List<Tarea> tareas;
 
   Proyecto({
@@ -17,9 +19,11 @@ class Proyecto {
     required this.fechaInicio,
     required this.propietario,
     required this.participantes,
+    this.visibilidad = "Privado",
+    this.imagenUrl,
     this.tareas = const [],
   });
-   // ✅ Método copyWith para actualizar propiedades sin perder los valores originales
+
   Proyecto copyWith({
     String? id,
     String? nombre,
@@ -27,6 +31,9 @@ class Proyecto {
     DateTime? fechaInicio,
     String? propietario,
     List<String>? participantes,
+    String? visibilidad,
+    String? imagenUrl,
+    List<Tarea>? tareas,
   }) {
     return Proyecto(
       id: id ?? this.id,
@@ -35,8 +42,12 @@ class Proyecto {
       fechaInicio: fechaInicio ?? this.fechaInicio,
       propietario: propietario ?? this.propietario,
       participantes: participantes ?? this.participantes,
+      visibilidad: visibilidad ?? this.visibilidad,
+      imagenUrl: imagenUrl ?? this.imagenUrl,
+      tareas: tareas ?? this.tareas,
     );
   }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -45,6 +56,8 @@ class Proyecto {
       'fechaInicio': fechaInicio.toIso8601String(),
       'propietario': propietario,
       'participantes': participantes,
+      'visibilidad': visibilidad,
+      'imagenUrl': imagenUrl,
       'tareas': tareas.map((t) => t.toJson()).toList(),
     };
   }
@@ -57,9 +70,9 @@ class Proyecto {
       fechaInicio: DateTime.parse(json['fechaInicio']),
       propietario: json['propietario'],
       participantes: List<String>.from(json['participantes'] ?? []),
-      tareas: (json['tareas'] as List<dynamic>?)
-              ?.map((tareaJson) => Tarea.fromJson(tareaJson))
-              .toList() ?? [],
+      visibilidad: json['visibilidad'] ?? "Privado",
+      imagenUrl: json['imagenUrl'],
+      tareas: (json['tareas'] as List<dynamic>?)?.map((tareaJson) => Tarea.fromJson(tareaJson)).toList() ?? [],
     );
   }
 }

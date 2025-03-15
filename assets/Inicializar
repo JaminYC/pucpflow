@@ -1,0 +1,83 @@
+
+##Para poder Correr en Chrome 
+
+
+    flutter run -d chrome
+
+    https://fonts.google.com/?query=Sea
+flutter build web
+firebase deploy
+
+Container(
+                height: screenHeight * (isMobile ? 0.35 : 0.25),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Primera fila: Desarrollo y Social
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildCircleButton(
+                              const DesarrolloInicio(),
+                              Colors.blue,
+                              Icons.settings,
+                              "heroDesarrollo",
+                              screenWidth,
+                              isMobile,
+                            ),
+                            SizedBox(width: screenWidth * (isMobile ? 0.03 : 0.03)),
+                            _buildCircleButton(
+                              const SocialPage(),
+                              Colors.pink,
+                              Icons.group,
+                              "social",
+                              screenWidth,
+                              isMobile,
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: screenHeight * (isMobile ? 0.02 : 0.02)),
+                        // Segunda fila: Revistas y Salud
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildCircleButton(
+                              const RevistasPage(),
+                              Colors.orange,
+                              Icons.library_books,
+                              "perfil",
+                              screenWidth,
+                              isMobile,
+                            ),
+                            SizedBox(width: screenWidth * (isMobile ? 0.2: 0.1)),
+                            _buildCircleButton(
+                              const HealthPage(),
+                              Colors.green,
+                              Icons.health_and_safety,
+                              "salud",
+                              screenWidth,
+                              isMobile,
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: screenHeight * (isMobile ? 0.03 : 0.03)),
+                      ],
+                    ),
+                    // Botón de micrófono posicionado en la parte inferior
+                    Positioned(
+                      bottom: screenHeight * (isMobile ? 0.12 : 0.1),
+                      child: _buildCircleButton(
+                        AsistentePage(),
+                        Colors.black,
+                        Icons.mic,
+                        "asistente",
+                        screenWidth,
+                        isMobile,
+                      ),
+                    ),
+                  ],
+                ),
+              ),

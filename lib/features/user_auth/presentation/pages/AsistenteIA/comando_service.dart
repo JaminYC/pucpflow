@@ -56,6 +56,7 @@ class ComandoService {
   }
 
   /// Asigna tareas a un proyecto si no tiene
+  /*
   Future<void> asignarTareasAProyecto(Proyecto proyecto) async {
     if (proyecto.tareas.isEmpty) {
       proyecto.tareas = generarTareasPorDefecto(proyecto);
@@ -93,7 +94,9 @@ class ComandoService {
       }
     });
     }
-Future<void> verificarTareasPendientesYReagendar() async {
+
+    */
+/*Future<void> verificarTareasPendientesYReagendar() async {
   final prefs = await SharedPreferences.getInstance();
   final proyectosData = prefs.getStringList('proyectos') ?? [];
   List<Proyecto> proyectos = proyectosData.map((p) => Proyecto.fromJson(jsonDecode(p))).toList();
@@ -117,7 +120,7 @@ Future<void> verificarTareasPendientesYReagendar() async {
 
   await guardarProyectos(proyectos); // 🔹 Ahora pasamos los proyectos
   print("✅ Tareas no completadas han sido reagendadas.");
-}
+}*/
 
   DateTime _obtenerProximaHoraDisponible() {
     DateTime now = DateTime.now();

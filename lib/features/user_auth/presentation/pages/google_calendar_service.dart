@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart'; 
 import 'package:googleapis/calendar/v3.dart' as calendar;
 import 'package:googleapis_auth/auth_io.dart';
@@ -9,8 +11,10 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_m
 
 class GoogleCalendarService {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId: kIsWeb ? "547054267025-62eputqjlamebrmshg37rfohl9s10q0c.apps.googleusercontent.com" : null,
     scopes: [calendar.CalendarApi.calendarScope],
   );
+
   
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -18,7 +22,9 @@ class GoogleCalendarService {
   /// 🔹 **Corrección de `signInAndGetCalendarApi()`**
   Future<calendar.CalendarApi?> signInAndGetCalendarApi() async {
     try {
-      final GoogleSignInAccount? account = await _googleSignIn.signIn();
+      final GoogleSignInAccount? account =
+         await _googleSignIn.signInSilently() ?? await _googleSignIn.signIn();
+
       if (account == null) {
         print("⚠️ No se pudo iniciar sesión en Google.");
         return null;
@@ -32,17 +38,115 @@ class GoogleCalendarService {
       return null;
     }
   }
-  Future<bool> verificarTareaEnCalendario(calendar.CalendarApi calendarApi, Tarea tarea) async {
+/// 🔹 **Encuentra el primer horario disponible para una tarea**
+  Future<DateTime?> encontrarHorarioDisponible(
+    calendar.CalendarApi calendarApi, String responsableUid, int duracion) async {
   try {
+    final userQuery = await _firestore.collection("users").doc(responsableUid).get();
+    if (!userQuery.exists) return null;
+
+    final responsibleEmail = userQuery["email"];
+    if (responsibleEmail == null || responsibleEmail.isEmpty) return null;
+
+    DateTime now = DateTime.now();
+    DateTime fechaInicio = DateTime(now.year, now.month, now.day, 8, 0);
+    DateTime fechaFin = DateTime(now.year, now.month, now.day, 18, 0);
+
+    // 🔹 Buscar eventos en los próximos 3 días
     final events = await calendarApi.events.list(
       "primary",
-      timeMin: tarea.fecha.subtract(const Duration(minutes: 1)), 
-      timeMax: tarea.fecha.add(const Duration(minutes: 1)), 
+      timeMin: fechaInicio.toUtc(),
+      timeMax: fechaInicio.add(Duration(days: 3)).toUtc(),
+      orderBy: "startTime",
+      singleEvents: true,
+    );
+
+    // 🔹 Si no hay eventos, asignar la primera hora disponible
+    if (events.items == null || events.items!.isEmpty) {
+      return fechaInicio;
+    }
+
+    // 🔹 Buscar la primera franja horaria disponible
+    for (var event in events.items!) {
+      if (event.start?.dateTime != null && event.end?.dateTime != null) {
+        DateTime startTime = event.start!.dateTime!.toLocal();
+        DateTime endTime = event.end!.dateTime!.toLocal();
+
+        if (fechaInicio.isBefore(startTime) && fechaInicio.add(Duration(minutes: duracion)).isBefore(startTime)) {
+          return fechaInicio; // ✅ Se encontró un espacio antes de un evento
+        }
+        if (fechaInicio.isBefore(endTime)) {
+          fechaInicio = endTime.add(const Duration(minutes: 15)); // ✅ Saltar al final del evento actual
+        }
+        if (fechaInicio.hour >= 18) {
+          fechaInicio = DateTime(fechaInicio.year, fechaInicio.month, fechaInicio.day + 1, 8, 0); // ✅ Pasar al día siguiente
+        }
+      }
+    }
+
+    return fechaInicio; // ✅ Retorna la primera hora disponible encontrada
+  } catch (e) {
+    print("❌ Error al buscar horario disponible: $e");
+    return null;
+  }
+}
+
+
+Future<DateTime?> obtenerFechaDesdeSelector(BuildContext context) async {
+    DateTime now = DateTime.now();
+
+    // ✅ Seleccionar Fecha
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: now,
+      lastDate: DateTime(now.year + 5),
+    );
+
+    if (pickedDate != null) {
+      // ✅ Seleccionar Hora
+      final TimeOfDay? pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.now(),
+      );
+
+      if (pickedTime != null) {
+        return DateTime(
+          pickedDate.year,
+          pickedDate.month,
+          pickedDate.day,
+          pickedTime.hour,
+          pickedTime.minute,
+        );
+      }
+    }
+    return null;
+  }
+Future<bool> verificarTareaEnCalendario(calendar.CalendarApi calendarApi, Tarea tarea, String responsableUid) async {
+  try {
+    if (tarea.fecha == null) return false; // ✅ Asegurar que la fecha no sea null
+
+    // 🔹 Obtener el email del responsable
+    final userQuery = await _firestore.collection("users").doc(responsableUid).get();
+    if (!userQuery.exists) return false;
+
+    final responsibleEmail = userQuery["email"];
+    if (responsibleEmail == null || responsibleEmail.isEmpty) return false;
+
+    // 🔹 Buscar eventos en el rango de la tarea
+    final events = await calendarApi.events.list(
+      "primary",
+      timeMin: tarea.fecha!.subtract(const Duration(minutes: 1)), 
+      timeMax: tarea.fecha!.add(const Duration(minutes: 1)),
     );
 
     for (var event in events.items ?? []) {
-      if (event.summary == tarea.titulo) {
-        return true; // ✅ La tarea ya existe en el calendario
+      if (event.summary == tarea.titulo && event.attendees != null) {
+        for (var attendee in event.attendees!) {
+          if (attendee.email == responsibleEmail) {
+            return true; // ✅ La tarea ya existe en el calendario del responsable
+          }
+        }
       }
     }
   } catch (e) {
@@ -51,39 +155,78 @@ class GoogleCalendarService {
   return false; // ❌ No se encontró la tarea en el calendario
 }
 
-  /// 🔹 **Corrección en Firestore**
-  Future<DateTime?> encontrarHorarioParaProyecto(String proyectoId, int duracionMinutos) async {
-    final calendarApi = await signInAndGetCalendarApi();
-    if (calendarApi == null) return null;
 
-    DocumentSnapshot proyectoDoc = await _firestore.collection("proyectos").doc(proyectoId).get();
+ Future<DateTime?> encontrarHorarioParaProyecto(String proyectoId, int duracionMin) async {
+  DateTime now = DateTime.now();
+  DateTime fechaInicio = now.isBefore(DateTime(now.year, now.month, now.day, 8))
+      ? DateTime(now.year, now.month, now.day, 10)
+      : now;
 
-    if (!proyectoDoc.exists) {
-      print("⚠️ Proyecto no encontrado.");
-      return null;
+  DateTime fechaFin = fechaInicio.add(Duration(minutes: duracionMin));
+
+  final querySnapshot = await _firestore.collection("proyectos").doc(proyectoId).get();
+  final data = querySnapshot.data();
+  if (data == null) return null;
+
+  String? responsableUid = data["responsable"];
+  if (responsableUid == null) return null;
+
+  final userQuery = await _firestore.collection("users").doc(responsableUid).get();
+  if (!userQuery.exists) return null;
+
+  final responsibleEmail = userQuery["email"];
+  if (responsibleEmail == null || responsibleEmail.isEmpty) return null;
+
+  final calendarApi = await signInAndGetCalendarApi();
+  if (calendarApi == null) return null;
+
+  // 🔹 Buscar en los próximos 3 días un horario libre
+  for (int i = 0; i < 3; i++) {
+    DateTime fechaPrueba = fechaInicio.add(Duration(days: i));
+
+    for (int hora = 8; hora <= 17; hora++) {
+      DateTime inicio = DateTime(fechaPrueba.year, fechaPrueba.month, fechaPrueba.day, hora);
+      DateTime fin = inicio.add(Duration(minutes: duracionMin));
+
+      bool hayConflicto = await verificarDisponibilidadHorario(calendarApi, responsibleEmail, inicio, fin);
+
+      if (!hayConflicto) {
+        return inicio; // ✅ Devuelve el primer horario libre
+      }
     }
-
-    Proyecto proyecto = Proyecto.fromJson(proyectoDoc.data() as Map<String, dynamic>);
-    List<String> participantes = proyecto.participantes;
-
-    if (participantes.isEmpty) {
-      print("⚠️ No hay participantes en el proyecto.");
-      return null;
-    }
-
-    DateTime fechaReunion = DateTime.now().add(Duration(days: 2));
-    List<calendar.TimePeriod> horariosOcupadosTotales = [];
-
-    for (String usuario in participantes) {
-      print("🔍 Verificando disponibilidad para $usuario...");
-      List<calendar.TimePeriod> busyTimes =
-          await getBusyTimes(calendarApi, fechaReunion, fechaReunion.add(Duration(days: 1)));
-
-      horariosOcupadosTotales.addAll(busyTimes);
-    }
-
-    return findFreeSlot(horariosOcupadosTotales, duracionMinutos);
   }
+
+  print("⚠️ No se encontraron horarios disponibles en los próximos 3 días.");
+  return null;
+}
+
+
+DateTime? findFreeSlot(List<calendar.TimePeriod> busyTimes, int durationMinutes) {
+  final now = DateTime.now();
+  DateTime startOfDay = DateTime(now.year, now.month, now.day, 8, 0); // 🔹 Comienza a las 8 AM
+  DateTime endOfDay = DateTime(now.year, now.month, now.day, 22, 0); // 🔹 Termina a las 10 PM
+
+  busyTimes.sort((a, b) => a.start!.compareTo(b.start!));
+
+  DateTime previousEnd = startOfDay;
+  for (final busy in busyTimes) {
+    final busyStart = busy.start!;
+    final busyEnd = busy.end!;
+
+    if (busyStart.difference(previousEnd).inMinutes >= durationMinutes) {
+      return previousEnd;
+    }
+    previousEnd = busyEnd;
+  }
+
+  if (endOfDay.difference(previousEnd).inMinutes >= durationMinutes) {
+    return previousEnd;
+  }
+
+  return null; // 🔹 No hay espacio disponible
+}
+
+
 
   /// 🔹 **Obtener horarios ocupados de Google Calendar**
   Future<List<calendar.TimePeriod>> getBusyTimes(calendar.CalendarApi calendarApi, DateTime start, DateTime end) async {
@@ -108,66 +251,70 @@ class GoogleCalendarService {
 
     return [];
   }
+  
+  
 
-  /// 🔹 **Buscar espacio libre en horarios**
-  DateTime? findFreeSlot(List<calendar.TimePeriod> busyTimes, int durationMinutes) {
-    final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day, 7, 0);
-    final endOfDay = DateTime(now.year, now.month, now.day, 22, 0);
 
-    try {
-      busyTimes.sort((a, b) {
-        final aStart = a.start;
-        final bStart = b.start;
-        if (aStart == null || bStart == null) return 0;
-        return aStart.compareTo(bStart);
-      });
-
-      DateTime previousEnd = startOfDay;
-      for (final busy in busyTimes) {
-        final busyStart = busy.start;
-        final busyEnd = busy.end;
-
-        if (busyStart == null || busyEnd == null) continue;
-
-        if (busyStart.difference(previousEnd).inMinutes >= durationMinutes) {
-          return previousEnd;
-        }
-        previousEnd = busyEnd;
-      }
-
-      if (endOfDay.difference(previousEnd).inMinutes >= durationMinutes) {
-        return previousEnd;
-      }
-    } catch (e) {
-      print("❌ Error al buscar espacio libre: $e");
-    }
-
-    return null;
-  }
     /// ✅ **Agendar evento en Google Calendar**
-  Future<void> agendarEventoEnCalendario(calendar.CalendarApi calendarApi, Tarea tarea) async {
-    try {
-      final event = calendar.Event(
-        summary: tarea.titulo,
-        start: calendar.EventDateTime(
-          dateTime: tarea.fecha.toUtc(),
-          timeZone: "America/Lima",
-        ),
-        end: calendar.EventDateTime(
-          dateTime: tarea.fecha.toUtc().add(Duration(minutes: tarea.duracion)),
-          timeZone: "America/Lima",
-        ),
-      );
-
-      await calendarApi.events.insert(event, "primary");
-      print("✅ Evento agregado a Google Calendar correctamente.");
-    } catch (e) {
-      print("❌ Error al agendar evento: $e");
+ Future<void> agendarEventoEnCalendario(calendar.CalendarApi calendarApi, Tarea tarea, String responsableUid) async {
+  try {
+    // 🔹 Obtener el email del responsable desde Firestore
+    final userQuery = await _firestore.collection("users").doc(responsableUid).get();
+    if (!userQuery.exists) {
+      print("⚠️ Responsable no encontrado en Firestore.");
+      return;
     }
+
+    final responsibleEmail = userQuery["email"];
+    if (responsibleEmail == null || responsibleEmail.isEmpty) {
+      print("⚠️ No se encontró el email del responsable.");
+      return;
+    }
+
+    // ✅ Crear el evento SIN INVITACIONES
+    final event = calendar.Event(
+      summary: tarea.titulo,
+      start: calendar.EventDateTime(
+        dateTime: tarea.fecha!.toUtc(),
+        timeZone: "America/Lima",
+      ),
+      end: calendar.EventDateTime(
+        dateTime: tarea.fecha!.toUtc().add(Duration(minutes: tarea.duracion)),
+        timeZone: "America/Lima",
+      ),
+      // 🔹 NO AGREGAMOS `attendees` PARA EVITAR INVITACIONES
+      guestsCanModify: false,  // Evita que se edite
+      guestsCanInviteOthers: false, // Evita que se envíen invitaciones
+      transparency: "opaque", // ✅ Asegura que se bloquee el horario
+      visibility: "private", // ✅ El evento solo es visible para el usuario
+    );
+
+    // 🔹 Agregar el evento al calendario del responsable (NO DEL CREADOR)
+    await calendarApi.events.insert(event, "primary", sendUpdates: "none");
+
+    print("✅ Evento agregado directamente al Google Calendar del usuario $responsibleEmail sin invitación.");
+  } catch (e) {
+    print("❌ Error al agendar evento: $e");
   }
+}
 
 
+
+
+
+/// ✅ **Verifica si el horario ya está ocupado en el calendario del usuario**
+Future<bool> verificarDisponibilidadHorario(calendar.CalendarApi calendarApi, String email, DateTime inicio, DateTime fin) async {
+  final response = await calendarApi.freebusy.query(
+    calendar.FreeBusyRequest(
+      timeMin: inicio.toUtc(),
+      timeMax: fin.toUtc(),
+      items: [calendar.FreeBusyRequestItem(id: email)],
+    ),
+  );
+
+  final busyPeriods = response.calendars?[email]?.busy ?? [];
+  return busyPeriods.isNotEmpty;
+}
 
 
 

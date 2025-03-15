@@ -12,26 +12,22 @@ class IntellectualForm extends StatefulWidget {
 
 class _IntellectualFormState extends State<IntellectualForm> {
   final _formKey = GlobalKey<FormState>();
-
-  // Campos del formulario
   String _studyMethod = "Visual";
   double _technologySkill = 5.0;
   String _favoriteApps = "";
-  int _studyHours = 2; // Nuevas preguntas
+  int _studyHours = 2;
   String _learningGoal = "Mejorar habilidades técnicas";
   String _preferredContentFormat = "Videos";
 
   Future<void> _saveIntellectualData() async {
     try {
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
-        'intellectual': {
-          'study_method': _studyMethod,
-          'technology_skill': _technologySkill,
-          'favorite_apps': _favoriteApps,
-          'study_hours': _studyHours,
-          'learning_goal': _learningGoal,
-          'preferred_content_format': _preferredContentFormat,
-        },
+        'metodoEstudio': _studyMethod,
+        'habilidadTecnologica': _technologySkill,
+        'appsFavoritas': _favoriteApps.split(',').map((e) => e.trim()).toList(),
+        'horasEstudio': _studyHours,
+        'objetivoAprendizaje': _learningGoal,
+        'formatoContenidoPreferido': _preferredContentFormat,
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -50,13 +46,15 @@ class _IntellectualFormState extends State<IntellectualForm> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("🧠 Bienestar Intelectual"),
-        backgroundColor: Colors.indigo,
+        backgroundColor: Colors.black,
       ),
+      backgroundColor: Colors.white,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _saveIntellectualData,
         label: const Text("Guardar"),
         icon: const Icon(Icons.check),
-        backgroundColor: Colors.indigo,
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
       ),
       body: Form(
         key: _formKey,
@@ -65,11 +63,7 @@ class _IntellectualFormState extends State<IntellectualForm> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Método de estudio preferido
-              const Text(
-                "📚 Método de estudio preferido:",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              const Text("📚 Método de estudio preferido:", style: TextStyle(fontWeight: FontWeight.bold)),
               DropdownButtonFormField<String>(
                 value: _studyMethod,
                 items: const [
@@ -77,11 +71,7 @@ class _IntellectualFormState extends State<IntellectualForm> {
                   DropdownMenuItem(value: "Auditivo", child: Text("🎧 Auditivo")),
                   DropdownMenuItem(value: "Kinestésico", child: Text("👐 Kinestésico")),
                 ],
-                onChanged: (value) {
-                  setState(() {
-                    _studyMethod = value!;
-                  });
-                },
+                onChanged: (value) => setState(() => _studyMethod = value!),
                 decoration: const InputDecoration(
                   filled: true,
                   fillColor: Colors.white,
@@ -90,62 +80,34 @@ class _IntellectualFormState extends State<IntellectualForm> {
               ),
               const SizedBox(height: 20),
 
-              // Nivel de habilidad tecnológica
-              const Text(
-                "💻 Nivel de habilidad tecnológica (1-10):",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              const Text("💻 Nivel de habilidad tecnológica (1-10):", style: TextStyle(fontWeight: FontWeight.bold)),
               Slider(
                 value: _technologySkill,
                 min: 1,
                 max: 10,
                 divisions: 9,
                 label: _technologySkill.round().toString(),
-                onChanged: (value) {
-                  setState(() {
-                    _technologySkill = value;
-                  });
-                },
-                activeColor: Colors.indigo,
-                inactiveColor: Colors.indigo.withOpacity(0.4),
+                onChanged: (value) => setState(() => _technologySkill = value),
+                activeColor: Colors.black,
+                inactiveColor: Colors.black26,
               ),
               const SizedBox(height: 20),
 
-              // Apps favoritas
-              const Text(
-                "🌟 Apps favoritas:",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              const Text("🌟 Apps favoritas (separadas por coma):", style: TextStyle(fontWeight: FontWeight.bold)),
               TextFormField(
                 decoration: const InputDecoration(
-                  labelText: "Apps favoritas",
-                  hintText: "Ejemplo: Notion, Google Drive, Canva",
+                  hintText: "Ej: Notion, Google Drive, Canva",
                   border: OutlineInputBorder(),
                 ),
-                onChanged: (value) {
-                  _favoriteApps = value;
-                },
+                onChanged: (value) => _favoriteApps = value,
               ),
               const SizedBox(height: 20),
 
-              // Horas de estudio diarias
-              const Text(
-                "⏱️ Horas de estudio diarias:",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              const Text("⏱️ Horas de estudio diarias:", style: TextStyle(fontWeight: FontWeight.bold)),
               DropdownButtonFormField<int>(
                 value: _studyHours,
-                items: List.generate(10, (index) {
-                  return DropdownMenuItem(
-                    value: index + 1,
-                    child: Text("${index + 1} horas"),
-                  );
-                }),
-                onChanged: (value) {
-                  setState(() {
-                    _studyHours = value!;
-                  });
-                },
+                items: List.generate(10, (index) => DropdownMenuItem(value: index + 1, child: Text("${index + 1} horas"))),
+                onChanged: (value) => setState(() => _studyHours = value!),
                 decoration: const InputDecoration(
                   filled: true,
                   fillColor: Colors.white,
@@ -154,11 +116,7 @@ class _IntellectualFormState extends State<IntellectualForm> {
               ),
               const SizedBox(height: 20),
 
-              // Objetivo de aprendizaje
-              const Text(
-                "🎯 Objetivo principal de aprendizaje:",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              const Text("🎯 Objetivo principal de aprendizaje:", style: TextStyle(fontWeight: FontWeight.bold)),
               DropdownButtonFormField<String>(
                 value: _learningGoal,
                 items: const [
@@ -167,11 +125,7 @@ class _IntellectualFormState extends State<IntellectualForm> {
                   DropdownMenuItem(value: "Aprender algo nuevo", child: Text("Aprender algo nuevo")),
                   DropdownMenuItem(value: "Mejorar productividad", child: Text("Mejorar productividad")),
                 ],
-                onChanged: (value) {
-                  setState(() {
-                    _learningGoal = value!;
-                  });
-                },
+                onChanged: (value) => setState(() => _learningGoal = value!),
                 decoration: const InputDecoration(
                   filled: true,
                   fillColor: Colors.white,
@@ -180,11 +134,7 @@ class _IntellectualFormState extends State<IntellectualForm> {
               ),
               const SizedBox(height: 20),
 
-              // Formato de contenido preferido
-              const Text(
-                "📖 Formato de contenido preferido:",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              const Text("📖 Formato de contenido preferido:", style: TextStyle(fontWeight: FontWeight.bold)),
               DropdownButtonFormField<String>(
                 value: _preferredContentFormat,
                 items: const [
@@ -193,27 +143,11 @@ class _IntellectualFormState extends State<IntellectualForm> {
                   DropdownMenuItem(value: "Libros", child: Text("📚 Libros")),
                   DropdownMenuItem(value: "Podcasts", child: Text("🎧 Podcasts")),
                 ],
-                onChanged: (value) {
-                  setState(() {
-                    _preferredContentFormat = value!;
-                  });
-                },
+                onChanged: (value) => setState(() => _preferredContentFormat = value!),
                 decoration: const InputDecoration(
                   filled: true,
                   fillColor: Colors.white,
                   border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 30),
-
-              // Botón para guardar
-              ElevatedButton.icon(
-                onPressed: _saveIntellectualData,
-                icon: const Icon(Icons.save),
-                label: const Text("Guardar y continuar"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo,
-                  minimumSize: const Size.fromHeight(50),
                 ),
               ),
             ],

@@ -57,13 +57,7 @@ class _TareaFormWidgetState extends State<TareaFormWidget> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.black, Colors.deepPurple],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-      ),
+      color: Colors.black,
       child: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -226,13 +220,13 @@ class _TareaFormWidgetState extends State<TareaFormWidget> with SingleTickerProv
                       }
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
+                      backgroundColor: const Color.fromARGB(255, 255, 255, 255),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     ),
                     child: Text(
                       widget.tareaInicial != null ? "Guardar Cambios" : "Crear Tarea",
-                      style: const TextStyle(color: Colors.white),
+                      style: const TextStyle(color: Color.fromARGB(255, 0, 0, 0)),
                     ),
                   ),
                 )

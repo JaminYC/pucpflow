@@ -43,14 +43,15 @@ class _ReunionPresencialPageState extends State<ReunionPresencialPage> {
   }
 
   Future<void> _inicializarSpeech() async {
-    _speechDisponible = await _speech.initialize(
-      onStatus: _manejarEstado,
-      onError: (error) {
-        debugPrint("❌ Error: $error");
-        _reiniciarEscucha();
-      },
-      debugLogging: false,
-    );
+  _speechDisponible = await _speech.initialize(
+        onStatus: _manejarEstado,
+        onError: (error) {
+          debugPrint("❌ Error: $error");
+          _reiniciarEscucha();
+        },
+        debugLogging: false,
+      ) ?? false;
+
 
     if (_speechDisponible) {
       _iniciarEscucha();
@@ -247,7 +248,59 @@ class _ReunionPresencialPageState extends State<ReunionPresencialPage> {
                         icon: const Icon(Icons.copy),
                         label: const Text("Copiar"),
                       ),
-                    ],
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          String textoPegado = "";
+
+                          await showDialog(
+                            context: context,
+                            builder: (_) {
+                              return AlertDialog(
+                                title: const Text("📄 Pegar Transcripción Manual"),
+                                content: TextField(
+                                  maxLines: 10,
+                                  onChanged: (value) => textoPegado = value,
+                                  decoration: const InputDecoration(
+                                    hintText: "Pega aquí el texto completo de la reunión...",
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text("Cancelar"),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      if (textoPegado.trim().length > 20) {
+                                        Navigator.pop(context);
+                                        Navigator.pushReplacement(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => ResumenYGeneracionTareasPage(
+                                              texto: textoPegado.trim(),
+                                              proyecto: widget.proyecto,
+                                            ),
+                                          ),
+                                        );
+                                      } else {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text("⚠️ El texto es demasiado corto para procesar.")),
+                                        );
+                                      }
+                                    },
+                                    child: const Text("Procesar"),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        },
+                        icon: const Icon(Icons.paste),
+                        label: const Text("Pegar texto"),
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 255, 255, 255)),
+                      ),
+                                          ],
                   ),
                   if (!_speechDisponible)
                     const Padding(

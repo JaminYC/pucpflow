@@ -6,12 +6,10 @@ const OpenAI = require("openai");
 
 // ✅ Se declara el secret seguro para la API Key de OpenAI
 const openaiKey = defineSecret("OPENAI_API_KEY");
-
-// ✅ Función callable (onCall) para ser usada desde Flutter con FirebaseFunctions.instance.httpsCallable()
 exports.procesarReunion = onCall({ secrets: [openaiKey] }, async (request) => {
   const texto = request.data.texto;
-  const participantes = request.data.participantes || [];
-  const nombres = participantes.map((p) => p.nombre).join(", ");
+  const participantes = request.data.participantes || []; // [{ uid, nombre }]
+  const habilidadesPorUID = request.data.habilidadesPorUID || {}; // { uid: ["..."] }
 
   if (!texto || texto.trim().length < 20) {
     throw new Error("❌ El texto proporcionado es muy corto o está vacío.");
@@ -19,16 +17,24 @@ exports.procesarReunion = onCall({ secrets: [openaiKey] }, async (request) => {
 
   const openai = new OpenAI({ apiKey: openaiKey.value() });
 
+  // 🧠 Habilidades en texto
+  const habilidadesTexto = participantes.map(p => {
+    const habilidades = habilidadesPorUID[p.uid]?.join(", ") || "sin datos";
+    return `- ${p.nombre}: ${habilidades}`;
+  }).join("\n");
+
   const prompt = `
 Eres un asistente experto en gestión de proyectos. A partir del siguiente texto de una reunión transcrita, debes hacer dos cosas:
 
 1. Generar un resumen claro y profesional de los temas tratados.
-2. Identificar y listar tareas importantes, asignándolas a alguno de los siguientes participantes (si es posible): ${nombres}.
+2. Identificar y listar tareas importantes.
 
 Para cada tarea incluye:
-- Un título claro.
-- Un responsable (opcional).
-- Una fecha de entrega tentativa (máximo 7 días desde hoy).
+- Un título claro
+- Una fecha de entrega tentativa (dentro de los próximos 7 días)
+
+Participantes y sus habilidades:
+${habilidadesTexto}
 
 Transcripción:
 """
@@ -39,9 +45,10 @@ Devuelve la respuesta en formato JSON con esta estructura:
 {
   "resumen": "...",
   "tareas": [
-    { "titulo": "...", "responsable": "...", "fecha": "YYYY-MM-DD" }
+    { "titulo": "...", "fecha": "YYYY-MM-DD" }
   ]
-}`;
+}
+`;
 
   try {
     const completion = await openai.chat.completions.create({
@@ -50,8 +57,7 @@ Devuelve la respuesta en formato JSON con esta estructura:
       messages: [
         {
           role: "system",
-          content:
-            "Eres un asistente que resume reuniones y genera tareas con base en roles y participantes.",
+          content: "Eres un asistente que resume reuniones y genera tareas con base en roles, habilidades y participantes.",
         },
         { role: "user", content: prompt },
       ],
@@ -60,9 +66,87 @@ Devuelve la respuesta en formato JSON con esta estructura:
     const content = completion.choices[0].message.content;
 
     try {
-      const json = JSON.parse(content);
-      logger.info("✅ Respuesta JSON válida recibida");
+      const start = content.indexOf('{');
+      const end = content.lastIndexOf('}');
+      const jsonString = content.slice(start, end + 1);
+      const json = JSON.parse(jsonString);
+
+      // ✅ MATCH INTELIGENTE: asignar responsable basado en habilidades
+      // ✅ MATCH INTELIGENTE: asignar responsable basado en habilidades
+      for (let tarea of json.tareas) {
+        const titulo = tarea.titulo.toLowerCase();
+
+        let mejorUID = null;
+        let mejorHabilidad = null;
+        let mayorCoincidencias = 0;
+
+        for (const [uid, habilidades] of Object.entries(habilidadesPorUID)) {
+          let coincidencias = 0;
+          let habilidadDetectada = null;
+
+          for (const habilidad of habilidades) {
+            const clean = habilidad.toLowerCase().replace(/_/g, " ");
+            if (titulo.includes(clean)) {
+              coincidencias++;
+              habilidadDetectada = habilidad;
+            }
+          }
+
+          if (coincidencias > mayorCoincidencias) {
+            mayorCoincidencias = coincidencias;
+            mejorUID = uid;
+            mejorHabilidad = habilidadDetectada;
+          }
+        }
+
+        if (mejorUID) {
+          tarea.responsable = mejorUID;
+          if (mejorHabilidad) {
+            tarea.matchHabilidad = mejorHabilidad;
+          }
+        
+          console.log("✅ Tarea asignada por IA:", {
+            titulo: tarea.titulo,
+            responsable: mejorUID,
+            habilidadUsada: mejorHabilidad,
+          });
+        } else {
+          // 🔄 Fallback: asignar al usuario con más habilidades en total
+          let uidSugerido = null;
+          let mayorHabilidades = 0;
+        
+          for (const [uid, habilidades] of Object.entries(habilidadesPorUID)) {
+            if (habilidades.length > mayorHabilidades) {
+              mayorHabilidades = habilidades.length;
+              uidSugerido = uid;
+            }
+          }
+        
+          if (uidSugerido) {
+            tarea.responsable = uidSugerido;
+            tarea.asignadoPorDefecto = true;
+        
+            console.log("🤖 Tarea asignada por defecto (fallback):", {
+              titulo: tarea.titulo,
+              responsable: uidSugerido,
+              motivo: "Participante con más habilidades registradas",
+            });
+          } else {
+            console.log("⚠️ Tarea sin responsable:", {
+              titulo: tarea.titulo,
+              motivo: "No se encontraron participantes con habilidades",
+            });
+          }
+        }
+        
+        
+          
+      }
+
+
+      logger.info("✅ Respuesta JSON válida recibida con asignación inteligente");
       return json;
+
     } catch (e) {
       logger.error("❌ Error al interpretar JSON de OpenAI", e);
       return {
@@ -70,6 +154,7 @@ Devuelve la respuesta en formato JSON con esta estructura:
         raw: content,
       };
     }
+
   } catch (error) {
     logger.error("❌ Error al contactar con OpenAI:", error);
     return {
@@ -78,6 +163,8 @@ Devuelve la respuesta en formato JSON con esta estructura:
     };
   }
 });
+
+
 
 exports.procesarPerfilUsuario = onCall({ secrets: [openaiKey] }, async (request) => {
   const { nombre, tipoPersonalidad, tareasHechas, estadoAnimo, nivelEstres } = request.data;

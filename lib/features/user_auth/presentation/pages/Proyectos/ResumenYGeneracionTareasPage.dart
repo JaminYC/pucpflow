@@ -30,37 +30,69 @@ class _ResumenYGeneracionTareasPageState extends State<ResumenYGeneracionTareasP
     _procesarConIA(widget.texto);
   }
 
-  Future<void> _procesarConIA(String texto) async {
-    try {
-      participantes = await _obtenerParticipantes();
-      final callable = FirebaseFunctions.instance.httpsCallable("procesarReunion");
-      final result = await callable.call({"texto": texto, "participantes": participantes});
+Future<void> _procesarConIA(String texto) async {
+  try {
+    participantes = await _obtenerParticipantes(); // [{ uid, nombre }]
+    final habilidadesPorUID = await _obtenerHabilidadesPorUID();
 
-      if (result.data != null && result.data["resumen"] != null && result.data["tareas"] != null) {
-        setState(() {
-          resumen = result.data["resumen"];
-          tareasGeneradas = List<Map<String, dynamic>>.from(result.data["tareas"]);
-          for (var tarea in tareasGeneradas) {
-            tarea["responsable"] ??= null;
-            tarea["fecha"] = tarea["fecha"] != null
-                ? DateTime.tryParse(tarea["fecha"])
-                : DateTime.now().add(const Duration(days: 3));
-          }
-          _cargandoIA = false;
-          _errorIA = false;
-        });
-      } else {
-        throw Exception("Respuesta inválida de la IA");
-      }
-    } catch (e) {
+    final callable = FirebaseFunctions.instance.httpsCallable("procesarReunion");
+    final result = await callable.call({
+      "texto": texto,
+      "participantes": participantes,
+      "habilidadesPorUID": habilidadesPorUID,
+    });
+
+    print("🧠 Resultado IA: ${result.data}");
+
+    if (result.data != null &&
+        result.data["error"] == null &&
+        result.data["resumen"] != null &&
+        result.data["tareas"] != null) {
       setState(() {
-        resumen = "❌ Ocurrió un error al procesar la reunión con la IA.";
-        tareasGeneradas = [];
+        resumen = result.data["resumen"];
+        tareasGeneradas = List<Map<String, dynamic>>.from(result.data["tareas"]);
+        for (var tarea in tareasGeneradas) {
+          tarea["responsable"] ??= null;
+          DateTime fecha = DateTime.tryParse(tarea["fecha"].toString()) ?? DateTime.now();
+          if (fecha.isBefore(DateTime.now())) {
+            fecha = DateTime.now().add(const Duration(days: 3));
+          }
+          tarea["fecha"] = fecha;
+
+        }
         _cargandoIA = false;
-        _errorIA = true;
+        _errorIA = false;
       });
+    } else {
+      throw Exception("Respuesta inválida de la IA");
+    }
+  } catch (e) {
+    setState(() {
+      resumen = "❌ Ocurrió un error al procesar la reunión con la IA.";
+      tareasGeneradas = [];
+      _cargandoIA = false;
+      _errorIA = true;
+    });
+  }
+}
+
+Future<Map<String, List<String>>> _obtenerHabilidadesPorUID() async {
+  final Map<String, List<String>> habilidades = {};
+  for (String uid in widget.proyecto.participantes) {
+    final doc = await _firestore.collection("users").doc(uid).get();
+    if (doc.exists && doc.data()?["habilidades"] != null) {
+      final raw = doc.data()!["habilidades"];
+      if (raw is Map) {
+        habilidades[uid] = List<String>.from(raw.keys);
+      } else if (raw is List) {
+        habilidades[uid] = List<String>.from(raw);
+      } else {
+        habilidades[uid] = [];
+      }
     }
   }
+  return habilidades;
+}
 
   Future<List<Map<String, String>>> _obtenerParticipantes() async {
     List<Map<String, String>> lista = [];
@@ -105,10 +137,19 @@ class _ResumenYGeneracionTareasPageState extends State<ResumenYGeneracionTareasP
               child: Column(
                 children: [
                   Card(
-                    color: _errorIA ? Colors.red[50] : Colors.blue[50],
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 3,
+                    color: _errorIA ? Colors.red[50] : Colors.lightBlue[50],
                     child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Text(resumen, style: const TextStyle(fontSize: 16)),
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("📄 Resumen de la Reunión", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _errorIA ? Colors.red : Colors.blue)),
+                          const SizedBox(height: 8),
+                          Text(resumen, style: const TextStyle(fontSize: 16)),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -126,55 +167,102 @@ class _ResumenYGeneracionTareasPageState extends State<ResumenYGeneracionTareasP
                                     child: Text(usuario["nombre"]!),
                                   )).toList();
 
-                              final currentResponsable = responsablesDropdown.any((item) => item.value == tarea["responsable"])
-                                  ? tarea["responsable"]
+                              final uidResponsable = tarea["responsable"];
+                              final currentResponsable = participantes.any((p) => p["uid"] == uidResponsable)
+                                  ? uidResponsable
                                   : null;
 
+
                               return Card(
-                                margin: const EdgeInsets.symmetric(vertical: 8),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      TextField(
-                                        controller: TextEditingController(text: tarea["titulo"]),
-                                        onChanged: (val) => tarea["titulo"] = val,
-                                        decoration: const InputDecoration(labelText: "Título de la tarea"),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      DropdownButtonFormField<String>(
-                                        value: currentResponsable,
-                                        hint: const Text("Selecciona responsable"),
-                                        items: responsablesDropdown,
-                                        onChanged: (val) => setState(() => tarea["responsable"] = val),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Row(
-                                        children: [
-                                          const Text("Fecha límite:"),
-                                          const SizedBox(width: 10),
-                                          Text(DateFormat("dd/MM/yyyy").format(tarea["fecha"])),
-                                          IconButton(
-                                            icon: const Icon(Icons.calendar_today),
-                                            onPressed: () async {
-                                              DateTime? picked = await showDatePicker(
-                                                context: context,
-                                                initialDate: tarea["fecha"],
-                                                firstDate: DateTime.now(),
-                                                lastDate: DateTime.now().add(const Duration(days: 365)),
-                                              );
-                                              if (picked != null) {
-                                                setState(() => tarea["fecha"] = picked);
-                                              }
-                                            },
-                                          )
-                                        ],
-                                      )
-                                    ],
+                                  margin: const EdgeInsets.symmetric(vertical: 10),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                    side: const BorderSide(color: Colors.black12, width: 1),
                                   ),
-                                ),
-                              );
+                                  elevation: 4,
+                                  shadowColor: Colors.black45,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(15),
+                                      gradient: const LinearGradient(
+                                        colors: [Color(0xFFE3F2FD), Color(0xFFBBDEFB)],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                    ),
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.task_alt, color: Colors.blueAccent),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: TextField(
+                                                controller: TextEditingController(text: tarea["titulo"]),
+                                                onChanged: (val) => tarea["titulo"] = val,
+                                                decoration: const InputDecoration(
+                                                  labelText: "Título de la tarea",
+                                                  border: InputBorder.none,
+                                                ),
+                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        DropdownButtonFormField<String>(
+                                          value: currentResponsable,
+                                          hint: const Text("Selecciona responsable"),
+                                          items: responsablesDropdown,
+                                          onChanged: (val) => setState(() => tarea["responsable"] = val),
+                                          decoration: const InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            labelText: "Responsable",
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                      if (tarea["responsable"] != null && tarea["matchHabilidad"] != null)
+                                        Text(
+                                          "🧠 Asignado automáticamente por IA (habilidad: ${tarea["matchHabilidad"]})",
+                                          style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey[700]),
+                                        ),
+                                            if (tarea["asignadoPorDefecto"] == true)
+                                        Text(
+                                          "🤖 Asignado por IA como mejor opción disponible",
+                                          style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey[600]),
+                                        ),
+                                      const SizedBox(height: 12),
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.calendar_today, size: 20),
+                                            const SizedBox(width: 10),
+                                            Text(
+                                              "Fecha límite: ${DateFormat("dd/MM/yyyy").format(tarea["fecha"])}",
+                                              style: const TextStyle(fontSize: 14),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.edit_calendar),
+                                              onPressed: () async {
+                                                DateTime? picked = await showDatePicker(
+                                                  context: context,
+                                                  initialDate: tarea["fecha"],
+                                                  firstDate: DateTime.now(),
+                                                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                                                );
+                                                if (picked != null) {
+                                                  setState(() => tarea["fecha"] = picked);
+                                                }
+                                              },
+                                            )
+                                          ],
+                                        )
+                                      ],
+                                    ),
+                                  ),
+                                );
+
                             },
                           ),
                   ),

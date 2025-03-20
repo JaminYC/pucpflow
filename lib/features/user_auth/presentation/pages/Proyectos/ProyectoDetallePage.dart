@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pucpflow/features/user_auth/Usuario/UserModel.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/proyecto_model.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
 import 'package:pucpflow/features/user_auth/TareaFormWidget.dart';
 import 'package:pucpflow/features/user_auth/tarea_service.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ReunionPresencialPage.dart';
 
 
 Color _colorDesdeUID(String uid) {
@@ -34,6 +36,7 @@ class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
   List<Map<String, String>> participantes = [];
   bool loading = true;
   bool participantesExpandido = true;
+  bool mostrarPendientes = true;
 
   @override
   void initState() {
@@ -144,7 +147,8 @@ Future<void> _marcarTareaCompletada(Tarea tarea, bool completado) async {
     }
 
     await _actualizarPuntosUsuario(userId, tarea);
-    setState(() {});
+    await _cargarTareas();
+
   }
 
   Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
@@ -178,98 +182,52 @@ void _mostrarDialogoNuevaTarea() {
 
       return StatefulBuilder(
         builder: (context, setStateDialog) {
-          return AlertDialog(
-            backgroundColor: Colors.white,
-            content: SizedBox(
-              width: double.maxFinite,
-              child: cargando
-                  ? const SizedBox(
-                      height: 100,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  : TareaFormWidget(
-                      participantes: participantes, 
-                      onSubmit: (nuevaTarea) async {
-                        setStateDialog(() => cargando = true);
-                        await _agregarTarea(nuevaTarea);
-                        if (mounted) {
-                          Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("✅ Tarea agregada")),
-                          );
-                        }
-                      },
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            backgroundColor: Colors.black,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Stack(
+                children: [
+                  SizedBox(
+                    width: double.maxFinite,
+                    child: cargando
+                        ? const SizedBox(
+                            height: 100,
+                            child: Center(child: CircularProgressIndicator(color: Colors.white)),
+                          )
+                        : TareaFormWidget(
+                            participantes: participantes,
+                            onSubmit: (nuevaTarea) async {
+                              setStateDialog(() => cargando = true);
+                              await _agregarTarea(nuevaTarea);
+                              if (mounted) {
+                                Navigator.of(context).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("✅ Tarea agregada")),
+                                );
+                              }
+                            },
+                          ),
+                  ),
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.of(context).pop(),
+                      tooltip: "Cerrar",
                     ),
+                  ),
+                ],
+              ),
             ),
           );
         },
       );
     },
   );
-}
-
-
-void _mostrarDialogoEditarTarea(Tarea tareaExistente) {
-  showDialog(
-    context: context,
-    builder: (context) {
-      bool cargando = false;
-
-      return StatefulBuilder(
-        builder: (context, setStateDialog) {
-          return AlertDialog(
-            backgroundColor: Colors.white,
-            content: SizedBox(
-              width: double.maxFinite,
-              child: cargando
-                  ? const SizedBox(
-                      height: 100,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  : TareaFormWidget(
-                      tareaInicial: tareaExistente,
-                      participantes: participantes,
-                      onSubmit: (tareaEditada) async {
-                        setStateDialog(() => cargando = true);
-                        await _editarTarea(tareaExistente, tareaEditada);
-                        if (mounted) {
-                          Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("✅ Tarea actualizada")),
-                          );
-                        }
-                      },
-                    ),
-            ),
-          );
-        },
-      );
-    },
-  );
-}
-
-
-Color _colorPorResponsable(Tarea tarea) {
-  // ✅ Tareas completadas en verde suave
-  if (tarea.completado) return Colors.green[100]!;
-
-  // ✅ Tareas libres en gris claro
-  if (tarea.tipoTarea == "Libre") return Colors.grey[200]!;
-
-  // ✅ Si hay responsables, genera color único desde el UID
-  if (tarea.responsables.isNotEmpty) {
-    final uid = tarea.responsables.first;
-    final int hash = uid.hashCode;
-
-    // 🎨 Generar un matiz (hue) entre 40° y 320° (evita rojo y verde chillón)
-    final double hue = 40 + (hash % 280);
-    final HSLColor hslColor = HSLColor.fromAHSL(1.0, hue, 0.6, 0.75);
-
-    return hslColor.toColor(); // 🎨 Retorna color pastel vibrante
-  }
-
-  // 🔙 Por defecto, blanco
-  return Colors.white;
 }
 
   Widget _buildTareaCard(Tarea tarea) {
@@ -378,57 +336,78 @@ Color _colorPorResponsable(Tarea tarea) {
 
                 /// ✅ Acciones
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.group_add, color: Colors.blue),
-                      onPressed: () => _mostrarDialogoAsignarParticipantes(tarea),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.orange),
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.group_add, color: Colors.blue),
+                        onPressed: () => _mostrarDialogoAsignarParticipantes(tarea),
+                        tooltip: "Agregar participante",
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.orange),
                         onPressed: () async {
                           await showDialog(
-                              context: context,
-                              builder: (context) {
-                                bool cargando = false;
-
-                                return StatefulBuilder(
-                                  builder: (context, setStateDialog) {
-                                    return AlertDialog(
-                                      backgroundColor: Colors.white,
-                                      content: SizedBox(
-                                        width: double.maxFinite,
-                                        child: cargando
-                                            ? const SizedBox(
-                                                height: 100,
-                                                child: Center(child: CircularProgressIndicator()),
-                                              )
-                                            : TareaFormWidget(
-                                                tareaInicial: tarea,
-                                                participantes: participantes, 
-                                                onSubmit: (tareaEditada) async {
-                                                  setStateDialog(() => cargando = true);
-                                                  await _editarTarea(tarea, tareaEditada);
-                                                  if (mounted) {
-                                                    Navigator.of(context).pop(); // cerrar todo
-                                                    ScaffoldMessenger.of(context).showSnackBar(
-                                                      const SnackBar(content: Text("✅ Tarea actualizada")),
-                                                    );
-                                                  }
-                                                },
-                                              ),
+                            context: context,
+                            builder: (context) {
+                              bool cargando = false;
+                              return StatefulBuilder(
+                                builder: (context, setStateDialog) {
+                                  return Dialog(
+                                    insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    backgroundColor: Colors.black,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Stack(
+                                        children: [
+                                          SizedBox(
+                                            width: double.maxFinite,
+                                            child: cargando
+                                                ? const SizedBox(
+                                                    height: 100,
+                                                    child: Center(child: CircularProgressIndicator(color: Colors.white)),
+                                                  )
+                                                : TareaFormWidget(
+                                                    tareaInicial: tarea,
+                                                    participantes: participantes,
+                                                    onSubmit: (tareaEditada) async {
+                                                      setStateDialog(() => cargando = true);
+                                                      await _editarTarea(tarea, tareaEditada);
+                                                      if (mounted) {
+                                                        Navigator.of(context).pop();
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          const SnackBar(content: Text("✅ Tarea actualizada")),
+                                                        );
+                                                      }
+                                                    },
+                                                  ),
+                                          ),
+                                          Positioned(
+                                            top: 0,
+                                            right: 0,
+                                            child: IconButton(
+                                              icon: const Icon(Icons.close, color: Colors.white),
+                                              onPressed: () => Navigator.of(context).pop(),
+                                              tooltip: "Cerrar",
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    );
-                                  },
-                                );
-                              },
-                            );
-
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          );
                         },
+                        tooltip: "Editar tarea",
+                      ),
 
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () {
                           showDialog(
                             context: context,
@@ -441,37 +420,24 @@ Color _colorPorResponsable(Tarea tarea) {
                                   child: const Text("Cancelar"),
                                 ),
                                 ElevatedButton(
-                                    onPressed: () async {
-                                      Navigator.pop(context); // Cerramos confirmación
-
-                                      // Esperamos un frame antes de abrir el loader (evita conflictos con pop anterior)
-                                      await Future.delayed(Duration(milliseconds: 50));
-
-                                      // Creamos referencia al context del loader
-                                      late BuildContext loaderContext;
-
-                                      // Mostramos loader
-                                      showDialog(
-                                        context: context,
-                                        barrierDismissible: false,
-                                        builder: (ctx) {
-                                          loaderContext = ctx;
-                                          return const Center(child: CircularProgressIndicator());
-                                        },
-                                      );
-
-                                      // Ejecutamos la eliminación
-                                      await _eliminarTarea(tarea);
-
-                                      // Cerramos el loader usando su context original
-                                      Navigator.of(loaderContext).pop();
-
-                                      // Feedback
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text("✅ Tarea eliminada")),
-                                      );
-                                    },
-
+                                  onPressed: () async {
+                                    Navigator.pop(context);
+                                    await Future.delayed(Duration(milliseconds: 50));
+                                    late BuildContext loaderContext;
+                                    showDialog(
+                                      context: context,
+                                      barrierDismissible: false,
+                                      builder: (ctx) {
+                                        loaderContext = ctx;
+                                        return const Center(child: CircularProgressIndicator());
+                                      },
+                                    );
+                                    await _eliminarTarea(tarea);
+                                    Navigator.of(loaderContext).pop();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text("✅ Tarea eliminada")),
+                                    );
+                                  },
                                   style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                                   child: const Text("Eliminar"),
                                 ),
@@ -479,10 +445,13 @@ Color _colorPorResponsable(Tarea tarea) {
                             ),
                           );
                         },
+                        tooltip: "Eliminar tarea",
+                      ),
+                    ],
+                  ),
+                ],
+              ),
 
-                    ),
-                  ],
-                )
               ],
             ),
           ),
@@ -532,11 +501,11 @@ void _mostrarDialogoAsignarParticipantes(Tarea tarea) {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(), // ✅ Cierra correctamente
-                child: const Text("Cancelar", style: TextStyle(color: Colors.deepPurple)),
+                child: const Text("Cancelar", style: TextStyle(color: Color.fromARGB(255, 0, 0, 0))),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
+                  backgroundColor: const Color.fromARGB(255, 0, 0, 0),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 ),
                 onPressed: () async {
@@ -766,14 +735,9 @@ Widget _chipResumen(String texto, Color color) {
       body: Stack(
         children: [
           Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.black, Colors.blueAccent],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
+            color: Colors.black,
           ),
+
           loading
               ? const Center(child: CircularProgressIndicator())
               : Column(
@@ -784,17 +748,21 @@ Widget _chipResumen(String texto, Color color) {
                       child: ListView(
                         padding: const EdgeInsets.only(bottom: 100),
                         children: [
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
+                          ExpansionTile(
+                            title: const Text("Tareas Pendientes", style: TextStyle(color: Colors.white)),
+                            initiallyExpanded: true,
+                            backgroundColor: Colors.white10,
+                            collapsedIconColor: Colors.white,
+                            iconColor: Colors.white,
                             children: tareas
                                 .where((t) => !t.completado)
-                                .map((t) => SizedBox(
-                                      width: MediaQuery.of(context).size.width / 2 - 24,
+                                .map((t) => Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
                                       child: _buildTareaCard(t),
                                     ))
                                 .toList(),
                           ),
+                          const SizedBox(height: 10),
                           ExpansionTile(
                             title: const Text("Tareas Completadas", style: TextStyle(color: Colors.white)),
                             initiallyExpanded: false,
@@ -813,12 +781,49 @@ Widget _chipResumen(String texto, Color color) {
                 ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: Colors.white,
-        label: const Text("Nueva tarea", style: TextStyle(color: Colors.black)),
-        icon: const Icon(Icons.add, color: Colors.black),
-        onPressed: _mostrarDialogoNuevaTarea,
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: "reunionBtn",
+            backgroundColor: const Color.fromARGB(255, 0, 0, 0),
+            icon: const Icon(Icons.mic, color: Colors.white),
+            label: const Text("Reunión", style: TextStyle(color: Colors.white)),
+            onPressed: () async {
+              // Cargar el proyecto desde Firestore usando el ID
+              final doc = await FirebaseFirestore.instance
+                  .collection("proyectos")
+                  .doc(widget.proyectoId)
+                  .get();
+
+              if (doc.exists) {
+                final proyecto = Proyecto.fromJson(doc.data()!);
+
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ReunionPresencialPage(proyecto: proyecto),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("⚠️ Proyecto no encontrado")),
+                );
+              }
+            },
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: "tareaBtn",
+            backgroundColor: Colors.white,
+            label: const Text("Nueva tarea", style: TextStyle(color: Colors.black)),
+            icon: const Icon(Icons.add, color: Colors.black),
+            onPressed: _mostrarDialogoNuevaTarea,
+          ),
+        ],
       ),
+
     );
   }
 }

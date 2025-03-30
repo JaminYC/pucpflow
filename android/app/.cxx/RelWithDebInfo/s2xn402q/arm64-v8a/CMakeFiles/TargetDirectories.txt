@@ -1,0 +1,2 @@
+C:/Trabajo/PUCP-FLOW/pucpflow/android/app/.cxx/RelWithDebInfo/s2xn402q/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Trabajo/PUCP-FLOW/pucpflow/android/app/.cxx/RelWithDebInfo/s2xn402q/arm64-v8a/CMakeFiles/rebuild_cache.dir

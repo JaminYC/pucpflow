@@ -33,12 +33,13 @@ dependencies:
   flutter_local_notifications: ^17.0.0
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-
+  #Integraciones Con IA
+  cloud_functions: ^5.3.4
   # Dependencias Para identificiacion
-  cloud_firestore: ^5.6.2
-  firebase_core: ^3.10.1
-  firebase_auth: ^5.4.1
-  firebase_storage: ^12.4.1
+  cloud_firestore: ^5.6.4
+  firebase_core: ^3.12.0
+  firebase_auth: ^5.5.0
+  firebase_storage: ^12.4.3
   google_sign_in: ^6.2.2
 
   cupertino_icons: ^1.0.8
@@ -50,16 +51,16 @@ dependencies:
 
   video_player: ^2.9.2
   webview_flutter: ^4.10.0
-  webview_flutter_android: ^4.0.1
-  webview_flutter_wkwebview: ^3.16.1
+  webview_flutter_android: ^4.3.3
+  cached_network_image: ^3.4.1
+
   url_launcher: ^6.3.1
   http: ^1.2.2
   googleapis: ^13.2.0
   googleapis_auth: ^1.6.0
   table_calendar: ^3.1.2
   flutter_dotenv: ^5.2.1
-
-  shared_preferences: ^2.3.3
+  
   google_maps_flutter: ^2.10.0
   permission_handler: ^11.3.1
   flutter_google_maps_webservices: ^1.1.1
@@ -76,6 +77,28 @@ dependencies:
   flutter_sliding_up_panel: ^2.1.1
   flutter_staggered_animations: ^1.1.1
   motion: ^2.0.1
+  shared_preferences: ^2.5.1
+
+  #Dependencias para el Manejo de Voz
+  deepgram_speech_to_text: ^3.0.3
+  speech_to_text: ^7.0.0
+
+  intl: ^0.20.2
+  firebase_data_connect: ^0.1.0
+
+
+
+  #Dependencias para el Manejo de Ventanas 
+  responsive_builder: ^0.7.1
+  flutter_screenutil: ^5.9.3
+
+  web: ^1.1.1
+
+
+  pdf: ^3.11.3
+  printing: ^5.14.2
+  path_provider: ^2.1.5
+
 
 dev_dependencies:
   flutter_test:
@@ -105,9 +128,25 @@ flutter:
      - assets/Mantanegro.jpg
      - assets/FondoCoheteNegro.jpg
      - assets/gatonegro.jpg
+     - assets/FondoCoheteNegro2.jpg
+     - assets/google_logo.png
+     - assets/google_logo_212.png
      - assets/animation.gif
      - assets/fonts/
-     - assets/logo.webp
+     - assets/logo.jpg
+     - assets/animation.json
+     - assets/VideoDelLogo.mp4
+     - assets/background.mp4
+     - assets/fondodashboard.mp4
+     - assets/videoPrincipalblanco.mp4
+     - assets/videopilar.mp4
+     - assets/videos_micro.mp4
+     - assets/videoperfil.mp4 
+     - assets/videoperfil2.mp4    
+     - assets/fondodashboard.mp4
+     - assets/videoranking.mp4
+     - assets/Pomodoro.mp4
+     
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
@@ -122,11 +161,21 @@ flutter:
   # list giving the asset and other descriptors for the font. For
   # example:
   fonts:
-  - family: Montserrat
-    fonts:
-      - asset: assets/fonts/Montserrat-Regular.ttf
-      - asset: assets/fonts/Montserrat-Bold.ttf
-        weight: 700
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Regular.ttf
+        - asset: assets/fonts/Montserrat-Bold.ttf
+          weight: 700
+
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Poppins-Light.ttf
+          weight: 300
+        - asset: assets/fonts/Poppins-Italic.ttf
+          style: italic
 
   # fonts:
   #   - family: Schyler

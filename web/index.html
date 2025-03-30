@@ -1,36 +1,157 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta property="og:title" content="FLOW">
+  <meta property="og:description" content="Tu plataforma de productividad inteligente.">
+  <meta property="og:image" content="icons/Icon-512.png">
+  <meta property="og:url" content="https://flow.teamvastoria.com">
+
+  <meta name="description" content="Tu plataforma de productividad inteligente.">
+
+  <!-- ✅ Agregamos el Client ID de Google Sign-In -->
+  <meta name="google-signin-client_id" content="547054267025-62eputqjlamebrmshg37rfohl9s10q0c.apps.googleusercontent.com">
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="pucpflow">
+  <meta name="apple-mobile-web-app-title" content="FLOW">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>pucpflow</title>
+  <title>FLOW</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- ✅ FIREBASE (igual que tenías) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getStorage } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAIxbm_eohVKVyb5wgvIa9YI6RUAFDkDOs",
+      authDomain: "pucp-flow.firebaseapp.com",
+      projectId: "pucp-flow",
+      storageBucket: "pucp-flow.appspot.com",
+      messagingSenderId: "547054267025",
+      appId: "1:547054267025:web:eaa1dcee42475981d8ed30",
+      measurementId: "G-FKF059M50"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth();
+    const provider = new GoogleAuthProvider();
+
+    window.signInWithGoogle = function() {
+      signInWithPopup(auth, provider)
+        .then((result) => {
+          console.log("✅ Usuario autenticado:", result.user);
+        })
+        .catch((error) => {
+          console.error("❌ Error en autenticación:", error);
+        });
+    };
+
+    // ✅ Función para cerrar sesión correctamente
+    window.signOutGoogle = function() {
+      signOut(auth).then(() => {
+        console.log("✅ Usuario ha cerrado sesión correctamente.");
+      }).catch((error) => {
+        console.error("❌ Error al cerrar sesión:", error);
+      });
+    };
+  </script>
+
+  <!-- ✅ Google Calendar API -->
+  <script async defer src="https://apis.google.com/js/api.js"></script>
+  <script>
+    function loadGoogleCalendarAPI() {
+      gapi.load('client', async () => {
+        try {
+          await gapi.client.init({
+            apiKey: "AIzaSyAIxbm_eohVKVyb5wgvIa9YI6RUAFDkDOs",
+            discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
+          });
+          console.log("✅ Google Calendar API cargado correctamente.");
+        } catch (error) {
+          console.error("❌ Error al cargar Google Calendar API:", error);
+        }
+      });
+    }
+  </script>
+
+  <!-- ✅ VOZ: Reconocimiento por Web Speech API -->
+  <script>
+    window.startListening = function () {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        console.error("❌ Web Speech API no es compatible con este navegador.");
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'es-PE';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onresult = function (event) {
+        const texto = event.results[0][0].transcript;
+        console.log("🗣 Texto reconocido:", texto);
+        window.dispatchEvent(new CustomEvent("speech_result", { detail: texto }));
+      };
+
+      recognition.onerror = function (event) {
+        console.error("❌ Error en reconocimiento:", event.error);
+      };
+
+      recognition.onend = function () {
+        console.log("🎤 Reconocimiento finalizado.");
+      };
+
+      recognition.start();
+      console.log("🎙 Iniciando reconocimiento...");
+    };
+  </script>
+
+  <!-- ✅ Configuración WebView / Flutter Web -->
+  <script>
+    window.flutterWebRenderer = "html";
+
+    window.addEventListener('load', function () {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('flutter_service_worker.js')
+          .then((reg) => {
+            console.log("✅ Service Worker registrado:", reg);
+            return navigator.serviceWorker.ready;
+          })
+          .then(() => {
+            console.log("🔹 Service Worker listo. Cargando Flutter...");
+            _flutter.loader.load({
+              serviceWorker: {
+                serviceWorkerVersion: "1"
+              }
+            }).then(engineInitializer => engineInitializer.initializeEngine())
+              .then(appRunner => appRunner.runApp());
+          })
+          .catch(err => console.error("❌ Error con el Service Worker:", err));
+      } else {
+        console.warn("⚠️ Service Worker no soportado en este navegador.");
+        _flutter.loader.load({
+          serviceWorker: {
+            serviceWorkerVersion: "1"
+          }
+        }).then(engineInitializer => engineInitializer.initializeEngine())
+          .then(appRunner => appRunner.runApp());
+      }
+    });
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

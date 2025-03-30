@@ -10,10 +10,8 @@ class PhysicalForm extends StatefulWidget {
   State<PhysicalForm> createState() => _PhysicalFormState();
 }
 
-class _PhysicalFormState extends State<PhysicalForm> with SingleTickerProviderStateMixin {
+class _PhysicalFormState extends State<PhysicalForm> {
   final _formKey = GlobalKey<FormState>();
-
-  // Campos del formulario
   String _exercisePeriod = "Mañana";
   TimeOfDay _exerciseTime = const TimeOfDay(hour: 6, minute: 0);
   TimeOfDay _bedTime = const TimeOfDay(hour: 23, minute: 0);
@@ -21,44 +19,15 @@ class _PhysicalFormState extends State<PhysicalForm> with SingleTickerProviderSt
   String _hydrationHabit = "1-2 litros";
   List<String> _fitnessPreferences = [];
 
-  // Controlador para animaciones
-  late AnimationController _controller;
-  late Animation<double> _fadeInAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-
-    // Inicializar controlador de animaciones
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    );
-    _fadeInAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeIn,
-    );
-    _controller.forward(); // Iniciar la animación
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  // Guardar datos en Firebase
   Future<void> _savePhysicalData() async {
     try {
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
-        'physical': {
-          'exercise_period': _exercisePeriod,
-          'exercise_time': '${_exerciseTime.hour}:${_exerciseTime.minute}',
-          'bed_time': '${_bedTime.hour}:${_bedTime.minute}',
-          'activity_level': _activityLevel,
-          'hydration_habit': _hydrationHabit,
-          'fitness_preferences': _fitnessPreferences,
-        },
+        'periodoEjercicio': _exercisePeriod,
+        'horaEjercicio': '${_exerciseTime.hour}:${_exerciseTime.minute}',
+        'horaDormir': '${_bedTime.hour}:${_bedTime.minute}',
+        'nivelActividad': _activityLevel,
+        'habitoHidratacion': _hydrationHabit,
+        'preferenciasFitness': _fitnessPreferences,
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -87,166 +56,105 @@ class _PhysicalFormState extends State<PhysicalForm> with SingleTickerProviderSt
     return Scaffold(
       appBar: AppBar(
         title: const Text("💪 Bienestar Físico"),
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.black,
       ),
+      backgroundColor: Colors.white,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _savePhysicalData,
         label: const Text("Guardar"),
         icon: const Icon(Icons.check),
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
       ),
-      body: FadeTransition(
-        opacity: _fadeInAnimation,
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Encabezado atractivo
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20.0),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.blueAccent, Colors.lightBlue],
-                    ),
-                    borderRadius: BorderRadius.circular(10.0),
-                  ),
-                  child: const Text(
-                    "🏋️‍♂️ Completa este formulario para personalizar tu rutina y alcanzar tus metas físicas.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("⏰ Período de ejercicio:", style: TextStyle(fontWeight: FontWeight.bold)),
+              DropdownButtonFormField<String>(
+                value: _exercisePeriod,
+                items: const [
+                  DropdownMenuItem(value: "Mañana", child: Text("🌅 Mañana")),
+                  DropdownMenuItem(value: "Tarde", child: Text("🌞 Tarde")),
+                  DropdownMenuItem(value: "Noche", child: Text("🌙 Noche")),
+                ],
+                onChanged: (value) => setState(() => _exercisePeriod = value!),
+                decoration: const InputDecoration(
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(),
                 ),
-                const SizedBox(height: 20),
+              ),
+              const SizedBox(height: 20),
 
-                // Período de ejercicio
-                Row(
-                  children: [
-                    const Text("⏰ Período de ejercicio: "),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _exercisePeriod,
-                        items: const [
-                          DropdownMenuItem(value: "Mañana", child: Text("🌅 Mañana")),
-                          DropdownMenuItem(value: "Tarde", child: Text("🌞 Tarde")),
-                          DropdownMenuItem(value: "Noche", child: Text("🌙 Noche")),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _exercisePeriod = value!;
-                          });
-                        },
-                        decoration: const InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                  ],
+              ElevatedButton.icon(
+                onPressed: () => _selectTime(context, _exerciseTime, (t) => setState(() => _exerciseTime = t)),
+                icon: const Icon(Icons.access_time),
+                label: Text("Hora de ejercicio: ${_exerciseTime.format(context)}"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(50),
                 ),
-                const SizedBox(height: 20),
+              ),
+              const SizedBox(height: 20),
 
-                // Hora de ejercicio
-                ElevatedButton.icon(
-                  onPressed: () {
-                    _selectTime(context, _exerciseTime, (selectedTime) {
-                      setState(() {
-                        _exerciseTime = selectedTime;
-                      });
-                    });
-                  },
-                  icon: const Icon(Icons.access_time),
-                  label: Text("Hora de ejercicio: ${_exerciseTime.format(context)}"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.lightBlue,
-                    minimumSize: const Size.fromHeight(50),
-                  ),
+              ElevatedButton.icon(
+                onPressed: () => _selectTime(context, _bedTime, (t) => setState(() => _bedTime = t)),
+                icon: const Icon(Icons.nights_stay),
+                label: Text("Hora de dormir: ${_bedTime.format(context)}"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(50),
                 ),
-                const SizedBox(height: 20),
+              ),
+              const SizedBox(height: 20),
 
-                // Hora de dormir
-                ElevatedButton.icon(
-                  onPressed: () {
-                    _selectTime(context, _bedTime, (selectedTime) {
-                      setState(() {
-                        _bedTime = selectedTime;
-                      });
-                    });
-                  },
-                  icon: const Icon(Icons.nights_stay),
-                  label: Text("Hora de dormir: ${_bedTime.format(context)}"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.lightBlue,
-                    minimumSize: const Size.fromHeight(50),
-                  ),
-                ),
-                const SizedBox(height: 20),
+              const Text("🏃‍♀️ Nivel de actividad física (1-10):", style: TextStyle(fontWeight: FontWeight.bold)),
+              Slider(
+                value: _activityLevel,
+                min: 1,
+                max: 10,
+                divisions: 9,
+                label: _activityLevel.round().toString(),
+                onChanged: (value) => setState(() => _activityLevel = value),
+                activeColor: Colors.black,
+                inactiveColor: Colors.black26,
+              ),
+              const SizedBox(height: 20),
 
-                // Nivel de actividad física
-                const Text("🏃‍♀️ Nivel de actividad física (1-10):"),
-                Slider(
-                  value: _activityLevel,
-                  min: 1,
-                  max: 10,
-                  divisions: 9,
-                  label: _activityLevel.round().toString(),
-                  onChanged: (value) {
-                    setState(() {
-                      _activityLevel = value;
-                    });
-                  },
+              const Text("💧 Hidratación diaria:", style: TextStyle(fontWeight: FontWeight.bold)),
+              DropdownButtonFormField<String>(
+                value: _hydrationHabit,
+                items: const [
+                  DropdownMenuItem(value: "Menos de 1 litro", child: Text("🥤 Menos de 1 litro")),
+                  DropdownMenuItem(value: "1-2 litros", child: Text("💧 1-2 litros")),
+                  DropdownMenuItem(value: "Más de 2 litros", child: Text("🌊 Más de 2 litros")),
+                ],
+                onChanged: (value) => setState(() => _hydrationHabit = value!),
+                decoration: const InputDecoration(
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(),
                 ),
-                const SizedBox(height: 20),
+              ),
+              const SizedBox(height: 20),
 
-                // Hábito de hidratación
-                Row(
-                  children: [
-                    const Text("💧 Hidratación diaria: "),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _hydrationHabit,
-                        items: const [
-                          DropdownMenuItem(value: "Menos de 1 litro", child: Text("🥤 Menos de 1 litro")),
-                          DropdownMenuItem(value: "1-2 litros", child: Text("💧 1-2 litros")),
-                          DropdownMenuItem(value: "Más de 2 litros", child: Text("🌊 Más de 2 litros")),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _hydrationHabit = value!;
-                          });
-                        },
-                        decoration: const InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Preferencias de fitness
-                const Text("🎯 Preferencias de fitness:"),
-                Wrap(
-                  spacing: 8.0,
-                  children: [
-                    _buildChip("Yoga 🧘‍♂️"),
-                    _buildChip("Cardio 🏃"),
-                    _buildChip("Pesas 🏋️"),
-                    _buildChip("Pilates 🤸"),
-                  ],
-                ),
-              ],
-            ),
+              const Text("🎯 Preferencias de fitness:", style: TextStyle(fontWeight: FontWeight.bold)),
+              Wrap(
+                spacing: 8.0,
+                children: [
+                  _buildChip("Yoga 🧘‍♂️"),
+                  _buildChip("Cardio 🏃"),
+                  _buildChip("Pesas 🏋️"),
+                  _buildChip("Pilates 🤸"),
+                ],
+              ),
+            ],
           ),
         ),
       ),
@@ -264,8 +172,8 @@ class _PhysicalFormState extends State<PhysicalForm> with SingleTickerProviderSt
               : _fitnessPreferences.remove(label);
         });
       },
-      backgroundColor: Colors.blueAccent.withOpacity(0.2),
-      selectedColor: Colors.blueAccent,
+      backgroundColor: Colors.black.withOpacity(0.05),
+      selectedColor: Colors.black,
       labelStyle: const TextStyle(color: Colors.black),
     );
   }

@@ -1,0 +1,2 @@
+C:/Trabajo/PUCP-FLOW/pucpflow/android/app/.cxx/Debug/fp5vb673/x86_64/CMakeFiles/edit_cache.dir
+C:/Trabajo/PUCP-FLOW/pucpflow/android/app/.cxx/Debug/fp5vb673/x86_64/CMakeFiles/rebuild_cache.dir

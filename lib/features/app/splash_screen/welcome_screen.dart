@@ -3,7 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/home_page.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_page.dart';
 import 'package:pucpflow/splash_screen/user_profile_service.dart';
 
 class WelcomeScreen extends StatefulWidget {

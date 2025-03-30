@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'google_sheets_service.dart';
 import 'curso_model.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/google_calendar_service.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/google_calendar_service.dart';
 
 import 'package:googleapis/calendar/v3.dart' as calendar;
 

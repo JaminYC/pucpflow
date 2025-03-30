@@ -1,0 +1,2 @@
+C:/Trabajo/PUCP-FLOW/pucpflow/android/app/.cxx/Debug/fp5vb673/armeabi-v7a/CMakeFiles/edit_cache.dir
+C:/Trabajo/PUCP-FLOW/pucpflow/android/app/.cxx/Debug/fp5vb673/armeabi-v7a/CMakeFiles/rebuild_cache.dir

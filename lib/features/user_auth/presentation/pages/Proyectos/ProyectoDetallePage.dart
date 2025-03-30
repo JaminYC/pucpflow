@@ -479,23 +479,40 @@ void _mostrarDialogoAsignarParticipantes(Tarea tarea) {
               width: double.maxFinite,
               child: ListView(
                 shrinkWrap: true,
-                children: participantes.map((p) {
-                  final uid = p["uid"]!;
-                  return CheckboxListTile(
-                    value: seleccionados.contains(uid),
-                    title: Text(p["nombre"] ?? ""),
+                children: [
+                  CheckboxListTile(
+                    value: seleccionados.length == participantes.length,
+                    title: const Text("Todos"),
                     controlAffinity: ListTileControlAffinity.trailing,
                     onChanged: (checked) {
                       setStateDialog(() {
-                        if (checked == true && !seleccionados.contains(uid)) {
-                          seleccionados.add(uid);
+                        if (checked == true) {
+                          seleccionados = participantes.map((p) => p["uid"]!).toList();
                         } else {
-                          seleccionados.remove(uid);
+                          seleccionados.clear();
                         }
                       });
                     },
-                  );
-                }).toList(),
+                  ),
+                  ...participantes.map((p) {
+                    final uid = p["uid"]!;
+                    return CheckboxListTile(
+                      value: seleccionados.contains(uid),
+                      title: Text(p["nombre"] ?? ""),
+                      controlAffinity: ListTileControlAffinity.trailing,
+                      onChanged: (checked) {
+                        setStateDialog(() {
+                          if (checked == true && !seleccionados.contains(uid)) {
+                            seleccionados.add(uid);
+                          } else {
+                            seleccionados.remove(uid);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ],
+
               ),
             ),
             actions: [
@@ -590,78 +607,41 @@ void _mostrarDialogoAsignarParticipantes(Tarea tarea) {
           ],
         ),
         const SizedBox(height: 12),
-
-        // PARTICIPANTES
         if (participantesExpandido)
-          ...participantes.map((p) {
-            final uid = p["uid"]!;
-            final nombre = p["nombre"] ?? "-";
-            final email = p["email"] ?? "";
-            final colorUsuario = _colorDesdeUID(uid);
-
-            // Filtrar tareas por usuario
-            final tareasAsignadas = tareas.where((t) => t.responsables.contains(uid)).toList();
-            final tareasCompletadas = tareasAsignadas.where((t) => t.completado).toList();
-            final tareasPendientes = tareasAsignadas.where((t) => !t.completado).toList();
-
-            return Card(
-              elevation: 2,
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: colorUsuario, width: 2),
-              ),
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(12),
-                leading: CircleAvatar(
-                  backgroundColor: colorUsuario,
-                  child: Text(
-                    nombre.isNotEmpty ? nombre[0].toUpperCase() : "?",
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                title: GestureDetector(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: participantes.map((p) {
+              final uid = p["uid"]!;
+              final nombre = p["nombre"] ?? "-";
+              final colorUsuario = _colorDesdeUID(uid);
+              return GestureDetector(
                   onTap: () => _mostrarTareasDelParticipante(uid, nombre),
-                  child: Text(
-                    nombre,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      decoration: TextDecoration.underline,
-                      color: Colors.blue,
+                  child: Chip(
+                    avatar: CircleAvatar(
+                      backgroundColor: colorUsuario,
+                      child: Text(
+                        nombre.isNotEmpty ? nombre[0].toUpperCase() : "?",
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ),
+                    label: Text(
+                      nombre,
+                      style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                    ),
+                    backgroundColor: Colors.white,
+                    deleteIcon: const Icon(Icons.close, color: Colors.red),
+                    onDeleted: () => _eliminarParticipante(uid),
                   ),
-                ),
+                );
 
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(email),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        _chipResumen("Asignadas: ${tareasAsignadas.length}", Colors.black),
-                        const SizedBox(width: 4),
-                        _chipResumen("Hechas: ${tareasCompletadas.length}", Colors.green),
-                        const SizedBox(width: 4),
-                        _chipResumen("Pendientes: ${tareasPendientes.length}", Colors.orange),
-                      ],
-                    )
-                  ],
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.remove_circle, color: Colors.red),
-                  onPressed: () async {
-                    await _eliminarParticipante(uid);
-                  },
-                ),
-              ),
-            );
-          })
-
+            }).toList(),
+          ),
       ],
     ),
   );
 }
+
 void _mostrarTareasDelParticipante(String uid, String nombre) {
   final tareasUsuario = tareas.where((t) => t.responsables.contains(uid)).toList();
 

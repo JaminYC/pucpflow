@@ -81,3 +81,203 @@ Container(
                   ],
                 ),
               ),
+
+
+
+
+
+
+
+
+
+
+// 📄 CrearProyectoDesdeIdeaPage.dart
+import 'package:flutter/material.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
+class CrearProyectoDesdeIdeaPage extends StatefulWidget {
+  final String ideaId;
+  final String resumenSolucion;
+  final String resumenProblema;
+  final String comentarioFinal;
+
+  const CrearProyectoDesdeIdeaPage({
+    super.key,
+    required this.ideaId,
+    required this.resumenSolucion,
+    required this.resumenProblema,
+    required this.comentarioFinal,
+  });
+
+  @override
+  State<CrearProyectoDesdeIdeaPage> createState() => _CrearProyectoDesdeIdeaPageState();
+}
+
+class _CrearProyectoDesdeIdeaPageState extends State<CrearProyectoDesdeIdeaPage> {
+  final TextEditingController nombreController = TextEditingController();
+  final TextEditingController descripcionController = TextEditingController();
+  bool esPublico = true;
+  bool creando = false;
+
+  Future<void> _crearProyectoConTareas() async {
+    setState(() => creando = true);
+
+    try {
+      final functions = FirebaseFunctions.instance;
+      final generar = functions.httpsCallable('generarTareasDesdeIdea');
+      final result = await generar.call({
+        'resumenProblema': widget.resumenProblema,
+        'resumenSolucion': widget.resumenSolucion,
+        'comentarioFinal': widget.comentarioFinal,
+      });
+
+      final tareas = result.data['tareas'];
+
+      final proyectoDoc = await FirebaseFirestore.instance.collection('proyectos').add({
+        'nombre': nombreController.text,
+        'descripcion': descripcionController.text,
+        'fechaInicio': DateTime.now().toIso8601String(),
+        'ideaId': widget.ideaId,
+        'publico': esPublico,
+        'tareas': tareas,
+        
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("✅ Proyecto creado con tareas generadas")),
+      );
+
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: const Text("🎉 Proyecto Creado Exitosamente!"),
+              content: const Text("El proyecto ha sido creado y las tareas iniciales fueron generadas automáticamente."),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pushNamedAndRemoveUntil(context, '/proyectos', (route) => false),
+                  child: const Text("Ir a Mis Proyectos"),
+                ),
+              ],
+            ));
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("❌ Error: $e")),
+      );
+    } finally {
+      setState(() => creando = false);
+    }
+  }
+
+  Future<void> _exportarPDF() async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text("📄 Informe de Idea y Proyecto", style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 20),
+            pw.Text("🧠 Problema: ${widget.resumenProblema}"),
+            pw.Text("💡 Solución: ${widget.resumenSolucion}"),
+            pw.SizedBox(height: 10),
+            pw.Text("📝 Comentario Final IA: ${widget.comentarioFinal}"),
+            pw.SizedBox(height: 20),
+            pw.Text("📌 Nombre del Proyecto: ${nombreController.text}"),
+            pw.Text("📄 Descripción: ${descripcionController.text}"),
+            pw.Text("🔓 Visibilidad: ${esPublico ? 'Público' : 'Privado'}"),
+          ],
+        ),
+      ),
+    );
+
+    // Mostrar diálogo con opciones
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Qué deseas hacer con el PDF?'),
+        content: const Text('Puedes imprimirlo o compartirlo por WhatsApp u otras apps.'),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+            },
+            child: const Text('🖨 Imprimir'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await Printing.sharePdf(
+                bytes: await pdf.save(),
+                filename: 'informe_idea_${nombreController.text}.pdf',
+              );
+            },
+            child: const Text('📤 Compartir'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    descripcionController.text = widget.resumenSolucion;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("🚀 Crear Proyecto desde Idea"),
+        backgroundColor: Colors.blue[800],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf),
+            tooltip: 'Exportar PDF',
+            onPressed: _exportarPDF,
+          ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("🧠 Idea Base", style: TextStyle(fontWeight: FontWeight.bold)),
+            Text("Problema: ${widget.resumenProblema}"),
+            const SizedBox(height: 10),
+            Text("Solución: ${widget.resumenSolucion}"),
+            const Divider(height: 30),
+            TextField(
+              controller: nombreController,
+              decoration: const InputDecoration(labelText: "Nombre del Proyecto"),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: descripcionController,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: "Descripción"),
+            ),
+            SwitchListTile(
+              title: const Text("¿Proyecto Público?"),
+              value: esPublico,
+              onChanged: (value) => setState(() => esPublico = value),
+            ),
+            const Spacer(),
+            ElevatedButton.icon(
+              onPressed: creando ? null : _crearProyectoConTareas,
+              icon: const Icon(Icons.check_circle),
+              label: Text(creando ? "Creando..." : "Crear Proyecto y Generar Tareas"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+

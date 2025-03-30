@@ -222,8 +222,10 @@ class _ReunionPresencialPageState extends State<ReunionPresencialPage> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       ElevatedButton.icon(
                         onPressed: _speechDisponible
@@ -298,9 +300,9 @@ class _ReunionPresencialPageState extends State<ReunionPresencialPage> {
                         },
                         icon: const Icon(Icons.paste),
                         label: const Text("Pegar texto"),
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 255, 255, 255)),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
                       ),
-                                          ],
+                    ],
                   ),
                   if (!_speechDisponible)
                     const Padding(

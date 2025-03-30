@@ -1,16 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/Login/CustomLoginPage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_page.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/login_page.dart';
 
-/// Pantalla de carga (SplashScreen) con una animación en video.
-/// Se encarga de mostrar una animación mientras verifica si el usuario está autenticado.
-/// Si el usuario está autenticado, lo redirige a la pantalla HomePage.
-/// Si el usuario NO está autenticado, lo redirige a la pantalla de inicio de sesión (CustomLoginPage).
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_page.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/auth_gate.dart';
+
 class SplashScreen extends StatefulWidget {
-  // ignore: use_super_parameters
   const SplashScreen({Key? key}) : super(key: key);
 
   @override
@@ -18,86 +15,111 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  late VideoPlayerController _controller; // Controlador para reproducir el video.
-  
+  VideoPlayerController? _controller;
+  bool _navegacionRealizada = false;
+
   @override
   void initState() {
     super.initState();
-    // Inicializa el video de bienvenida que se mostrará en la pantalla de carga.
-    _controller = VideoPlayerController.asset("assets/VideoDelLogo.mp4")
-      ..initialize().then((_) {
-        _controller.setLooping(true); // Hace que el video se reproduzca en bucle.
-        _controller.play(); // Reproduce el video automáticamente.
-        setState(() {}); // Actualiza la UI cuando el video esté listo.
-      });
-     
-    // Llama a la función que verifica si el usuario está autenticado y lo redirige.
-    _checkAuthAndNavigate();
+    Future.microtask(() => _verificarLogin());
   }
 
-  /// Verifica si el usuario está autenticado y navega a la pantalla correspondiente.
-  Future<void> _checkAuthAndNavigate() async {
-    await Future.delayed(const Duration(seconds: 5)); // Espera 4 segundos antes de continuar.
+  Future<void> _verificarLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool esLoginEmpresarial = prefs.getBool("login_empresarial") ?? false;
+    final uid = prefs.getString("uid_empresarial");
+    final firebaseUser = FirebaseAuth.instance.currentUser;
 
-    User? user = FirebaseAuth.instance.currentUser; // Obtiene el usuario actual de Firebase Auth.
-    
-    if (mounted) { // Verifica que el widget siga en la pantalla antes de hacer cambios.
-      if (user != null) {
-        // Si el usuario está autenticado, lo lleva a HomePage.
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => HomePage()),
-          (route) => false, // Elimina la pantalla de carga de la pila de navegación.
-        );
-      } else {
-        // Si el usuario NO está autenticado, lo lleva a la página de inicio de sesión.
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const CustomLoginPage()),
-          (route) => false,
-        );
-      }
+    debugPrint("🧪 Login Empresarial: $esLoginEmpresarial");
+    debugPrint("🧪 FirebaseAuth User: ${firebaseUser?.uid}");
+    debugPrint("🧪 UID: ${uid ?? firebaseUser?.uid}");
+
+    if (esLoginEmpresarial && uid != null) {
+      _navegar( HomePage());
+    } else if (firebaseUser != null) {
+      _navegar( HomePage());
+    } else {
+      debugPrint("🔒 No se detectó login. Mostrando video splash.");
+      await _initializeVideo();
+    }
+  }
+
+  void _navegar(Widget destino) {
+    if (!mounted || _navegacionRealizada) return;
+    _navegacionRealizada = true;
+    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => destino));
+  }
+
+  Future<void> _initializeVideo() async {
+    _controller = VideoPlayerController.asset("assets/VideoDelLogo.mp4");
+
+    try {
+      await _controller!.initialize();
+      _controller!
+        ..setLooping(false)
+        ..setVolume(0)
+        ..play();
+
+      setState(() {}); // para que se muestre el video
+
+      _controller!.addListener(() {
+        if (!mounted || _navegacionRealizada) return;
+        final isFinished = _controller!.value.position >= _controller!.value.duration;
+
+        if (isFinished) {
+          _navegar(const AuthGate());
+        }
+      });
+    } catch (e) {
+      debugPrint("❌ Error al inicializar el video: $e");
+      _navegar(const AuthGate()); // fallback si el video falla
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose(); // Libera los recursos del video cuando la pantalla se cierre.
+    _controller?.removeListener(() {});
+    _controller?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black, // Fondo negro para la animación.
+      backgroundColor: Colors.black,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (_controller.value.isInitialized) // Verifica si el video está listo para mostrarse.
-                ClipOval(
-                  child: SizedBox(
-                    width: 250,
-                    height: 250,
-                    child: Transform.scale(
-                      scale: 1.2, // 🔥 Zoom fijo al 120%
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        alignment: Alignment.center, // Puedes ajustar si lo necesitas (ej. topCenter, bottomCenter)
-                        child: SizedBox(
-                          width: _controller.value.size.width,
-                          height: _controller.value.size.height,
-                          child: VideoPlayer(_controller),
-                        ),
+            if (_controller != null && _controller!.value.isInitialized)
+              ClipOval(
+                child: SizedBox(
+                  width: 250,
+                  height: 250,
+                  child: Transform.scale(
+                    scale: 1.2,
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: _controller!.value.size.width,
+                        height: _controller!.value.size.height,
+                        child: VideoPlayer(_controller!),
                       ),
                     ),
                   ),
                 ),
-            const SizedBox(height: 20), // Espaciado entre el video y el texto.
+              )
+            else
+              const SizedBox(
+                width: 100,
+                height: 100,
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+            const SizedBox(height: 20),
             const Text(
-              "Bienvenido a PUCP-FLOW", // Mensaje de bienvenida.
+              "Bienvenido a FLOW",
               style: TextStyle(
-                color: Colors.white, // Texto en color blanco.
+                color: Colors.white,
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),

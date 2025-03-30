@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'tarea_model.dart';
 
 class Proyecto {
@@ -75,4 +77,19 @@ class Proyecto {
       tareas: (json['tareas'] as List<dynamic>?)?.map((tareaJson) => Tarea.fromJson(tareaJson)).toList() ?? [],
     );
   }
+  factory Proyecto.fromFirestore(DocumentSnapshot doc) {
+  final data = doc.data() as Map<String, dynamic>;
+  return Proyecto(
+    id: doc.id, // ✅ Este siempre funciona
+    nombre: data['nombre'],
+    descripcion: data['descripcion'],
+    fechaInicio: DateTime.parse(data['fechaInicio']),
+    propietario: data['propietario'],
+    participantes: List<String>.from(data['participantes'] ?? []),
+    visibilidad: data['visibilidad'] ?? "Privado",
+    imagenUrl: data['imagenUrl'],
+    tareas: (data['tareas'] as List<dynamic>?)?.map((t) => Tarea.fromJson(t)).toList() ?? [],
+  );
+}
+
 }

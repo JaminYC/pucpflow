@@ -11,6 +11,7 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Login/CustomLogin
 import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_page.dart'; // Página principal luego del login
 import 'package:pucpflow/features/user_auth/presentation/pages/login_page.dart'; // Otra opción de página de login
 import 'package:pucpflow/features/user_auth/presentation/pages/Login/sign_up_page.dart'; // Página de registro
+import 'package:pucpflow/features/user_auth/presentation/pages/proyectos/ProyectosPage.dart';
 
 import 'package:webview_flutter/webview_flutter.dart' as webview;
 
@@ -20,7 +21,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart'; // Surfac
 // 🔹 Configuración de Firebase para Web
 const firebaseOptions = FirebaseOptions(
   apiKey: "AIzaSyBNXEkHOWBqRnojN9pkXVJKCQZDgY6wkTE",
-  authDomain: "pucp-flow.firebaseapp.com",
+  authDomain: "pucp-flow.web.app",
   projectId: "pucp-flow",
   storageBucket: "pucp-flow.firebasestorage.app",
   messagingSenderId: "547054267025",
@@ -33,6 +34,7 @@ Future<void> main() async {
 
   if (kIsWeb) {
     await Firebase.initializeApp(options: firebaseOptions);
+    await FirebaseAuth.instance.setPersistence(Persistence.LOCAL); // 🔐 importante para mantener sesión
   } else {
     await Firebase.initializeApp();
   }
@@ -49,7 +51,7 @@ class MyApp extends StatelessWidget {
 Widget build(BuildContext context) {
   return MaterialApp(
     debugShowCheckedModeBanner: false, // Oculta el banner de "Debug"
-    title: 'PUCP-FLOW',
+    title: 'FLOW',
     theme: ThemeData(
       fontFamily: 'Poppins', // 🔥 Aplica Poppins a toda la app
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
@@ -65,12 +67,14 @@ Widget build(BuildContext context) {
       ),
       // Puedes agregar más personalizaciones si deseas
     ),
+    home: const SplashScreen(),   
     routes: {
+      '/home': (context) => HomePage(),
       '/login': (context) => const CustomLoginPage(),
       '/signUp': (context) => const SignUpPage(),
-      '/home': (context) => HomePage(),
+      '/proyectos': (context) =>  ProyectosPage(),
     },
-    home: const SplashScreen(),
+
   );
 }
 

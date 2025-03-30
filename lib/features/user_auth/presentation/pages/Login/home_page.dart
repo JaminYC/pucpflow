@@ -1,4 +1,6 @@
 // ignore_for_file: use_build_context_synchronously, prefer_const_constructors_in_immutables 
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pucpflow/features/app/splash_screen/splash_screen.dart'; // Importa la pantalla de Splash
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -17,7 +19,8 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Formularios/Intel
 import 'package:pucpflow/features/user_auth/presentation/pages/Formularios/profile_forms_page.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Login/UserProfileForm.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/google_calendar_service.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/google_calendar_service.dart';
+import 'package:pucpflow/global/common/toast.dart';
 import 'dart:io';
 import '../Dashboard.dart';
 import '../HealthPage.dart';
@@ -54,7 +57,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
   final ScrollController _scrollControllerAsignadas = ScrollController();
   final ScrollController _scrollControllerLibres = ScrollController();
   Widget? _currentPage;
-
+  String? userId;
   bool _isLoading = true;
   bool isDarkMode = false;
   int _selectedIndex = 0;
@@ -74,15 +77,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
   int totalTareas = 0;
   int tareasCompletadas = 0;
   int tareasPendientes = 0;
+  bool _accesoPermitido = false;
+
 
 
   @override
   void initState() {
     super.initState();
+  _determinarUserId().then((_) {
+    _verificarAcceso();
     _loadUserData();
     _cargarTareasUsuario();
-    _sincronizarTareasConCalendario(); // ✅ Ahora sí la encuentra
+    _sincronizarTareasConCalendario();
     _escucharCambiosEnTareas();
+  });
+
      WidgetsBinding.instance.addObserver(this);
 
     _videoController = VideoPlayerController.asset('assets/videopilar.mp4')
@@ -112,13 +121,21 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
     }
   }
 }
-
+Future<void> _determinarUserId() async {
+  final prefs = await SharedPreferences.getInstance();
+  final loginEmpresarial = prefs.getBool("login_empresarial") ?? false;
+  if (loginEmpresarial) {
+    userId = prefs.getString("uid_empresarial");
+  } else {
+    userId = FirebaseAuth.instance.currentUser?.uid;
+  }
+}
 
 Future<void> _sincronizarTareasConCalendario() async {
   final userId = _auth.currentUser?.uid;
   if (userId == null) return; // ✅ Evita errores si el usuario no está autenticado.
 
-  final calendarApi = await _calendarService.signInAndGetCalendarApi();
+  final calendarApi = await _calendarService.signInAndGetCalendarApi(silentOnly: true);
   if (calendarApi == null) return; // ❌ Si no hay conexión con Google Calendar, salir.
 
   final querySnapshot = await _firestore.collection("proyectos").get();
@@ -167,7 +184,7 @@ Future<void> _sincronizarTareasConCalendario() async {
     }
   }
 }
-
+  
   /// ✅ **Escucha cambios en las tareas en tiempo real**
   void _escucharCambiosEnTareas() {
     _firestore.collection("proyectos").snapshots().listen((querySnapshot) {
@@ -177,23 +194,45 @@ Future<void> _sincronizarTareasConCalendario() async {
 
 
   Future<void> _loadUserData() async {
-    User? user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      setState(() {
-        userProfilePhoto = user.photoURL;
-        userName = user.displayName ?? "Usuario";
-        _isLoading = false;
-      });
-    } else {
-      setState(() => _isLoading = false);
-    }
-  }
-   /// ✅ **Carga las tareas asignadas al usuario**
-  Future<void> _cargarTareasUsuario() async {
-  final userId = _auth.currentUser?.uid;
-  if (userId == null) return; // ✅ Previene errores si el usuario no está autenticado
+  final firebaseUser = FirebaseAuth.instance.currentUser;
+  final prefs = await SharedPreferences.getInstance();
+  final loginEmpresarial = prefs.getBool("login_empresarial") ?? false;
 
-  final querySnapshot = await _firestore.collection("proyectos").get();
+  if (firebaseUser != null) {
+    setState(() {
+      userProfilePhoto = firebaseUser.photoURL;
+      userName = firebaseUser.displayName ?? "Usuario";
+      _isLoading = false;
+    });
+  } else if (loginEmpresarial) {
+    final uid = prefs.getString("uid_empresarial");
+    final userDoc = await FirebaseFirestore.instance.collection("users").doc(uid).get();
+    final userData = userDoc.data();
+    setState(() {
+      userProfilePhoto = null;
+      userName = userData?["username"] ?? "Empresa";
+      _isLoading = false;
+    });
+  }
+
+  }
+Future<void> _cargarTareasUsuario() async {
+  final prefs = await SharedPreferences.getInstance();
+  final esEmpresarial = prefs.getBool("login_empresarial") ?? false;
+
+  String? userId;
+  if (esEmpresarial) {
+    userId = prefs.getString("uid_empresarial");
+  } else {
+    userId = FirebaseAuth.instance.currentUser?.uid;
+  }
+
+  if (userId == null) {
+    debugPrint("❌ No se pudo obtener el UID del usuario.");
+    return;
+  }
+
+  final querySnapshot = await FirebaseFirestore.instance.collection("proyectos").get();
 
   int total = 0;
   int completadas = 0;
@@ -203,56 +242,91 @@ Future<void> _sincronizarTareasConCalendario() async {
     List<dynamic> tareasRaw = data["tareas"] ?? [];
 
     for (var tareaJson in tareasRaw) {
-      // ✅ Convertimos la tarea con el modelo actualizado
-      Tarea tarea = Tarea.fromJson(tareaJson);
+      final tarea = Tarea.fromJson(tareaJson);
 
-      // ✅ Verificamos si la tarea pertenece al usuario autenticado
       if (tarea.responsables.contains(userId)) {
         total++;
         if (tarea.completado) {
           completadas++;
         }
       }
-
     }
   }
 
-  // ✅ Actualizamos el estado con los valores finales
   setState(() {
     totalTareas = total;
     tareasCompletadas = completadas;
     tareasPendientes = total - completadas;
   });
+
+  debugPrint("📊 Tareas cargadas para UID: $userId | Total: $total | Completadas: $completadas");
 }
 
+
 /*********************************************************************************** */
+Future<void> _cerrarSesionEmpresarial(BuildContext context) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove("login_empresarial");
+  await prefs.remove("uid_empresarial");
 
-  Future<void> _signOut(BuildContext context) async {
-    try {
-      if (kIsWeb) {
-        // 🔥 Si está en Web, ejecuta `signOutGoogle()` de JavaScript en `index.html`
-        final jsContext = "window.signOutGoogle()"; // Ejecuta la función de JavaScript
-        debugPrint("Cerrando sesión en Web...");
-      } else {
-        // ✅ En Android/iOS cierra sesión normalmente
-        await _googleSignIn.signOut();
-        await FirebaseAuth.instance.signOut();
-      }
+  Navigator.pushAndRemoveUntil(
+    context,
+    MaterialPageRoute(builder: (_) => const SplashScreen()),
+    (route) => false,
+  );
+}
 
-      // 🔁 Redirigir a la pantalla de login después de cerrar sesión
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const CustomLoginPage()),
-      );
+Future<bool> _verificarAcceso() async {
+  final prefs = await SharedPreferences.getInstance();
+  final loginEmpresarial = prefs.getBool("login_empresarial") ?? false;
+  final uidEmpresarial = prefs.getString("uid_empresarial");
 
-      debugPrint("✅ Sesión cerrada correctamente.");
-    } catch (e) {
-      debugPrint("❌ Error al cerrar sesión: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al cerrar sesión: $e')),
-      );
-    }
+  final userFirebase = FirebaseAuth.instance.currentUser;
+
+  debugPrint("🧪 FirebaseAuth User: ${userFirebase?.email}");
+  debugPrint("🧪 Login Empresarial: $loginEmpresarial");
+  debugPrint("🧪 UID: $uidEmpresarial");
+
+  if (userFirebase != null || loginEmpresarial) {
+    return true;
   }
+
+  return false;
+}
+
+Future<void> cerrarSesion(BuildContext context) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear(); // 🔥 Limpia sesión empresarial también
+
+    if (kIsWeb) {
+      await FirebaseAuth.instance.signOut();
+      await GoogleSignIn().disconnect(); // 🔁 Fuerza logout de Google Web
+    } else {
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+      if (await googleSignIn.isSignedIn()) {
+        await googleSignIn.disconnect();
+        await googleSignIn.signOut();
+      }
+      await FirebaseAuth.instance.signOut();
+    }
+
+    debugPrint("✅ Sesión cerrada correctamente.");
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+      (route) => false,
+    );
+  } catch (e) {
+    debugPrint("❌ Error al cerrar sesión: $e");
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error al cerrar sesión: $e')),
+    );
+  }
+}
+
+
 
   Future<void> _pickImage() async {
     final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery);
@@ -285,17 +359,15 @@ Future<void> _sincronizarTareasConCalendario() async {
 
 
 
-@override
-Widget build(BuildContext context) {
+Widget _buildMainScaffold(BuildContext context){
   if (_isLoading) {
     return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
-
   return Scaffold(
     appBar: AppBar(
       iconTheme: const IconThemeData(color: Colors.white),
       title: const Text(
-        "PUCP FLOW",
+        "FLOW",
         style: TextStyle(
           fontWeight: FontWeight.bold,
           fontSize: 22,
@@ -416,6 +488,58 @@ Widget build(BuildContext context) {
     ),
   );
 }
+@override
+Widget build(BuildContext context) {
+  return FutureBuilder<bool>(
+    future: _verificarAcceso(), // 👈 función que valida login
+    builder: (context, snapshot) {
+      if (!snapshot.hasData) {
+        debugPrint("⏳ Esperando acceso...");
+        return const Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        );
+      }
+
+      if (!snapshot.data!) {
+        debugPrint("🔒 No se detectó login válido. Redirigiendo a CustomLoginPage.");
+        return const CustomLoginPage(); // 👈 Redirige si no hay login válido
+      }
+      
+       debugPrint("✅ Login válido. Mostrando HomePage.");
+      // ✅ Si hay acceso válido (Firebase o empresarial), muestra tu HomePage normal
+      return PopScope(
+        canPop: false,
+        onPopInvoked: (didPop) async {
+          if (didPop) return;
+
+          final salir = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text("¿Salir de la aplicación?"),
+              content: const Text("¿Deseas cerrar completamente la aplicación?"),
+              actions: [
+                TextButton(
+                  child: const Text("Cancelar"),
+                  onPressed: () => Navigator.of(context).pop(false),
+                ),
+                TextButton(
+                  child: const Text("Salir"),
+                  onPressed: () => Navigator.of(context).pop(true),
+                ),
+              ],
+            ),
+          );
+
+          if (salir == true) {
+            Navigator.of(context).maybePop();
+          }
+        },
+        child: _buildMainScaffold(context), // 👈 Tu scaffold original
+      );
+    },
+  );
+}
+
 
 
    /// ✅ **Dashboard con datos en tiempo real**
@@ -577,10 +701,17 @@ Widget _mostrarTareasLibres() {
                   tarea.titulo,
                   style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
                 ),
-                subtitle: Text(
-                  "Proyecto: $proyecto",
-                  style: const TextStyle(color: Colors.black87),
-                ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Proyecto: $proyecto", style: const TextStyle(color: Colors.black87)),
+                      if (tarea.fecha != null)
+                        Text("🕒 Fecha: ${tarea.fecha!.toLocal().toString().substring(0, 16)}", style: TextStyle(color: Colors.black54, fontSize: 12)),
+                      Text("⏱️ Duración: ${tarea.duracion} min", style: TextStyle(color: Colors.black54, fontSize: 12)),
+                      Text("🎯 Dificultad: ${tarea.dificultad}", style: TextStyle(color: Colors.black54, fontSize: 12)),
+                    ],
+                  ),
+
                 trailing: ElevatedButton(
                   onPressed: () => _asignarTareaUsuario(tarea),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
@@ -646,12 +777,32 @@ Future<void> _asignarTareaUsuario(Tarea tarea) async {
     const SnackBar(content: Text("✅ Tarea tomada correctamente.")),
   );
 }
+Future<String?> _obtenerUserId() async {
+  final prefs = await SharedPreferences.getInstance();
+  final loginEmpresarial = prefs.getBool("login_empresarial") ?? false;
+  if (loginEmpresarial) {
+    return prefs.getString("uid_empresarial");
+  } else {
+    return FirebaseAuth.instance.currentUser?.uid;
+  }
+}
 
 
 
 Widget _mostrarTareasAsignadas() {
-  final userId = _auth.currentUser!.uid;
+  return FutureBuilder<String?>(
+    future: _obtenerUserId(),
+    builder: (context, snapshot) {
+      if (!snapshot.hasData) {
+        return const Center(child: CircularProgressIndicator());
+      }
 
+      final userId = snapshot.data!;
+      return _buildStreamTareasAsignadas(userId);
+    },
+  );
+}
+Widget _buildStreamTareasAsignadas(String userId) {
   return StreamBuilder<QuerySnapshot>(
     stream: _firestore.collection("proyectos").snapshots(),
     builder: (context, snapshot) {
@@ -667,9 +818,7 @@ Widget _mostrarTareasAsignadas() {
         for (var tareaJson in tareas) {
           Tarea tarea = Tarea.fromJson(tareaJson);
 
-          if (tarea.responsables.isNotEmpty &&
-              tarea.responsables.contains(userId) &&
-              !tarea.completado) {
+          if (tarea.responsables.contains(userId) && !tarea.completado) {
             tareasAsignadas.add({
               'tarea': tarea,
               'proyecto': nombreProyecto,
@@ -680,104 +829,159 @@ Widget _mostrarTareasAsignadas() {
 
       if (tareasAsignadas.isEmpty) {
         return const Center(
-          child: Text(
-            "🎉 No tienes tareas pendientes.",
-            style: TextStyle(color: Colors.white),
-          ),
+          child: Text("🎉 No tienes tareas pendientes.",
+              style: TextStyle(color: Colors.white)),
         );
       }
 
-      return Scrollbar(
+      return ListView.builder(
         controller: _scrollControllerAsignadas,
-        thumbVisibility: true,
-        child: ListView.builder(
-          controller: _scrollControllerAsignadas,
-          itemCount: tareasAsignadas.length,
-          shrinkWrap: true,
-          itemBuilder: (context, index) {
-            final tarea = tareasAsignadas[index]['tarea'] as Tarea;
-            final proyecto = tareasAsignadas[index]['proyecto'];
-
-            return Card(
-              margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-              color: const Color.fromARGB(255, 255, 255, 255),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: const BorderSide(color: Colors.white, width: 2),
-              ),
-              child: ListTile(
-                title: Text(
-                  tarea.titulo,
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
-                ),
-                subtitle: Text(
-                  "Proyecto: $proyecto",
-                  style: const TextStyle(color: Colors.black87),
-                ),
-                trailing: Checkbox(
-                    value: tarea.completado,
-                    onChanged: (bool? newValue) {
-                      if (newValue != null) {
-                        setState(() {
-                          tarea.completado = newValue;
-                        });
-                        _marcarTareaCompletada(tarea);
-                      }
-                    },
-                  ),
-              ),
-            );
-          },
-        ),
+        itemCount: tareasAsignadas.length,
+        itemBuilder: (context, index) {
+          final tarea = tareasAsignadas[index]['tarea'] as Tarea;
+          final proyecto = tareasAsignadas[index]['proyecto'];
+          return _buildTareaCard(tarea, proyecto, userId);
+        },
       );
     },
   );
 }
 
+Widget _buildTareaCard(Tarea tarea, String proyecto, String userId) {
+  return Card(
+    color: Colors.white,
+    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    child: Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            tarea.titulo,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          if (tarea.descripcion != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6.0),
+              child: Text(
+                tarea.descripcion!,
+                style: const TextStyle(fontSize: 14, color: Colors.black87),
+              ),
+            ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Chip(
+                label: Text(
+                  tarea.tipoTarea,
+                  style: const TextStyle(color: Colors.white),
+                ),
+                backgroundColor: Colors.black87,
+              ),
+              if (tarea.dificultad != null)
+                Chip(
+                  label: Text(
+                    tarea.dificultad!,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  backgroundColor: Colors.redAccent,
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text("Proyecto: $proyecto", style: const TextStyle(fontSize: 13)),
+          if (tarea.fecha != null)
+            Text("Fecha: ${tarea.fecha!.toLocal()}".split(' ')[0]),
+          Text("Duración: ${tarea.duracion} min"),
+          const SizedBox(height: 6),
+          LinearProgressIndicator(
+            value: tarea.completado ? 1.0 : 0.0,
+            backgroundColor: Colors.grey[300],
+            color: tarea.completado ? Colors.green : Colors.orange,
+          ),
+          const SizedBox(height: 10),
+          if (!tarea.completado)
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.check, color: Colors.white, size: 18),
+                label: const Text("Marcar completada"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                ),
+                onPressed: () => marcarTareaComoCompletada(tarea, proyecto),
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+Future<void> marcarTareaComoCompletada(Tarea tarea, String nombreProyecto) async {
+  final prefs = await SharedPreferences.getInstance();
+  final bool esEmpresarial = prefs.getBool("login_empresarial") ?? false;
 
-  Future<void> _marcarTareaCompletada(Tarea tarea) async {
-    final userId = _auth.currentUser!.uid;
-    if (!tarea.responsables.contains(userId)) return;
+  final String? currentUserId = esEmpresarial
+      ? prefs.getString("uid_empresarial")
+      : FirebaseAuth.instance.currentUser?.uid;
 
-    final querySnapshot = await _firestore.collection("proyectos").get();
+  if (currentUserId == null) return;
 
-    for (var doc in querySnapshot.docs) {
-      final data = doc.data();
-      List<dynamic> tareas = data["tareas"] ?? [];
+  final proyectos = await _firestore.collection("proyectos").get();
 
-      for (int i = 0; i < tareas.length; i++) {
-        if (tareas[i]["titulo"] == tarea.titulo) {
-          tareas[i]["completado"] = true;
-        }
+  for (var doc in proyectos.docs) {
+    final data = doc.data();
+    final nombre = data['nombre'] ?? '';
+    if (nombre != nombreProyecto) continue; // 🔁 Solo actualiza el proyecto correcto
+
+    List<dynamic> tareas = data["tareas"] ?? [];
+
+    for (int i = 0; i < tareas.length; i++) {
+      if (tareas[i]["titulo"] == tarea.titulo) {
+        tareas[i]["completado"] = true;
       }
-      await _firestore.collection("proyectos").doc(doc.id).update({"tareas": tareas});
     }
 
-    await _actualizarPuntosUsuario(userId, tarea);
-    setState(() {});
-  }
-  Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
-    final userDoc = _firestore.collection("users").doc(userId);
-    final userSnapshot = await userDoc.get();
-    if (!userSnapshot.exists) return;
-
-    final userData = userSnapshot.data() as Map<String, dynamic>;
-    int puntosActuales = userData["puntosTotales"] ?? 0;
-    Map<String, dynamic> habilidades = Map.from(userData["habilidades"] ?? {});
-
-    int puntosGanados = 10;
-    if (tarea.dificultad == "media") puntosGanados += 5;
-    if (tarea.dificultad == "alta") puntosGanados += 10;
-
-    tarea.requisitos.forEach((habilidad, impacto) {
-      habilidades[habilidad] = (habilidades[habilidad] ?? 0) + impacto;
+    await _firestore.collection("proyectos").doc(doc.id).update({
+      "tareas": tareas,
     });
 
-    await userDoc.update({
-      "puntosTotales": puntosActuales + puntosGanados,
-      "habilidades": habilidades,
-    });
+    // 🔁 Puntos para todos los responsables
+    for (String responsableId in tarea.responsables) {
+      await _actualizarPuntosUsuario(responsableId, tarea);
+    }
+
+    break; // ✅ Salir del bucle una vez encontrado el proyecto
   }
+
+  setState(() {});
+}
+
+Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
+  final userDoc = _firestore.collection("users").doc(userId);
+  final userSnapshot = await userDoc.get();
+  if (!userSnapshot.exists) return;
+
+  final userData = userSnapshot.data() as Map<String, dynamic>;
+  int puntosActuales = userData["puntosTotales"] ?? 0;
+  Map<String, dynamic> habilidades = Map.from(userData["habilidades"] ?? {});
+
+  int puntosGanados = 10;
+  if (tarea.dificultad == "media") puntosGanados += 5;
+  if (tarea.dificultad == "alta") puntosGanados += 10;
+
+  tarea.requisitos.forEach((habilidad, impacto) {
+    habilidades[habilidad] = (habilidades[habilidad] ?? 0) + impacto;
+  });
+
+  await userDoc.update({
+    "puntosTotales": puntosActuales + puntosGanados,
+    "habilidades": habilidades,
+  });
+}
+
 
 
   Widget _buildDashboardItem(IconData icon, String title, int count, Color iconColor) {
@@ -818,7 +1022,12 @@ Widget _mostrarTareasAsignadas() {
           ListTile(
             leading: const Icon(Icons.logout, color: Color.fromARGB(255, 0, 0, 0)),
             title: const Text('Logout', style: TextStyle(color: Colors.black)),
-            onTap: () => _signOut(context),
+            onTap: () async {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Cerrando sesión...")),
+              );
+              await cerrarSesion(context);
+            },
           ),
         ],
       ),

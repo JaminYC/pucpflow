@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/AsistenteIA/agendareventos.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/google_calendar_service.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/google_calendar_service.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/AsistenteIA/comando_service.dart';
 
 class ComandoPage extends StatelessWidget {

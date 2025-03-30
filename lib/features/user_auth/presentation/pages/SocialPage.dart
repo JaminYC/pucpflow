@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Innova/ProponerIdeaPage.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Innova/VerIdeasPage.dart';
 import 'package:video_player/video_player.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/proyectos/ProyectosPage.dart';
 
@@ -105,26 +107,27 @@ class _SocialPageState extends State<SocialPage> with AutomaticKeepAliveClientMi
                       onPressed: () {},
                     ),
                     const SizedBox(height: 20),
-                    _customButton(
-                      context,
-                      icon: Icons.public,
-                      label: 'Mapa PUCP',
-                      onPressed: () {},
-                    ),
-                    const SizedBox(height: 20),
+                    // Dentro del botón 'Proponer Idea':
                     _customButton(
                       context,
                       icon: Icons.lightbulb,
-                      label: 'Proponer Proyecto',
-                      onPressed: () {},
+                      label: 'Proponer Idea',
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ProponerIdeaPage()),
+                      ),
                     ),
                     const SizedBox(height: 20),
                     _customButton(
                       context,
                       icon: Icons.people,
-                      label: 'Colaborar con la Comunidad',
-                      onPressed: () {},
+                      label: 'Ver Ideas',
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const VerIdeasPage()),
+                      ),
                     ),
+
                   ],
                 ),
               ),

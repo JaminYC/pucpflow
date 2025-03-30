@@ -7,6 +7,7 @@ import 'package:pucpflow/features/user_auth/presentation/pages/login_page.dart';
 import 'package:pucpflow/global/common/toast.dart';
 import 'package:pucpflow/splash_screen/user_profile_service.dart';
 import 'UserProfileForm.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/CustomLoginPage.dart'; // Página de login personalizada
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -204,7 +205,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   const SizedBox(width: 5),
                   GestureDetector(
                     onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const LoginPage()));
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const CustomLoginPage()));
                     },
                     child: const Text(
                       "Login",

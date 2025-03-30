@@ -244,3 +244,214 @@ Devuélvelo en este formato JSON:
     return { error: "❌ Error procesando perfil con OpenAI", detalles: e.message };
   }
 });
+
+exports.analizarIdea = onCall({ secrets: [openaiKey] }, async (request) => {
+  const datos = request.data;
+
+  const prompt = `
+El usuario ha propuesto una idea de innovación. A partir de los siguientes datos, genera:
+
+1. 🧠 Resumen del problema.
+2. 💡 Resumen de la solución.
+3. ✅ Evaluación de viabilidad técnica y económica.
+4. 🔄 Sugerencias o mejoras posibles.
+
+Datos ingresados:
+
+- Contexto: ${datos.contexto}
+- Proceso actual: ${datos.proceso}
+- Problema identificado: ${datos.problema}
+- Causas: ${datos.causas}
+- Herramientas involucradas: ${datos.herramientas}
+- Solución propuesta: ${datos.solucion}
+- Cómo ataca el problema: ${datos.ataque}
+- Materiales necesarios: ${datos.materiales}
+
+Devuélvelo en JSON así:
+{
+  "resumenProblema": "...",
+  "resumenSolucion": "...",
+  "evaluacion": "...",
+  "sugerencias": "..."
+}
+`;
+
+  const openai = new OpenAI({ apiKey: openaiKey.value() });
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4",
+    temperature: 0.4,
+    messages: [
+      { role: "system", content: "Eres un asistente experto en innovación tecnológica." },
+      { role: "user", content: prompt },
+    ],
+  });
+
+  const content = completion.choices[0].message.content;
+
+  try {
+    const json = JSON.parse(content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1));
+    return json;
+  } catch (err) {
+    return { error: "❌ No se pudo interpretar la respuesta de la IA", raw: content };
+  }
+});
+
+
+exports.iterarIdea = onCall({ secrets: [openaiKey] }, async (request) => {
+  const datos = request.data;
+
+  const prompt = `
+Eres un experto evaluador de innovación tecnológica. El usuario ha propuesto una idea con el siguiente resumen:
+
+Resumen del problema:
+${datos.resumenProblema || "No proporcionado"}
+
+Resumen de la solución:
+${datos.resumenSolucion || "No proporcionado"}
+
+Evaluación inicial:
+${datos.evaluacion || "No proporcionada"}
+
+Tu tarea es realizar una iteración inteligente:
+1. Detectar debilidades o vacíos en la idea.
+2. Formular 3 preguntas clave para afinar la propuesta.
+3. Estimar el nivel de madurez de la idea (de 0 a 100).
+4. Detectar posibles riesgos.
+5. Recomendar acciones o mejoras.
+
+Devuelve el resultado en este formato JSON:
+{
+  "preguntasIterativas": ["...", "...", "..."],
+  "madurez": 0-100,
+  "riesgosDetectados": ["..."],
+  "accionesRecomendadas": ["..."]
+}`;
+
+  try {
+    const openai = new OpenAI({ apiKey: openaiKey.value() });
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4",
+      temperature: 0.5,
+      messages: [
+        { role: "system", content: "Eres un asesor experto en innovación y validación de ideas." },
+        { role: "user", content: prompt },
+      ],
+    });
+
+    const content = completion.choices[0].message.content;
+
+    const start = content.indexOf('{');
+    const end = content.lastIndexOf('}');
+    const json = JSON.parse(content.slice(start, end + 1));
+
+    return json;
+  } catch (err) {
+    return { error: "❌ Error en iterarIdea", detalles: err.message };
+  }
+});
+
+exports.validarRespuestasIteracion = onCall({ secrets: [openaiKey] }, async (request) => {
+  const datos = request.data;
+
+  const prompt = `
+Actúa como un evaluador experto en innovación.
+Se te han dado las preguntas que generaste en la fase de iteración IA, junto con las respuestas escritas por el usuario.
+Tu tarea es evaluar si la idea ha madurado lo suficiente como para convertirse en un proyecto piloto.
+
+Resumen del problema:
+${datos.resumenProblema}
+
+Resumen de la solución:
+${datos.resumenSolucion}
+
+Preguntas y respuestas del usuario:
+${Object.entries(datos.respuestasIteracion).map(([pregunta, respuesta]) => `Pregunta: ${pregunta}\nRespuesta: ${respuesta}`).join("\n\n")}
+
+Responde en formato JSON:
+{
+  "madurezActualizada": (0-100),
+  "aprobadaParaPrototipo": true/false,
+  "comentarioFinal": "..."
+}
+`;
+
+  try {
+    const openai = new OpenAI({ apiKey: openaiKey.value() });
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4",
+      temperature: 0.4,
+      messages: [
+        { role: "system", content: "Eres un evaluador experto que valida ideas basadas en respuestas del usuario." },
+        { role: "user", content: prompt }
+      ]
+    });
+
+    const content = completion.choices[0].message.content;
+    const start = content.indexOf('{');
+    const end = content.lastIndexOf('}');
+    const json = JSON.parse(content.slice(start, end + 1));
+    return json;
+  } catch (err) {
+    return { error: "❌ Error al validar respuestas de iteración IA", detalles: err.message };
+  }
+});
+
+
+exports.generarTareasDesdeIdea = onCall({ secrets: [openaiKey] }, async (request) => {
+  const { resumenProblema, resumenSolucion, comentarioFinal } = request.data;
+
+  const prompt = `
+Actúa como un asistente experto en gestión de proyectos. A partir del resumen de una idea aprobada para ser prototipo, genera tareas claras y accionables.
+
+Resumen del problema:
+${resumenProblema}
+
+Resumen de la solución:
+${resumenSolucion}
+
+Comentario final de la IA:
+${comentarioFinal}
+
+Tu objetivo es generar una lista de tareas iniciales para ejecutar el proyecto en su fase piloto. Para cada tarea incluye:
+- título (obligatorio)
+- descripción (corta)
+- dificultad (Baja, Media, Alta)
+- duración estimada (en horas, número entero)
+
+Devuelve solo en formato JSON:
+{
+  "tareas": [
+    {
+      "titulo": "...",
+      "descripcion": "...",
+      "dificultad": "Media",
+      "duracionHoras": 6
+    },
+    ...
+  ]
+}
+`;
+
+  try {
+    const openai = new OpenAI({ apiKey: openaiKey.value() });
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      temperature: 0.4,
+      messages: [
+        { role: "system", content: "Eres un generador de tareas para proyectos de innovación." },
+        { role: "user", content: prompt },
+      ],
+    });
+
+    const content = response.choices[0].message.content;
+    const start = content.indexOf("{");
+    const end = content.lastIndexOf("}");
+    const json = JSON.parse(content.slice(start, end + 1));
+
+    return json;
+  } catch (err) {
+    return { error: "❌ Error al generar tareas desde idea", detalles: err.message };
+  }
+});

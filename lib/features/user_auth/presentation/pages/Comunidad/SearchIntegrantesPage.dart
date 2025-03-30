@@ -56,53 +56,61 @@ class _SearchIntegrantesPageState extends State<SearchIntegrantesPage> {
             ),
           ),
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection("users").snapshots(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+  child: _query.isEmpty
+      ? const Center(
+          child: Text(
+            "Empieza a escribir para buscar integrantes...",
+            style: TextStyle(color: Colors.white70),
+          ),
+        )
+      : StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection("users").snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-                final users = snapshot.data!.docs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final name = (data['full_name'] ?? '').toLowerCase();
-                  final email = (data['email'] ?? '').toLowerCase();
-                  return name.contains(_query) || email.contains(_query);
-                }).toList();
+            final users = snapshot.data!.docs.where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final name = (data['full_name'] ?? '').toLowerCase();
+              final email = (data['email'] ?? '').toLowerCase();
+              return name.contains(_query) || email.contains(_query);
+            }).toList();
 
-                if (users.isEmpty) {
-                  return const Center(
-                    child: Text("No se encontraron usuarios", style: TextStyle(color: Colors.white)),
-                  );
-                }
+            if (users.isEmpty) {
+              return const Center(
+                child: Text("No se encontraron usuarios", style: TextStyle(color: Colors.white)),
+              );
+            }
 
-                return ListView.builder(
-                  itemCount: users.length,
-                  itemBuilder: (context, index) {
-                    final data = users[index].data() as Map<String, dynamic>;
+            return ListView.builder(
+              itemCount: users.length,
+              itemBuilder: (context, index) {
+                final data = users[index].data() as Map<String, dynamic>;
 
-                    return Card(
-                      color: Colors.blue[900],
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: const BorderSide(color: Colors.white, width: 1.5),
-                      ),
-                      child: ListTile(
-                        leading: const Icon(Icons.person, color: Colors.white),
-                        title: Text(
-                          data["full_name"] ?? "Sin nombre",
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          data["email"] ?? "",
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                      ),
-                    );
-                  },
+                return Card(
+                  color: Colors.blue[900],
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: Colors.white, width: 1.5),
+                  ),
+                  child: ListTile(
+                    leading: const Icon(Icons.person, color: Colors.white),
+                    title: Text(
+                      data["full_name"] ?? "Sin nombre",
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      data["email"] ?? "",
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
                 );
               },
-            ),
-          ),
+            );
+          },
+        ),
+)
+
         ],
       ),
     );

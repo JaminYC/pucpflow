@@ -11,8 +11,14 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_m
 
 class GoogleCalendarService {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: kIsWeb ? "547054267025-62eputqjlamebrmshg37rfohl9s10q0c.apps.googleusercontent.com" : null,
-    scopes: [calendar.CalendarApi.calendarScope],
+    clientId: kIsWeb
+      ? "547054267025-62eputqjlamebrmshg37rfohl9s10q0c.apps.googleusercontent.com"
+      : null,
+    scopes: [
+      'email',
+      'https://www.googleapis.com/auth/calendar',
+      // agrega los que necesites
+    ],
   );
 
   
@@ -20,24 +26,28 @@ class GoogleCalendarService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   /// 🔹 **Corrección de `signInAndGetCalendarApi()`**
-  Future<calendar.CalendarApi?> signInAndGetCalendarApi() async {
-    try {
-      final GoogleSignInAccount? account =
-         await _googleSignIn.signInSilently() ?? await _googleSignIn.signIn();
+Future<calendar.CalendarApi?> signInAndGetCalendarApi({bool silentOnly = true}) async {
+  try {
+    GoogleSignInAccount? account = await _googleSignIn.signInSilently();
 
-      if (account == null) {
-        print("⚠️ No se pudo iniciar sesión en Google.");
-        return null;
-      }
+    if (account == null && !silentOnly) {
+      account = await _googleSignIn.signIn();
+    }
 
-      final headers = await account.authHeaders;
-      final client = GoogleAuthClient(headers);
-      return calendar.CalendarApi(client);
-    } catch (e) {
-      print("❌ Error en Google Sign-In: $e");
+    if (account == null) {
+      print("⚠️ No se pudo obtener sesión de Google.");
       return null;
     }
+
+    final headers = await account.authHeaders;
+    return calendar.CalendarApi(GoogleAuthClient(headers));
+  } catch (e) {
+    print("❌ Error al conectar con Google APIs: $e");
+    return null;
   }
+}
+
+
 /// 🔹 **Encuentra el primer horario disponible para una tarea**
   Future<DateTime?> encontrarHorarioDisponible(
     calendar.CalendarApi calendarApi, String responsableUid, int duracion) async {
@@ -252,7 +262,22 @@ DateTime? findFreeSlot(List<calendar.TimePeriod> busyTimes, int durationMinutes)
     return [];
   }
   
-  
+ Future<void> asignarYAgendarTarea(Tarea tarea, String userId) async {
+  final calendarApi = await signInAndGetCalendarApi(silentOnly: true);
+  if (calendarApi == null) return;
+
+  // Usa fecha existente o busca una libre
+  DateTime? fechaInicio = tarea.fecha;
+
+  if (fechaInicio == null) {
+    fechaInicio = await encontrarHorarioDisponible(calendarApi, userId, tarea.duracion);
+    if (fechaInicio == null) return;
+    tarea.fecha = fechaInicio; // Asigna la nueva fecha a la tarea
+  }
+
+  await agendarEventoEnCalendario(calendarApi, tarea, userId);
+}
+
 
 
     /// ✅ **Agendar evento en Google Calendar**

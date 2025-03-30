@@ -7,6 +7,9 @@ import 'Login/sign_up_page.dart';
 import 'Login/UserProfileForm.dart';
 import 'package:pucpflow/global/common/toast.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -18,6 +21,9 @@ class _LoginPageState extends State<LoginPage> {
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
 
   Future<void> _signInWithGoogle() async {
   try {
@@ -97,6 +103,36 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
+  Future<void> _loginEmpresarial() async {
+    final usuario = _usernameController.text.trim();
+    final contrasena = _passwordController.text.trim();
+
+    final consulta = await _firestore
+        .collection("users")
+        .where("username", isEqualTo: usuario)
+        .where("password", isEqualTo: contrasena)
+        .get();
+
+    if (consulta.docs.isNotEmpty) {
+      final user = consulta.docs.first;
+      final userId = user.id;
+
+      // 🔒 Guarda la sesión localmente
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString("userId", userId);
+      await prefs.setString("nombreUsuario", user["full_name"] ?? usuario);
+
+      // 🔁 Redirige a la página principal
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => HomePage()),
+      );
+    } else {
+      showToast(message: "❌ Usuario o contraseña incorrectos");
+    }
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -145,6 +181,7 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 20),
                   // Campos de entrada para Usuario y Contraseña
                   TextField(
+                    controller: _usernameController,
                     decoration: InputDecoration(
                       labelText: 'Username',
                       border: OutlineInputBorder(),
@@ -154,16 +191,35 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 12),
                   TextField(
+                    controller: _passwordController,
+                    obscureText: true,
                     decoration: InputDecoration(
                       labelText: 'Password',
                       border: OutlineInputBorder(),
                       fillColor: Colors.white.withOpacity(0.7),
                       filled: true,
                     ),
-                    obscureText: true,
                   ),
                   const SizedBox(height: 20),
                   // Botón de inicio de sesión con Google
+                  GestureDetector(
+                    onTap: _loginEmpresarial,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[900],
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        "Ingreso Empresarial",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+
                   GestureDetector(
                     onTap: _signInWithGoogle,
                     child: Container(

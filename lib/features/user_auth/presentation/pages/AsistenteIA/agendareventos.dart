@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:googleapis/calendar/v3.dart' as calendar;
-import 'package:pucpflow/features/user_auth/presentation/pages/google_calendar_service.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/google_calendar_service.dart';
 
 class CrearEventoPage extends StatefulWidget {
   final String nombre;

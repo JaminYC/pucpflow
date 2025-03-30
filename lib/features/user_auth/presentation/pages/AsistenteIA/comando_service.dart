@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:intl/intl.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/google_calendar_service.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/google_calendar_service.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectoDetallePage.dart';  
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectosPage.dart'; 
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/proyecto_model.dart';

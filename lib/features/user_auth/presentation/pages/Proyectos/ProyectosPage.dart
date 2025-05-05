@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
 import 'proyecto_model.dart';
@@ -48,21 +49,31 @@ class _ProyectosPageState extends State<ProyectosPage>  with AutomaticKeepAliveC
     super.dispose();
   }
 
-  Stream<List<Proyecto>> obtenerProyectos() {
-    final user = _auth.currentUser;
-    if (user == null) return Stream.value([]);
+Stream<List<Proyecto>> obtenerProyectos() async* {
+  final prefs = await SharedPreferences.getInstance();
+  final user = _auth.currentUser;
+  final uidEmpresarial = prefs.getString("uid_empresarial");
 
-    return _firestore
-        .collection("proyectos")
-        .where("participantes", arrayContains: user.uid)
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) => Proyecto.fromJson(doc.data())).where((proyecto) {
-        if (filtroVisibilidad == "Todos") return true;
-        return proyecto.visibilidad == filtroVisibilidad;
-      }).toList();
-    });
+  final uid = user != null ? user.uid : prefs.getString("uid_empresarial");
+
+
+  if (uid == null) {
+    yield [];
+    return;
   }
+
+  yield* _firestore
+      .collection("proyectos")
+      .where("participantes", arrayContains: uid)
+      .snapshots()
+      .map((snapshot) {
+    return snapshot.docs.map((doc) => Proyecto.fromJson(doc.data())).where((proyecto) {
+      if (filtroVisibilidad == "Todos") return true;
+      return proyecto.visibilidad == filtroVisibilidad;
+    }).toList();
+  });
+}
+
 Future<void> cargarNombresPropietarios(List<Proyecto> proyectos) async {
   final uids = proyectos.map((p) => p.propietario).toSet();
 
@@ -143,8 +154,9 @@ Future<String?> _subirImagenPlataforma(XFile archivo) async {
 
 
 Future<void> _crearProyecto(String nombre, String visibilidad, XFile? imagenFile) async {
-  final user = _auth.currentUser;
-  if (user == null) return;
+  final prefs = await SharedPreferences.getInstance();
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? prefs.getString("uid_empresarial");
+  if (uid == null) return;
 
   String urlImagen;
 
@@ -155,25 +167,27 @@ Future<void> _crearProyecto(String nombre, String visibilidad, XFile? imagenFile
   }
 
   final nuevoProyecto = Proyecto(
-    id: _firestore.collection('proyectos').doc().id,
+    id: FirebaseFirestore.instance.collection('proyectos').doc().id,
     nombre: nombre,
     descripcion: "Descripción del proyecto...",
     fechaInicio: DateTime.now(),
-    propietario: user.uid,
-    participantes: [user.uid],
+    propietario: uid,
+    participantes: [uid],
     visibilidad: visibilidad,
     imagenUrl: urlImagen,
   );
 
-  await _firestore.collection("proyectos").doc(nuevoProyecto.id).set(nuevoProyecto.toJson());
+  await FirebaseFirestore.instance.collection("proyectos").doc(nuevoProyecto.id).set(nuevoProyecto.toJson());
 }
+
+
 String _imagenPorDefecto() {
   return "https://firebasestorage.googleapis.com/v0/b/pucp-flow.firebasestorage.app/o/proyecto_imagenes%2Fimagen_por_defecto.jpg?alt=media&token=67db12bf-0ce4-4697-98f3-3c6126467595";
 }
 
 
 
- void _mostrarDialogoNuevoProyecto() {
+void _mostrarDialogoNuevoProyecto() {
   String nombreProyecto = "";
   String visibilidad = "Privado";
   XFile? imagenSeleccionada;
@@ -247,6 +261,7 @@ String _imagenPorDefecto() {
 
 
 
+
 void _editarProyecto(Proyecto proyecto) {
   final nombreController = TextEditingController(text: proyecto.nombre);
   final descripcionController = TextEditingController(text: proyecto.descripcion);
@@ -308,19 +323,25 @@ void _editarProyecto(Proyecto proyecto) {
               ),
               ElevatedButton(
                 onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  final uid = FirebaseAuth.instance.currentUser?.uid ?? prefs.getString("uid_empresarial");
+                  if (uid == null) return;
+
                   String? imagenUrl = proyecto.imagenUrl;
 
                   if (imagenSeleccionada != null) {
                     imagenUrl = await _subirImagenPlataforma(imagenSeleccionada!);
                   }
 
-                  await _firestore.collection("proyectos").doc(proyecto.id).update({
+                  await FirebaseFirestore.instance.collection("proyectos").doc(proyecto.id).update({
                     "nombre": nombreController.text,
                     "descripcion": descripcionController.text,
                     "visibilidad": visibilidad,
                     "imagenUrl": imagenUrl,
+                    "propietario": uid,
+                    "participantes": FieldValue.arrayUnion([uid]),
                   });
-                  // 🔄 Fuerza reconstrucción para que se actualice la tarjeta
+
                   setState(() {});
                   Navigator.pop(context);
                 },
@@ -334,6 +355,8 @@ void _editarProyecto(Proyecto proyecto) {
   );
 }
 
+
+
 ImageProvider _obtenerImagenProyecto(String? url) {
   if (url != null && url.startsWith("http")) {
     return NetworkImage(url);
@@ -342,15 +365,15 @@ ImageProvider _obtenerImagenProyecto(String? url) {
   }
 }
 
-
 @override
 Widget build(BuildContext context) {
-  super.build(context); // ✅ también necesario para el mixin
+  super.build(context);
   final isMobile = MediaQuery.of(context).size.width < 600;
   final aspectRatio = isMobile ? 3 / 4 : 16 / 9;
+
   return Scaffold(
     appBar: AppBar(
-       iconTheme: const IconThemeData(color: Colors.white),
+      iconTheme: const IconThemeData(color: Colors.white),
       title: const Text("Mis Proyectos", style: TextStyle(color: Colors.white)),
       backgroundColor: Colors.black,
       actions: [
@@ -366,169 +389,169 @@ Widget build(BuildContext context) {
       ],
     ),
     body: Stack(
-        children: [
-          Positioned.fill(
-            child: _videoController.value.isInitialized
-                ? FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: _videoController.value.size.width,
-                      height: _videoController.value.size.height,
-                      child: VideoPlayer(_videoController),
-                    ),
-                  )
-                : Container(color: Colors.black),
-          ),
-          Container(color: Colors.black.withOpacity(0.3)), // capa para contraste
-
-        StreamBuilder<List<Proyecto>>(
-          stream: obtenerProyectos(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-            final proyectos = snapshot.data!;
-
-            // ⚠️ Optimización: solo cargar nombres si no están en caché
-            final nuevosUids = proyectos
-                .map((p) => p.propietario)
-                .where((uid) => !nombresPropietarios.containsKey(uid))
-                .toSet();
-            if (nuevosUids.isNotEmpty) {
-              Future.microtask(() => cargarNombresPropietarios(proyectos));
-            }
-
-            return GridView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 300,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: aspectRatio,
-                ),
-
-              itemCount: proyectos.length,
-              itemBuilder: (context, index) {
-                final proyecto = proyectos[index];
-                final isOwner = proyecto.propietario == _auth.currentUser?.uid;
-
-                final imagenUrl = (proyecto.imagenUrl != null && proyecto.imagenUrl!.isNotEmpty)
-                    ? proyecto.imagenUrl!
-                    : _imagenPorDefecto();
-
-                debugPrint('🖼️ Cargando imagen de: ${proyecto.nombre} → $imagenUrl');
-
-                return Material(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    splashColor: Colors.white24,
-                    onTap: () async {
-                      _videoController.pause();
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ProyectoDetallePage(proyectoId: proyecto.id),
-                        ),
-                      );
-                      _videoController.play();
-                    },
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: CachedNetworkImage(
-                            imageUrl: imagenUrl,
-                            placeholder: (context, url) => Image.asset('assets/FondoCoheteNegro2.jpg', fit: BoxFit.cover),
-                            errorWidget: (context, url, error) => Image.asset('assets/FondoCoheteNegro2.jpg', fit: BoxFit.cover),
-                            fit: BoxFit.cover,
-                          )
-
-                        ),
-                        Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            gradient: LinearGradient(
-                              colors: [Colors.black.withOpacity(0.7), Colors.transparent],
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.4),
-                                blurRadius: 6,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          padding: const EdgeInsets.all(12),
-                          alignment: Alignment.bottomLeft,
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              return SingleChildScrollView(
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        proyecto.nombre,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      Text(
-                                        "${proyecto.visibilidad} · ${nombresPropietarios[proyecto.propietario] ?? 'Usuario'}",
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 11,
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        proyecto.descripcion,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      if (isOwner)
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.end,
-                                          children: [
-                                            IconButton(
-                                              icon: const Icon(Icons.edit, color: Colors.white),
-                                              onPressed: () => _editarProyecto(proyecto),
-                                              tooltip: "Editar",
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(Icons.delete, color: Colors.redAccent),
-                                              onPressed: () => _eliminarProyecto(proyecto),
-                                              tooltip: "Eliminar",
-                                            ),
-                                          ],
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-
-                        ),
-                      ],
-                    ),
+      children: [
+        Positioned.fill(
+          child: _videoController.value.isInitialized
+              ? FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _videoController.value.size.width,
+                    height: _videoController.value.size.height,
+                    child: VideoPlayer(_videoController),
                   ),
+                )
+              : Container(color: Colors.black),
+        ),
+        Container(color: Colors.black.withOpacity(0.3)),
+        FutureBuilder<SharedPreferences>(
+          future: SharedPreferences.getInstance(),
+          builder: (context, prefsSnapshot) {
+            if (!prefsSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+            final uidEmpresarial = prefsSnapshot.data!.getString("uid_empresarial");
+            return StreamBuilder<List<Proyecto>>(
+              stream: obtenerProyectos(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                final proyectos = snapshot.data!;
+
+                final nuevosUids = proyectos
+                    .map((p) => p.propietario)
+                    .where((uid) => !nombresPropietarios.containsKey(uid))
+                    .toSet();
+                if (nuevosUids.isNotEmpty) {
+                  Future.microtask(() => cargarNombresPropietarios(proyectos));
+                }
+
+                return GridView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 300,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: aspectRatio,
+                  ),
+                  itemCount: proyectos.length,
+                  itemBuilder: (context, index) {
+                    final proyecto = proyectos[index];
+                    final isOwner = proyecto.propietario == FirebaseAuth.instance.currentUser?.uid || proyecto.propietario == uidEmpresarial;
+
+                    final imagenUrl = (proyecto.imagenUrl != null && proyecto.imagenUrl!.isNotEmpty)
+                        ? proyecto.imagenUrl!
+                        : _imagenPorDefecto();
+
+                    return Material(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        splashColor: Colors.white24,
+                        onTap: () async {
+                          _videoController.pause();
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ProyectoDetallePage(proyectoId: proyecto.id),
+                            ),
+                          );
+                          _videoController.play();
+                        },
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: CachedNetworkImage(
+                                imageUrl: imagenUrl,
+                                placeholder: (context, url) => Image.asset('assets/FondoCoheteNegro2.jpg', fit: BoxFit.cover),
+                                errorWidget: (context, url, error) => Image.asset('assets/FondoCoheteNegro2.jpg', fit: BoxFit.cover),
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                            Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                gradient: LinearGradient(
+                                  colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.4),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              padding: const EdgeInsets.all(12),
+                              alignment: Alignment.bottomLeft,
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  return SingleChildScrollView(
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            proyecto.nombre,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          Text(
+                                            "${proyecto.visibilidad} · ${nombresPropietarios[proyecto.propietario] ?? 'Usuario'}",
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 11,
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            proyecto.descripcion,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          if (isOwner)
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.end,
+                                              children: [
+                                                IconButton(
+                                                  icon: const Icon(Icons.edit, color: Colors.white),
+                                                  onPressed: () => _editarProyecto(proyecto),
+                                                  tooltip: "Editar",
+                                                ),
+                                                IconButton(
+                                                  icon: const Icon(Icons.delete, color: Colors.redAccent),
+                                                  onPressed: () => _eliminarProyecto(proyecto),
+                                                  tooltip: "Eliminar",
+                                                ),
+                                              ],
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
             );
@@ -543,6 +566,7 @@ Widget build(BuildContext context) {
     ),
   );
 }
+
 
 
 }

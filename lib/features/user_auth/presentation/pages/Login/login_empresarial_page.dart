@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:video_player/video_player.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_page.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_empresa_page.dart';
+
 
 class LoginEmpresarialPage extends StatefulWidget {
   const LoginEmpresarialPage({super.key});
@@ -64,12 +66,13 @@ class _LoginEmpresarialPageState extends State<LoginEmpresarialPage> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool("login_empresarial", true);
         await prefs.setString("uid_empresarial", userDoc.id);
-
+        await prefs.setString("empresaNombre", userDoc['full_name'] ?? userDoc['username']);
+        
         if (!mounted) return;
 
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => HomePage()),
+          MaterialPageRoute(builder: (_) => HomeEmpresaPage()),
           (route) => false,
         );
       } else {

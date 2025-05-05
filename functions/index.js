@@ -246,43 +246,52 @@ Devuélvelo en este formato JSON:
 });
 
 exports.analizarIdea = onCall({ secrets: [openaiKey] }, async (request) => {
-  const datos = request.data;
-
+  const transcripcionFase1 = datos.transcripcionFase1 || "";
+  const transcripcionFase2 = datos.transcripcionFase2 || "";
+  const imagenURL1 = datos.imagenURL1 || "";
+  const imagenURL2 = datos.imagenURL2 || "";
+  
   const prompt = `
-El usuario ha propuesto una idea de innovación. A partir de los siguientes datos, genera:
-
-1. 🧠 Resumen del problema.
-2. 💡 Resumen de la solución.
-3. ✅ Evaluación de viabilidad técnica y económica.
-4. 🔄 Sugerencias o mejoras posibles.
-
-Datos ingresados:
-
-- Contexto: ${datos.contexto}
-- Proceso actual: ${datos.proceso}
-- Problema identificado: ${datos.problema}
-- Causas: ${datos.causas}
-- Herramientas involucradas: ${datos.herramientas}
-- Solución propuesta: ${datos.solucion}
-- Cómo ataca el problema: ${datos.ataque}
-- Materiales necesarios: ${datos.materiales}
-
-Devuélvelo en JSON así:
-{
-  "resumenProblema": "...",
-  "resumenSolucion": "...",
-  "evaluacion": "...",
-  "sugerencias": "..."
-}
-`;
-
+  El usuario ha propuesto una idea de innovación. A partir de los siguientes datos, genera:
+  
+  1. 🧠 Resumen del problema.
+  2. 💡 Resumen de la solución.
+  3. ✅ Evaluación de viabilidad técnica y económica.
+  4. 🔄 Sugerencias o mejoras posibles.
+  
+  Datos ingresados:
+  
+  🧠 Fase 1: Exploración
+  - Contexto: ${datos.contexto}
+  - Proceso actual: ${datos.proceso}
+  - Problema identificado: ${datos.problema}
+  - Causas: ${datos.causas}
+  - Herramientas involucradas: ${datos.herramientas}
+  - Transcripción por voz (Fase 1): ${transcripcionFase1}
+  - Imagen asociada (Fase 1): ${imagenURL1}
+  
+  💡 Fase 2: Propuesta de Solución
+  - Solución propuesta: ${datos.solucion}
+  - Cómo ataca el problema: ${datos.ataque}
+  - Materiales necesarios: ${datos.materiales}
+  - Transcripción por voz (Fase 2): ${transcripcionFase2}
+  - Imagen asociada (Fase 2): ${imagenURL2}
+  
+  Devuélvelo en JSON así:
+  {
+    "resumenProblema": "...",
+    "resumenSolucion": "...",
+    "evaluacion": "...",
+    "sugerencias": "..."
+  }
+  `;
   const openai = new OpenAI({ apiKey: openaiKey.value() });
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4",
     temperature: 0.4,
     messages: [
-      { role: "system", content: "Eres un asistente experto en innovación tecnológica." },
+      { role: "system", content: "Eres un asistente experto en innovación tecnológica en procesos en mineria." },
       { role: "user", content: prompt },
     ],
   });

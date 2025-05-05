@@ -12,7 +12,7 @@ import 'sign_up_page.dart';
 import 'package:pucpflow/global/common/toast.dart';
 import 'package:video_player/video_player.dart';
 import 'package:pucpflow/features/app/splash_screen/splash_screen.dart'; // Importa la pantalla de Splash
-
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/VastoriaHomePage.dart';
 class CustomLoginPage extends StatefulWidget {
   const CustomLoginPage({Key? key}) : super(key: key);
 
@@ -89,7 +89,7 @@ class _CustomLoginPageState extends State<CustomLoginPage> {
         password: _passwordController.text.trim(),
       );
       if (userCredential.user != null) {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage()));
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => VastoriaHomePage()));
       }
     } on FirebaseAuthException catch (e) {
       String errorMessage;
@@ -273,9 +273,18 @@ Widget build(BuildContext context) {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const SizedBox(height: 20),
+                          const Text(
+                            'Inicia sesión en Vastoria',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 20),
                           _buildLogo(),
                           const SizedBox(height: 30),
-
                           /// 🔹 Login estándar con email
                           _buildTextField(_emailController, "Email", false),
                           const SizedBox(height: 10),

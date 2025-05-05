@@ -1,51 +1,47 @@
-// 📄 idea.dart
-
 class Idea {
-  final String contexto;
-  final String proceso;
-  final String problema;
-  final String causas;
-  final String herramientas;
-  final String solucion;
-  final String ataque;
-  final String materiales;
+  final String? contexto;
+  final String? proceso;
+  final String? problema;
+  final String? causas;
+  final String? herramientas;
+  final String? solucion;
+  final String? ataque;
+  final String? materiales;
 
   Idea({
-    required this.contexto,
-    required this.proceso,
-    required this.problema,
-    required this.causas,
-    required this.herramientas,
-    required this.solucion,
-    required this.ataque,
-    required this.materiales,
+    this.contexto,
+    this.proceso,
+    this.problema,
+    this.causas,
+    this.herramientas,
+    this.solucion,
+    this.ataque,
+    this.materiales,
   });
 
-  // 🔄 Conversión a JSON para enviar a Firestore o Firebase Functions
   Map<String, dynamic> toJson() {
     return {
-      'contexto': contexto,
-      'proceso': proceso,
-      'problema': problema,
-      'causas': causas,
-      'herramientas': herramientas,
-      'solucion': solucion,
-      'ataque': ataque,
-      'materiales': materiales,
+      if (contexto != null && contexto!.trim().isNotEmpty) 'contexto': contexto,
+      if (proceso != null && proceso!.trim().isNotEmpty) 'proceso': proceso,
+      if (problema != null && problema!.trim().isNotEmpty) 'problema': problema,
+      if (causas != null && causas!.trim().isNotEmpty) 'causas': causas,
+      if (herramientas != null && herramientas!.trim().isNotEmpty) 'herramientas': herramientas,
+      if (solucion != null && solucion!.trim().isNotEmpty) 'solucion': solucion,
+      if (ataque != null && ataque!.trim().isNotEmpty) 'ataque': ataque,
+      if (materiales != null && materiales!.trim().isNotEmpty) 'materiales': materiales,
     };
   }
 
-  // 🔁 Conversión desde JSON
   factory Idea.fromJson(Map<String, dynamic> json) {
     return Idea(
-      contexto: json['contexto'] ?? '',
-      proceso: json['proceso'] ?? '',
-      problema: json['problema'] ?? '',
-      causas: json['causas'] ?? '',
-      herramientas: json['herramientas'] ?? '',
-      solucion: json['solucion'] ?? '',
-      ataque: json['ataque'] ?? '',
-      materiales: json['materiales'] ?? '',
+      contexto: json['contexto'],
+      proceso: json['proceso'],
+      problema: json['problema'],
+      causas: json['causas'],
+      herramientas: json['herramientas'],
+      solucion: json['solucion'],
+      ataque: json['ataque'],
+      materiales: json['materiales'],
     );
   }
 }

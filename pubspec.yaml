@@ -44,10 +44,10 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   
-
+  flutter_sound: ^9.28.0
   fluttertoast: ^8.2.10
   font_awesome_flutter: ^10.8.0
- 
+  audioplayers: ^6.4.0
 
   video_player: ^2.9.2
   webview_flutter: ^4.10.0
@@ -73,7 +73,7 @@ dependencies:
   flutter_neumorphic_plus: ^3.4.0
   liquid_swipe: ^3.1.0
   glassmorphism_ui: ^0.3.0
-  
+
   flutter_sliding_up_panel: ^2.1.1
   flutter_staggered_animations: ^1.1.1
   motion: ^2.0.1
@@ -86,20 +86,23 @@ dependencies:
   intl: ^0.20.2
   firebase_data_connect: ^0.1.0
 
-
+  graphview: ^1.2.0
 
   #Dependencias para el Manejo de Ventanas 
   responsive_builder: ^0.7.1
   flutter_screenutil: ^5.9.3
 
   web: ^1.1.1
-
-
+  record: ^4.4.4  # o explícitamente 4.4.4
+  just_audio: ^0.10.2
+  uuid: ^4.5.1
   pdf: ^3.11.3
   printing: ^5.14.2
   path_provider: ^2.1.5
-
-
+  youtube_player_iframe: ^5.2.1
+  youtube_player_flutter: ^9.1.1
+  flutter_inappwebview: ^6.1.5
+  open_file: ^3.5.10
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -146,6 +149,9 @@ flutter:
      - assets/fondodashboard.mp4
      - assets/videoranking.mp4
      - assets/Pomodoro.mp4
+     - assets/logovastoria.png
+     - assets/logo_cafillari.png
+     - assets/vortystorm.jpg
      
   #   - images/a_dot_ham.jpeg
 

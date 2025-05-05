@@ -1,4 +1,5 @@
 // ignore_for_file: use_build_context_synchronously, prefer_const_constructors_in_immutables 
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/VastoriaHomePage.dart' show VastoriaHomePage;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pucpflow/features/app/splash_screen/splash_screen.dart'; // Importa la pantalla de Splash
 
@@ -995,44 +996,88 @@ Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
     );
   }
    /// ✅ **Drawer lateral para herramientas y logout**
-  Widget _buildDrawer(BuildContext context) {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: const BoxDecoration(color: Color.fromARGB(255, 0, 0, 0)),
-            child: const Text(
-              'Herramientas',
-              style: TextStyle(color: Color.fromARGB(255, 255, 255, 255), fontSize: 24, fontWeight: FontWeight.bold),
-            ),
+ Widget _buildDrawer(BuildContext context) {
+  return Drawer(
+    backgroundColor: Colors.black,
+    child: ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        DrawerHeader(
+          decoration: const BoxDecoration(
+            color: Colors.black87,
           ),
-          ListTile(
-            leading: const Icon(Icons.settings, color: Colors.black),
-            title: const Text('Formulario de Reconocimiento'),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => UserProfileForm(userId: FirebaseAuth.instance.currentUser!.uid),
-                ),
-              );
-            },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Image.asset('assets/logovastoria.png', height: 60),
+              const SizedBox(height: 10),
+              const Text(
+                'VASTORIA',
+                style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const Text(
+                'Conquista tus proyectos 🚀',
+                style: TextStyle(color: Colors.white60, fontSize: 14),
+              ),
+            ],
           ),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Color.fromARGB(255, 0, 0, 0)),
-            title: const Text('Logout', style: TextStyle(color: Colors.black)),
-            onTap: () async {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Cerrando sesión...")),
-              );
-              await cerrarSesion(context);
-            },
-          ),
-        ],
-      ),
-    );
-  }
+        ),
+
+        ListTile(
+          leading: const Icon(Icons.home, color: Colors.white70),
+          title: const Text('Volver a Vastoria', style: TextStyle(color: Colors.white)),
+          onTap: () {
+            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const VastoriaHomePage()));
+          },
+        ),
+
+        ListTile(
+          leading: const Icon(Icons.person_outline, color: Colors.white70),
+          title: const Text('Perfil y Configuración', style: TextStyle(color: Colors.white)),
+          onTap: () {
+            // Aquí mandarías a ProfilePage()
+          },
+        ),
+
+        ListTile(
+          leading: const Icon(Icons.bar_chart, color: Colors.white70),
+          title: const Text('Mi Progreso', style: TextStyle(color: Colors.white)),
+          onTap: () {
+            // Aquí mandarías a ProgressPage()
+          },
+        ),
+
+        ListTile(
+          leading: const Icon(Icons.folder_open, color: Colors.white70),
+          title: const Text('Mis Proyectos', style: TextStyle(color: Colors.white)),
+          onTap: () {
+            // Aquí mandarías a MyProjectsPage()
+          },
+        ),
+
+        const Divider(color: Colors.white24),
+
+        ListTile(
+          leading: const Icon(Icons.settings, color: Colors.white70),
+          title: const Text('Preferencias', style: TextStyle(color: Colors.white)),
+          onTap: () {
+            // Aquí mandarías a SettingsPage()
+          },
+        ),
+
+        ListTile(
+          leading: const Icon(Icons.logout, color: Colors.redAccent),
+          title: const Text('Cerrar sesión', style: TextStyle(color: Colors.redAccent)),
+          onTap: () {
+            FirebaseAuth.instance.signOut();
+            Navigator.pushReplacementNamed(context, '/login');
+          },
+        ),
+      ],
+    ),
+  );
+}
+
 Widget _buildBody() {
   final screenWidth = MediaQuery.of(context).size.width;
   final screenHeight = MediaQuery.of(context).size.height;

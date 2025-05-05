@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:pucpflow/LandingPage/CustomLandingPage.dart' show CustomLandingPage;
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_empresa_page.dart' show HomeEmpresaPage;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
@@ -35,7 +37,7 @@ class _SplashScreenState extends State<SplashScreen> {
     debugPrint("🧪 UID: ${uid ?? firebaseUser?.uid}");
 
     if (esLoginEmpresarial && uid != null) {
-      _navegar( HomePage());
+      _navegar(HomeEmpresaPage()); // <- esta es tu vista empresarial correcta
     } else if (firebaseUser != null) {
       _navegar( HomePage());
     } else {
@@ -51,30 +53,30 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _initializeVideo() async {
-    _controller = VideoPlayerController.asset("assets/VideoDelLogo.mp4");
+  _controller = VideoPlayerController.asset("assets/VideoDelLogo.mp4");
 
-    try {
-      await _controller!.initialize();
-      _controller!
-        ..setLooping(false)
-        ..setVolume(0)
-        ..play();
+  try {
+    await _controller!.initialize();
+    _controller!
+      ..setLooping(false)
+      ..setVolume(0)
+      ..play();
 
-      setState(() {}); // para que se muestre el video
+    setState(() {}); // para que se muestre el video
 
-      _controller!.addListener(() {
-        if (!mounted || _navegacionRealizada) return;
-        final isFinished = _controller!.value.position >= _controller!.value.duration;
+    _controller!.addListener(() {
+      if (!mounted || _navegacionRealizada) return;
+      final isFinished = _controller!.value.position >= _controller!.value.duration;
 
-        if (isFinished) {
-          _navegar(const AuthGate());
-        }
-      });
-    } catch (e) {
-      debugPrint("❌ Error al inicializar el video: $e");
-      _navegar(const AuthGate()); // fallback si el video falla
-    }
+      if (isFinished) {
+        _navegar(const CustomLandingPage()); // ⬅️ Ahora navega al Landing
+      }
+    });
+  } catch (e) {
+    debugPrint("❌ Error al inicializar el video: $e");
+    _navegar(const CustomLandingPage()); // fallback si el video falla
   }
+}
 
   @override
   void dispose() {
@@ -117,7 +119,7 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             const SizedBox(height: 20),
             const Text(
-              "Bienvenido a FLOW",
+              "Bienvenido a Vastoria",
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 24,

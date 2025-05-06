@@ -19,18 +19,19 @@ class Idea {
     this.materiales,
   });
 
-  Map<String, dynamic> toJson() {
-    return {
-      if (contexto != null && contexto!.trim().isNotEmpty) 'contexto': contexto,
-      if (proceso != null && proceso!.trim().isNotEmpty) 'proceso': proceso,
-      if (problema != null && problema!.trim().isNotEmpty) 'problema': problema,
-      if (causas != null && causas!.trim().isNotEmpty) 'causas': causas,
-      if (herramientas != null && herramientas!.trim().isNotEmpty) 'herramientas': herramientas,
-      if (solucion != null && solucion!.trim().isNotEmpty) 'solucion': solucion,
-      if (ataque != null && ataque!.trim().isNotEmpty) 'ataque': ataque,
-      if (materiales != null && materiales!.trim().isNotEmpty) 'materiales': materiales,
-    };
-  }
+    Map<String, dynamic> toJson() {
+      return {
+        'contexto': contexto?.trim() ?? '',
+        'proceso': proceso?.trim() ?? '',
+        'problema': problema?.trim() ?? '',
+        'causas': causas?.trim() ?? '',
+        'herramientas': herramientas?.trim() ?? '',
+        'solucion': solucion?.trim() ?? '',
+        'ataque': ataque?.trim() ?? '',
+        'materiales': materiales?.trim() ?? '',
+      };
+    }
+
 
   factory Idea.fromJson(Map<String, dynamic> json) {
     return Idea(

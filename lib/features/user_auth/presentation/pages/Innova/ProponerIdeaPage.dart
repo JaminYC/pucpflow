@@ -53,6 +53,7 @@ import 'dart:typed_data';
 import 'package:record/record.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+import 'package:speech_to_text/speech_to_text.dart';
 
 class ProponerIdeaPage extends StatefulWidget {
   const ProponerIdeaPage({super.key});
@@ -65,8 +66,14 @@ class _ProponerIdeaPageState extends State<ProponerIdeaPage> {
   // Clave del formulario
   final _formKey = GlobalKey<FormState>();
   late AudioPorFaseSpeechManager _speechManager;
+
+
   TextEditingController? _currentController;
 
+  final Map<int, bool> _grabandoPorFase = {
+      1: false,
+      2: false,
+    };
   // -----------------------------
   // 1) Controles de texto por fase
 
@@ -146,26 +153,6 @@ class _ProponerIdeaPageState extends State<ProponerIdeaPage> {
     super.dispose();
   }
 
- // ----------------------------------------------------
-  // 4) Helpers multimedia reutilizables (imagen + audio)
-  // ----------------------------------------------------
-  Widget _botonVoz(TextEditingController controller) {
-  return IconButton(
-    icon: Icon(
-      _speechManager.isListening ? Icons.stop_circle : Icons.mic,
-      color: _speechManager.isListening ? Colors.red : Colors.blueAccent,
-    ),
-    tooltip: _speechManager.isListening ? "Detener" : "Hablar",
-    onPressed: () {
-      if (_speechManager.isListening) {
-        _speechManager.detener();
-      } else {
-        _currentController = controller;
-        _speechManager.iniciar();
-      }
-    },
-  );
-}
 
 
   Future<String?> _pickImageFromGallery() async {
@@ -178,64 +165,6 @@ class _ProponerIdeaPageState extends State<ProponerIdeaPage> {
     await ref.putData(bytes);
     return await ref.getDownloadURL();
   }
-  Future<void> _playAudio(String url) async {
-    await _audioPlayer.stop();
-    await _audioPlayer.setSourceUrl(url);
-    await _audioPlayer.resume();
-  }
-  // ----------------------------------------------------
-  // 5) Picker unificado por fase
-  // ----------------------------------------------------
-  // 1) Helper to render the image+audio buttons & previews
-  Widget _multimediaPicker({
-  String? imageUrl,
-  String? audioUrl,
-  required bool recording,
-  required Future<void> Function() onPickImage,
-  required Future<void> Function() onStartRecording,
-  required Future<void> Function() onStopRecording,
-  required VoidCallback onDeleteImage,
-  required VoidCallback onDeleteAudio,
-  required VoidCallback onPlayAudio,
-}) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.image, color: Colors.white),
-            onPressed: onPickImage,
-          ),
-          IconButton(
-            icon: Icon(
-              recording ? Icons.stop : Icons.mic,
-              color: recording ? Colors.redAccent : Colors.white,
-            ),
-            onPressed: recording ? onStopRecording : onStartRecording,
-          ),
-        ],
-      ),
-      if (imageUrl != null)
-        Row(
-          children: [
-            Image.network(imageUrl, height: 60, width: 60, fit: BoxFit.cover),
-            IconButton(icon: const Icon(Icons.delete), onPressed: onDeleteImage),
-          ],
-        ),
-      if (audioUrl != null)
-        Row(
-          children: [
-            IconButton(icon: const Icon(Icons.play_arrow), onPressed: onPlayAudio),
-            IconButton(icon: const Icon(Icons.delete), onPressed: onDeleteAudio),
-          ],
-        ),
-    ],
-  );
-}
-
-// 2) Updated _buildCard to accept an optional multimedia widget
 Widget _buildCard(
   String titulo, {
   required List<Widget> campos,
@@ -279,118 +208,97 @@ Widget _buildCard(
   );
 }
 
+Future<void> _enviarIdea() async {
+  // Validar manualmente solo el campo "problema"
+  if (_problemaController.text.trim().isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("❌ El campo 'Problema' es obligatorio.")),
+    );
+    return;
+  }
+  setState(() => _procesando = true);
+  await Future.delayed(const Duration(milliseconds: 100));
+  await Future(() {}); // Deja libre el hilo de render
 
-
-  Widget _phaseMultimedia({
-  required String? imageUrl,
-  required String? audioUrl,
-  required bool recording,
-  required VoidCallback onDeleteImage,
-  required VoidCallback onDeleteAudio,
-  required VoidCallback onPlayAudio,
-  required Future<void> Function() onStartRecording,
-  required Future<void> Function() onStopRecording,
-  required Future<void> Function() onPickImage,
-}) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      // Botones de acción
-      Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.image, color: Colors.white),
-            onPressed: onPickImage,
-          ),
-          IconButton(
-            icon: Icon(recording ? Icons.stop : Icons.mic, color: recording ? Colors.red : Colors.white),
-            onPressed: recording ? onStopRecording : onStartRecording,
-          ),
-        ],
-      ),
-
-      // Indicador de grabación
-      if (recording)
-        const Padding(
-          padding: EdgeInsets.only(top: 8),
-          child: Text("🎙 Grabando...", style: TextStyle(color: Colors.white70)),
-        ),
-
-      // Imagen subida
-      if (imageUrl != null)
-        Row(
-          children: [
-            Image.network(imageUrl, height: 50),
-            IconButton(icon: const Icon(Icons.delete), onPressed: onDeleteImage),
-          ],
-        ),
-
-      // Audio subido
-      if (audioUrl != null)
-        Row(
-          children: [
-            IconButton(icon: const Icon(Icons.play_arrow), onPressed: onPlayAudio),
-            IconButton(icon: const Icon(Icons.delete), onPressed: onDeleteAudio),
-            const Text("🎧 Audio listo", style: TextStyle(color: Colors.white70)),
-          ],
-        ),
-    ],
+  final idea = Idea(
+    contexto: _contextoController.text,
+    proceso: _procesoController.text,
+    problema: _problemaController.text,
+    causas: _causasController.text,
+    herramientas: _herramientasController.text,
+    solucion: _solucionController.text,
+    ataque: _ataqueController.text,
+    materiales: _materialesController.text,
   );
+
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    final esCuentaFirebase = user != null;
+    final autor = esCuentaFirebase ? user!.email ?? "sin_email" : "cuenta_empresarial";
+
+    // Protecciones contra null
+    final transcripcionF1 = _transcripcionFase1 ?? '';
+    final transcripcionF2 = _transcripcionFase2 ?? '';
+    final imagen1 = _imagenURL1 ?? '';
+    final imagen2 = _imagenURL2 ?? '';
+
+    // Debug
+    print("🚀 Enviando idea desde: $autor");
+    print("📤 Datos a enviar: ${{
+      ...idea.toJson(),
+      'transcripcionFase1': transcripcionF1,
+      'transcripcionFase2': transcripcionF2,
+      'imagenURL1': imagen1,
+      'imagenURL2': imagen2,
+      'usuario': autor,
+    }}");
+
+    // Guardar en Firestore
+    _ideaRef = await FirebaseFirestore.instance.collection('ideas').add({
+      ...idea.toJson(),
+      'estado': 'pendiente',
+      'timestamp': FieldValue.serverTimestamp(),
+      'autor': autor,
+      'transcripcionFase1': transcripcionF1,
+      'transcripcionFase2': transcripcionF2,
+      'imagenURL1': imagen1,
+      'imagenURL2': imagen2,
+    });
+
+    // Llamar función de análisis IA
+    final functions = FirebaseFunctions.instance;
+    final callable = functions.httpsCallable('analizarIdea');
+    final result = await callable.call({
+      ...idea.toJson(),
+      'transcripcionFase1': transcripcionF1,
+      'transcripcionFase2': transcripcionF2,
+      'imagenURL1': imagen1,
+      'imagenURL2': imagen2,
+      'usuario': autor,
+    });
+
+    setState(() => _respuestaIA = result.data);
+
+    await _ideaRef!.update({
+      'estado': 'analizada',
+      'resultadoIA': result.data,
+    });
+
+    print("✅ Análisis IA exitoso");
+
+  } catch (e, st) {
+    print("❌ Error al procesar idea: $e");
+    print("🧱 StackTrace: $st");
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('❌ Error: $e')),
+    );
+  } finally {
+    setState(() => _procesando = false);
+  }
 }
 
- 
-  Future<void> _enviarIdea() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _procesando = true);
-    await Future.delayed(Duration(milliseconds: 100));
-    await Future(() {}); // ⬅ deja libre el hilo de dibujo
-
-    final idea = Idea(
-      contexto: _contextoController.text,
-      proceso: _procesoController.text,
-      problema: _problemaController.text,
-      causas: _causasController.text,
-      herramientas: _herramientasController.text,
-      solucion: _solucionController.text,
-      ataque: _ataqueController.text,
-      materiales: _materialesController.text,
-    );
-
-    try {
-      _ideaRef = await FirebaseFirestore.instance.collection('ideas').add({
-        ...idea.toJson(),
-        'estado': 'pendiente',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-
-      final functions = FirebaseFunctions.instance;
-      final callable = functions.httpsCallable('analizarIdea');
-      final result = await callable.call({
-        ...idea.toJson(),
-        'transcripcionFase1': _transcripcionFase1,
-        'transcripcionFase2': _transcripcionFase2,
-        'imagenURL1': _imagenURL1,
-        'imagenURL2': _imagenURL2,
-      });
 
 
-      setState(() => _respuestaIA = result.data);
-
-      await _ideaRef!.update({
-        'estado': 'analizada',
-        'resultadoIA': result.data,
-      });
-
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ Error al procesar con IA: $e')),
-      );
-    } finally {
-      setState(() => _procesando = false);
-    }
-  }
- 
   Future<void> ejecutarConCarga(Future<void> Function() funcion) async {
     setState(() => _procesando = true);
     await Future.delayed(const Duration(milliseconds: 100));
@@ -653,7 +561,7 @@ Future<void> generarInformeCompletoPDF() async {
 }
 
 
-Future<void> _probarGenerarPDFSinFases() async {
+/*Future<void> _probarGenerarPDFSinFases() async {
   setState(() => _procesando = true);
   await Future.delayed(Duration(milliseconds: 100));
   await Future(() {}); // ⬅ deja libre el hilo de dibujo
@@ -735,7 +643,7 @@ Future<void> _probarGenerarPDFSinFases() async {
     setState(() => _procesando = false);
   }
 }
-
+*/
 /*ElevatedButton.icon(
   onPressed: _probarGenerarPDFSinFases,
   icon: const Icon(Icons.bug_report),
@@ -743,6 +651,56 @@ Future<void> _probarGenerarPDFSinFases() async {
   style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
 ),*/
 // Versión optimizada del build() para ProponerIdeaPage con gestión por fases y feedback visual
+
+void _iniciarDictadoFase(int fase) async {
+  final grabando = _grabandoPorFase[fase] ?? false;
+
+  if (grabando) {
+    await _speechManager.detener();
+    setState(() {
+      _grabandoPorFase[fase] = false;
+    });
+  } else {
+    if (!_speechManager.isDisponible) {
+      await _speechManager.inicializar();
+      if (!_speechManager.isDisponible) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No se pudo acceder al micrófono")),
+        );
+        return;
+      }
+    }
+
+    _speechManager.onUpdate = (textoParcial) {
+      setState(() {
+        if (fase == 1) {
+          _transcripcionFase1 = textoParcial;
+        } else if (fase == 2) {
+          _transcripcionFase2 = textoParcial;
+        }
+      });
+    };
+
+    _speechManager.onFinal = (textoFinal) {
+      setState(() {
+        if (fase == 1) {
+          _transcripcionFase1 = textoFinal;
+        } else if (fase == 2) {
+          _transcripcionFase2 = textoFinal;
+        }
+        _grabandoPorFase[fase] = false;
+      });
+    };
+
+    final exito = await _speechManager.iniciar();
+    if (exito) {
+      _grabandoPorFase[fase] = true;
+      setState(() {}); // Fuerza el redibujado para que se vea “Grabando...”
+    }
+  }
+}
+
+
 
 @override
 Widget build(BuildContext context) {
@@ -773,31 +731,21 @@ Widget build(BuildContext context) {
                   _buildField(_procesoController, "¿En qué etapa específica se presenta la dificultad?"),
                   _buildField(_problemaController, "Describe brevemente el problema."),
                 ],
-                onGrabar: () {
-                  if (_speechManager.isListening) {
-                    _speechManager.detener();
-                  } else {
-                    _currentController = null; // Para no sobrescribir campos
-                    _speechManager = AudioPorFaseSpeechManager(
-                      onUpdate: (texto) {
-                        setState(() => _transcripcionFase1 = texto);
-                      },
-                      onFinal: (texto) {
-                        setState(() => _transcripcionFase1 = texto);
-                      },
-                    );
-                    _speechManager.inicializar().then((_) => _speechManager.iniciar());
-                  }
-                },
+                onGrabar: () => _iniciarDictadoFase(1),
                 onImagen: () async {
                   final url = await _pickImageFromGallery();
                   if (url != null) setState(() => _imagenURL1 = url);
                 },
+                onEliminarImagen: _imagenURL1 != null
+                    ? () => setState(() => _imagenURL1 = null)
+                    : null, // solo si hay imagen
                 transcripcion: _transcripcionFase1,
                 imagenUrl: _imagenURL1,
+                fase: 1,
               ),
 
               const SizedBox(height: 20),
+
               _buildFaseCompleta(
                 titulo: "💡 Fase 2: Propuesta de Solución",
                 campos: [
@@ -805,34 +753,22 @@ Widget build(BuildContext context) {
                   _buildField(_ataqueController, "¿Cómo planeas atacar el problema identificado?"),
                   _buildField(_materialesController, "¿Qué materiales o recursos necesitas?"),
                 ],
-                onGrabar: () {
-                  if (_speechManager.isListening) {
-                    _speechManager.detener();
-                  } else {
-                    _currentController = null; // No queremos que sobrescriba campos
-                    _speechManager = AudioPorFaseSpeechManager(
-                      onUpdate: (texto) {
-                        setState(() => _transcripcionFase2 = texto);
-                      },
-                      onFinal: (texto) {
-                        setState(() => _transcripcionFase2 = texto);
-                      },
-                    );
-                    _speechManager.inicializar().then((_) => _speechManager.iniciar());
-                  }
-                },
+                onGrabar: () => _iniciarDictadoFase(2),
                 onImagen: () async {
                   final url = await _pickImageFromGallery();
                   if (url != null) setState(() => _imagenURL2 = url);
                 },
+                onEliminarImagen: _imagenURL2 != null
+                    ? () => setState(() => _imagenURL2 = null)
+                    : null,
                 transcripcion: _transcripcionFase2,
                 imagenUrl: _imagenURL2,
+                fase: 2,
               ),
-
               const SizedBox(height: 30),
               botonConAyuda(
                 boton: FilledButton.icon(
-                  onPressed: () => ejecutarConCarga(_enviarIdea),
+                  onPressed: () => ejecutarConCarga(() async => await _enviarIdea()),
                   icon: const Icon(Icons.send),
                   label: const Text("Enviar Idea para Análisis IA"),
                 ),
@@ -910,8 +846,10 @@ Widget _buildFaseCompleta({
   required List<Widget> campos,
   required VoidCallback onGrabar,
   required VoidCallback onImagen,
+  required VoidCallback? onEliminarImagen, // 🔥 nuevo
   required String transcripcion,
   required String? imagenUrl,
+  required int fase,
 }) {
   return _buildCard(
     titulo,
@@ -919,19 +857,20 @@ Widget _buildFaseCompleta({
       ...campos,
       const SizedBox(height: 12),
 
-      // Botones de voz e imagen
+      // 🎤 Botones de voz e imagen
       Row(
         children: [
           ElevatedButton.icon(
             onPressed: onGrabar,
-            icon: Icon(_speechManager.isListening ? Icons.stop_circle : Icons.mic),
-            label: Text(_speechManager.isListening ? "Detener Voz" : "Dictar por Voz"),
+            icon: Icon(_grabandoPorFase[fase] == true ? Icons.stop_circle : Icons.mic),
+            label: Text(_grabandoPorFase[fase] == true ? "Detener Voz" : "Dictar por Voz"),
             style: ElevatedButton.styleFrom(
-              backgroundColor: _speechManager.isListening ? Colors.red : Colors.deepPurple,
+              backgroundColor: _grabandoPorFase[fase] == true ? Colors.red : Colors.deepPurple,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
           ),
+
           const SizedBox(width: 12),
           ElevatedButton.icon(
             onPressed: onImagen,
@@ -946,7 +885,19 @@ Widget _buildFaseCompleta({
         ],
       ),
 
-      // Texto transcripto
+      // 🔴 Indicador de grabación
+      if (_grabandoPorFase[fase] == true) ...[
+        const SizedBox(height: 8),
+        Row(
+          children: const [
+            Icon(Icons.circle, color: Colors.redAccent, size: 12),
+            SizedBox(width: 6),
+            Text("Grabando...", style: TextStyle(color: Colors.redAccent)),
+          ],
+        ),
+      ],
+
+      // 🗣 Texto dictado
       if (transcripcion.isNotEmpty) ...[
         const SizedBox(height: 12),
         Container(
@@ -960,27 +911,31 @@ Widget _buildFaseCompleta({
         ),
       ],
 
-      // Imagen cargada
+      // 🖼 Imagen + botón eliminar
       if (imagenUrl != null) ...[
         const SizedBox(height: 12),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(imagenUrl, height: 120),
+        Stack(
+          alignment: Alignment.topRight,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(imagenUrl, height: 120),
+            ),
+            if (onEliminarImagen != null)
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.redAccent),
+                onPressed: onEliminarImagen,
+                tooltip: 'Eliminar imagen',
+              ),
+          ],
         ),
       ],
     ],
   );
 }
 
- 
-// Versión optimizada del build() y _buildFase() para ProponerIdeaPage
 
-
-// El build() optimizado ya fue incluido arriba...
-
-
-
-  Widget _buildField(TextEditingController controller, String label) {
+Widget _buildField(TextEditingController controller, String label) {
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 10),
     child: TextFormField(
@@ -1006,9 +961,7 @@ Widget _buildFaseCompleta({
   );
 }
 
-
-
-  Widget _mostrarIteracionIA() {
+Widget _mostrarIteracionIA() {
     final preguntas = List<String>.from(_respuestaIteracion?["preguntasIterativas"] ?? []);
     final riesgos = List<String>.from(_respuestaIteracion?["riesgosDetectados"] ?? []);
     final acciones = List<String>.from(_respuestaIteracion?["accionesRecomendadas"] ?? []);
@@ -1068,7 +1021,7 @@ Widget _buildFaseCompleta({
     );
   }
 
-  Widget _formularioRespuestasIA() {
+Widget _formularioRespuestasIA() {
   final preguntas = List<String>.from(_respuestaIteracion?["preguntasIterativas"] ?? []);
 
   return Container(
@@ -1136,10 +1089,10 @@ Widget _buildFaseCompleta({
   );
 }
 
-  Widget botonConAyuda({
+Widget botonConAyuda({
   required Widget boton,
   required String mensajeAyuda,
-}) {
+  }) {
   return Row(
     mainAxisSize: MainAxisSize.min,
     children: [
@@ -1167,7 +1120,7 @@ Widget _buildFaseCompleta({
   );
 }
 
-  Widget _mostrarRespuestaIA() {
+Widget _mostrarRespuestaIA() {
   return Container(
     margin: const EdgeInsets.only(top: 20),
     decoration: BoxDecoration(

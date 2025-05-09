@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -22,12 +24,31 @@ class _HomeEmpresaPageState extends State<HomeEmpresaPage> {
   String? uidEmpresa;
   String? empresaNombre;
   String? empresaCorreo;
+  final List<String> _imagenes = List.generate(
+    12,
+    (i) => 'assets/innova/imagenrelave${i + 1}.jpeg',
+  );
+  int _imagenActual = 0;
+  late Timer _timer;
+
 
   @override
   void initState() {
     super.initState();
     _cargarTareas();
+
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      setState(() {
+        _imagenActual = (_imagenActual + 1) % _imagenes.length;
+      });
+    });
   }
+
+  @override
+void dispose() {
+  _timer.cancel();
+  super.dispose();
+}
 
   Future<void> _cargarTareas() async {
     final prefs = await SharedPreferences.getInstance();
@@ -67,6 +88,7 @@ class _HomeEmpresaPageState extends State<HomeEmpresaPage> {
     });
   }
 
+  
   Widget _construirListaTareas(String titulo, List<Tarea> tareas) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -221,7 +243,30 @@ class _HomeEmpresaPageState extends State<HomeEmpresaPage> {
           ),
         ),
       ),
-      body: SingleChildScrollView(
+      body: Stack(
+  children: [
+    // 🔁 Imagen de fondo rotativa
+    Positioned.fill(
+      child: AnimatedSwitcher(
+        duration: const Duration(seconds: 1),
+        child: Image.asset(
+          _imagenes[_imagenActual],
+          key: ValueKey(_imagenes[_imagenActual]),
+          fit: BoxFit.cover, // ✅ Asegura que cubra toda el área
+        ),
+      ),
+    ),
+
+    // ⚫ Capa semitransparente oscura (para que el texto sea legible)
+    Positioned.fill(
+      child: Container(
+        color: Colors.black.withOpacity(0.6),
+      ),
+    ),
+
+    // Contenido principal
+    Positioned.fill(
+      child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -230,7 +275,11 @@ class _HomeEmpresaPageState extends State<HomeEmpresaPage> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
                 "📋 Tareas de la Empresa",
-                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             _buildResumenTareas(),
@@ -240,6 +289,11 @@ class _HomeEmpresaPageState extends State<HomeEmpresaPage> {
           ],
         ),
       ),
+    ),
+  ],
+),
+
+
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [

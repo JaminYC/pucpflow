@@ -21,7 +21,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart'; // Surfac
 // 🔹 Configuración de Firebase para Web
 const firebaseOptions = FirebaseOptions(
   apiKey: "AIzaSyBNXEkHOWBqRnojN9pkXVJKCQZDgY6wkTE",
-  authDomain: "pucp-flow.web.app",
+  authDomain: "pucp-flow.firebaseapp.com",
   projectId: "pucp-flow",
   storageBucket: "pucp-flow.firebasestorage.app",
   messagingSenderId: "547054267025",

@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "547054267025",
+    "firebase_url": "https://pucp-flow-default-rtdb.firebaseio.com",
     "project_id": "pucp-flow",
     "storage_bucket": "pucp-flow.firebasestorage.app"
   },
@@ -13,6 +14,14 @@
         }
       },
       "oauth_client": [
+        {
+          "client_id": "547054267025-cb4rq8dun2h3s0ar4f6ao4vclfbrciur.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.fitness",
+            "certificate_hash": "29c45a97d034c73af5707734547e3f71d878bb82"
+          }
+        },
         {
           "client_id": "547054267025-pmdkgmgolr8e9bio0c5bqoa61gc2ssne.apps.googleusercontent.com",
           "client_type": 1,
@@ -57,6 +66,14 @@
         }
       },
       "oauth_client": [
+        {
+          "client_id": "547054267025-0e0pi0f5mdq4a10hqua1io7d3aba692o.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pucpflow",
+            "certificate_hash": "29c45a97d034c73af5707734547e3f71d878bb82"
+          }
+        },
         {
           "client_id": "547054267025-lrrutv0sgk08ftglepkaahb0q4v0njr0.apps.googleusercontent.com",
           "client_type": 1,

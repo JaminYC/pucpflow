@@ -93,7 +93,7 @@ dependencies:
   flutter_screenutil: ^5.9.3
 
   web: ^1.1.1
-  record: ^4.4.4  # o explícitamente 4.4.4
+  #record: ^4.4.4  # o explícitamente 4.4.4
   just_audio: ^0.10.2
   uuid: ^4.5.1
   pdf: ^3.11.3

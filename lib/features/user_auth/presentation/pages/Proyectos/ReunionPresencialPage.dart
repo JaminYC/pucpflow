@@ -6,6 +6,11 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:video_player/video_player.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/proyecto_model.dart';
 
+
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
 class ReunionPresencialPage extends StatefulWidget {
   final Proyecto proyecto;
   const ReunionPresencialPage({super.key, required this.proyecto});
@@ -176,6 +181,9 @@ class _ReunionPresencialPageState extends State<ReunionPresencialPage> {
     _videoController.dispose();
     super.dispose();
   }
+  
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -196,6 +204,8 @@ class _ReunionPresencialPageState extends State<ReunionPresencialPage> {
                   )
                 : Container(color: Colors.black),
           ),
+                // Overlay oscuro para contraste
+          Container(color: Colors.black.withOpacity(0.5)),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -207,14 +217,24 @@ class _ReunionPresencialPageState extends State<ReunionPresencialPage> {
                     backgroundColor: Colors.transparent,
                     elevation: 0,
                   ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text("🎙 Transcripción:", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color.fromARGB(255, 0, 0, 0))),
-                      if (_isListening)
-                        Text(_formatoTiempo(_seconds), style: const TextStyle(color: Colors.green)),
-                    ],
-                  ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "🎙 Reunión Presencial",
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        if (_isListening)
+                          Row(
+                            children: [
+                              const Icon(Icons.access_time, color: Colors.greenAccent),
+                              const SizedBox(width: 4),
+                              Text(_formatoTiempo(_seconds), style: const TextStyle(color: Colors.white)),
+                            ],
+                          ),
+                      ],
+                    ),
+
                   const SizedBox(height: 10),
                   Expanded(
                     child: SingleChildScrollView(

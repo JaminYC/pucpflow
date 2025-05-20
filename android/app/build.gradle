@@ -7,13 +7,13 @@ plugins {
 }
 
 android {
-    namespace = "com.example.pucpflow"
-    compileSdk = 34  // Última versión estable de SDK
-    ndkVersion = "28.0.12916984" // Ajusta según la versión correcta
+    namespace "com.example.pucpflow"
+    compileSdkVersion 35
+    ndkVersion "28.0.12916984"
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
         coreLibraryDesugaringEnabled true
     }
 
@@ -22,22 +22,22 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.pucpflow"
+        applicationId "com.example.pucpflow"
         minSdkVersion 26
-        targetSdkVersion 34
+        targetSdkVersion 35
         versionCode 1
         versionName "1.0.0"
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.debug
+            signingConfig signingConfigs.debug
         }
     }
 }
 
 flutter {
-    source = "../.."
+    source "../.."
 }
 
 dependencies {
@@ -46,7 +46,7 @@ dependencies {
     implementation "com.google.firebase:firebase-auth"
     implementation "com.google.firebase:firebase-firestore"
     implementation "com.google.firebase:firebase-storage"
-     implementation 'com.google.android.gms:play-services-auth:20.7.0'
-    implementation "com.google.firebase:firebase-messaging"  // Notificaciones push
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
+    implementation 'com.google.android.gms:play-services-auth:20.7.0'
+    implementation "com.google.firebase:firebase-messaging"
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.3"
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,6 +12,8 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Innova/ProponerId
 import 'package:pucpflow/features/user_auth/presentation/pages/Innova/VerIdeasPage.dart';
 
 import 'package:pucpflow/features/user_auth/presentation/pages/Innova/WorkflowMockupPage.dart';
+import 'package:video_player/video_player.dart';
+
 
 class HomeEmpresaPage extends StatefulWidget {
   @override
@@ -24,31 +27,83 @@ class _HomeEmpresaPageState extends State<HomeEmpresaPage> {
   String? uidEmpresa;
   String? empresaNombre;
   String? empresaCorreo;
-  final List<String> _imagenes = List.generate(
-    12,
-    (i) => 'assets/innova/imagenrelave${i + 1}.jpeg',
-  );
-  int _imagenActual = 0;
-  late Timer _timer;
+
+final List<String> _fondos = [
+  'assets/innova/videorelave1.mp4',
+  'assets/innova/videorelave2.mp4',
+  'assets/innova/imagenrelave1.png',
+  'assets/innova/imagenrelave2.png',
+  'assets/innova/imagenrelave3.png',
+  'assets/innova/imagenrelave4.png',
+  'assets/innova/imagenrelave5.png',
+  'assets/innova/imagenrelave6.png',
+  'assets/innova/imagenrelave7.png',
+  'assets/innova/imagenrelave8.png',
+  'assets/innova/imagenrelave9.png',
+  'assets/innova/imagenrelave10.png',
+  'assets/innova/imagenrelave11.png',
+  'assets/innova/imagenrelave12.png',
+];
 
 
-  @override
-  void initState() {
-    super.initState();
-    _cargarTareas();
+int _indiceActual = 0;
+bool _esVideo = false;
+VideoPlayerController? _videoController;
+late Timer _timer;
 
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
-      setState(() {
-        _imagenActual = (_imagenActual + 1) % _imagenes.length;
-      });
-    });
-  }
 
-  @override
+@override
+void initState() {
+  super.initState();
+  _cargarTareas();
+  _cambiarFondo(); // inicia el ciclo
+}
+
+
+@override
 void dispose() {
+  _videoController?.dispose();
   _timer.cancel();
   super.dispose();
 }
+
+
+void _iniciarRotacion() {
+  _cambiarFondo();
+  _timer = Timer.periodic(Duration(seconds: 7), (_) {
+    _cambiarFondo();
+  });
+}
+
+Future<void> _cambiarFondo() async {
+  final fondo = _fondos[_indiceActual];
+  _indiceActual = (_indiceActual + 1) % _fondos.length;
+
+  if (fondo.endsWith('.mp4')) {
+    _esVideo = true;
+    _videoController?.dispose();
+    _videoController = VideoPlayerController.asset(fondo);
+    await _videoController!.initialize();
+    _videoController!.setVolume(0.0); // 🔇 SILENCIAR
+    _videoController!.setLooping(false);
+    await _videoController!.play();
+
+    // Esperar duración real del video antes de pasar al siguiente
+    final duracion = _videoController!.value.duration;
+    Future.delayed(duracion, _cambiarFondo);
+  } else {
+    _esVideo = false;
+    _videoController?.pause();
+
+    // Mostrar imagen durante 5 segundos
+    _timer = Timer(const Duration(seconds: 5), _cambiarFondo);
+  }
+
+  setState(() {});
+}
+
+
+
 
   Future<void> _cargarTareas() async {
     final prefs = await SharedPreferences.getInstance();
@@ -71,7 +126,6 @@ void dispose() {
     for (var proyectoDoc in proyectosSnapshot.docs) {
       final data = proyectoDoc.data();
       final tareasData = data["tareas"] as List<dynamic>? ?? [];
-
       for (var tareaJson in tareasData) {
         final tarea = Tarea.fromJson(tareaJson);
         if (tarea.responsables == uid) {
@@ -88,31 +142,46 @@ void dispose() {
     });
   }
 
-  
   Widget _construirListaTareas(String titulo, List<Tarea> tareas) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 6, offset: Offset(0, 3)),
-        ],
-      ),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        title: Text(
-          titulo,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+  return Container(
+    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    decoration: BoxDecoration(
+      color: Colors.white.withAlpha(80), // ✅ equivalente a 0.75 de opacidad
+ // translúcido
+      borderRadius: BorderRadius.circular(16),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.2),
+          blurRadius: 6,
+          offset: const Offset(0, 3),
         ),
-        children: tareas.map((tarea) => ListTile(
-          leading: Icon(Icons.task_alt, color: Colors.blue[800]),
-          title: Text(tarea.titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text("Tipo: ${tarea.tipoTarea}"),
-        )).toList(),
+      ],
+    ),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4), // efecto vidrio
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          title: Text(
+            titulo,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: Colors.white,
+              ),
+          ),
+          children: tareas.map((tarea) => ListTile(
+            leading: Icon(Icons.task_alt, color: Colors.blue[800]),
+            title: Text(tarea.titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text("Tipo: ${tarea.tipoTarea}"),
+          )).toList(),
+        ),
       ),
-    );
-  }
+    ),
+  );
+}
+
 
   Widget _buildResumenTareas() {
     return Padding(
@@ -244,66 +313,70 @@ void dispose() {
         ),
       ),
       body: Stack(
-  children: [
-    // 🔁 Imagen de fondo rotativa
-    Positioned.fill(
-      child: AnimatedSwitcher(
-        duration: const Duration(seconds: 1),
-        child: Image.asset(
-          _imagenes[_imagenActual],
-          key: ValueKey(_imagenes[_imagenActual]),
-          fit: BoxFit.cover, // ✅ Asegura que cubra toda el área
-        ),
-      ),
-    ),
+        children: [
+          Positioned.fill(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 800),
+              child: _esVideo && _videoController?.value.isInitialized == true
+                  ? SizedBox(
+                      width: MediaQuery.of(context).size.width,
+                      height: MediaQuery.of(context).size.height,
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: _videoController!.value.size.width,
+                          height: _videoController!.value.size.height,
+                          child: VideoPlayer(_videoController!),
+                        ),
+                      ),
+                    )
+                  : Image.asset(
+                      _fondos[_indiceActual],
+                      key: ValueKey(_fondos[_indiceActual]),
+                      fit: BoxFit.cover,
+                      width: MediaQuery.of(context).size.width,
+                      height: MediaQuery.of(context).size.height,
+                    ),
+            ),
+          ),
 
-    // ⚫ Capa semitransparente oscura (para que el texto sea legible)
-    Positioned.fill(
-      child: Container(
-        color: Colors.black.withOpacity(0.6),
-      ),
-    ),
 
-    // Contenido principal
-    Positioned.fill(
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                "📋 Tareas de la Empresa",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+          Positioned.fill(child: Container(color: Colors.black.withOpacity(0.6))),
+          Positioned.fill(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: const Text(
+                      "📋 Tareas de la Empresa",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  _buildResumenTareas(),
+                  _construirListaTareas("Tareas Asignadas", tareasAsignadas),
+                  _construirListaTareas("Tareas Libres", tareasLibres),
+                  const SizedBox(height: 100),
+                ],
               ),
             ),
-            _buildResumenTareas(),
-            _construirListaTareas("Tareas Asignadas", tareasAsignadas),
-            _construirListaTareas("Tareas Libres", tareasLibres),
-            const SizedBox(height: 100),
-          ],
-        ),
+          )
+
+        ],
       ),
-    ),
-  ],
-),
-
-
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           FloatingActionButton.extended(
             heroTag: "proyectos",
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ProyectosPage()),
-              );
+              Navigator.push(context, MaterialPageRoute(builder: (context) => ProyectosPage()));
             },
             icon: const Icon(Icons.folder_open, color: Colors.white),
             label: const Text("Ir a Proyectos", style: TextStyle(color: Colors.white)),
@@ -313,7 +386,7 @@ void dispose() {
           FloatingActionButton.extended(
             heroTag: "Iniciar Idea",
             onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => ProponerIdeaPage ()));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => ProponerIdeaPage()));
             },
             icon: const Icon(Icons.lightbulb, color: Colors.white),
             label: const Text("Iniciar Idea", style: TextStyle(color: Colors.white)),

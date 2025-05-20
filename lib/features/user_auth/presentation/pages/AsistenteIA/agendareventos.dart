@@ -99,14 +99,6 @@ Future<void> _agendarEvento() async {
     return;
   }
 
-  // 🕒 Convierte la fecha y hora seleccionadas a `DateTime`
-  DateTime fechaHoraEvento = DateTime(
-    _selectedDate!.year,
-    _selectedDate!.month,
-    _selectedDate!.day,
-    _selectedTime!.hour,
-    _selectedTime!.minute,
-  );
 
   // 🔹 Obtiene la API de Google Calendar
   final calendarApi = await _calendarService.signInAndGetCalendarApi();

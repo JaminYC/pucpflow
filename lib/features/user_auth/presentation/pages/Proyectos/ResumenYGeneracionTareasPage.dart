@@ -6,6 +6,11 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/proyecto_model.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
 
+
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
 class ResumenYGeneracionTareasPage extends StatefulWidget {
   final String texto;
   final Proyecto proyecto;
@@ -30,7 +35,7 @@ class _ResumenYGeneracionTareasPageState extends State<ResumenYGeneracionTareasP
     _procesarConIA(widget.texto);
   }
 
-Future<void> _procesarConIA(String texto) async {
+  Future<void> _procesarConIA(String texto) async {
   try {
     participantes = await _obtenerParticipantes(); // [{ uid, nombre }]
     final habilidadesPorUID = await _obtenerHabilidadesPorUID();
@@ -76,7 +81,7 @@ Future<void> _procesarConIA(String texto) async {
   }
 }
 
-Future<Map<String, List<String>>> _obtenerHabilidadesPorUID() async {
+  Future<Map<String, List<String>>> _obtenerHabilidadesPorUID() async {
   final Map<String, List<String>> habilidades = {};
   for (String uid in widget.proyecto.participantes) {
     final doc = await _firestore.collection("users").doc(uid).get();
@@ -125,6 +130,54 @@ Future<Map<String, List<String>>> _obtenerHabilidadesPorUID() async {
 
     Navigator.pop(context);
   }
+
+
+  Future<void> _generarYMostrarPDF() async {
+  final pdf = pw.Document();
+
+  pdf.addPage(
+    pw.MultiPage(
+      build: (context) => [
+        pw.Text("Resumen de la Reunión", style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 10),
+        pw.Text(resumen, style: pw.TextStyle(fontSize: 14)),
+        pw.SizedBox(height: 20),
+        pw.Text("Tareas Generadas", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 10),
+        ...tareasGeneradas.map((tarea) {
+          final responsable = participantes.firstWhere(
+            (p) => p["uid"] == tarea["responsable"],
+            orElse: () => {"nombre": "No asignado"},
+          );
+          return pw.Container(
+            margin: const pw.EdgeInsets.symmetric(vertical: 8),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text("• ${tarea["titulo"]}", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                pw.Text("Responsable: ${responsable["nombre"]}"),
+                pw.Text("Fecha límite: ${DateFormat("dd/MM/yyyy").format(tarea["fecha"])}"),
+                if (tarea["matchHabilidad"] != null)
+                  pw.Text(
+                    "Habilidad clave: ${tarea["matchHabilidad"]}",
+                    style: pw.TextStyle(fontSize: 11, fontStyle: pw.FontStyle.italic),
+                  ),
+                if (tarea["asignadoPorDefecto"] == true)
+                pw.Text(
+                  "Asignado por IA como mejor opción",
+                  style: pw.TextStyle(fontSize: 11, fontStyle: pw.FontStyle.italic),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ],
+    ),
+  );
+
+  await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -270,7 +323,13 @@ Future<Map<String, List<String>>> _obtenerHabilidadesPorUID() async {
                   ElevatedButton(
                     onPressed: tareasGeneradas.isEmpty ? null : _guardarTareas,
                     child: const Text("✅ Confirmar y Guardar Tareas"),
-                  )
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    onPressed: tareasGeneradas.isEmpty ? null : _generarYMostrarPDF,
+                    icon: const Icon(Icons.picture_as_pdf),
+                    label: const Text("📄 Exportar como PDF"),
+                  ) 
                 ],
               ),
             ),

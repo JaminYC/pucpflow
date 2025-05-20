@@ -12,6 +12,7 @@ class Proyecto {
   final List<String> participantes;
   final String visibilidad; // "Publico" o "Privado"
   final String? imagenUrl;
+  final Map<String, List<String>> areas;
   List<Tarea> tareas;
 
   Proyecto({
@@ -24,6 +25,7 @@ class Proyecto {
     this.visibilidad = "Privado",
     this.imagenUrl,
     this.tareas = const [],
+    this.areas = const {},
   });
 
   Proyecto copyWith({
@@ -36,6 +38,7 @@ class Proyecto {
     String? visibilidad,
     String? imagenUrl,
     List<Tarea>? tareas,
+    Map<String, List<String>>? areas,
   }) {
     return Proyecto(
       id: id ?? this.id,
@@ -47,6 +50,7 @@ class Proyecto {
       visibilidad: visibilidad ?? this.visibilidad,
       imagenUrl: imagenUrl ?? this.imagenUrl,
       tareas: tareas ?? this.tareas,
+      areas: areas ?? this.areas,
     );
   }
 
@@ -61,6 +65,7 @@ class Proyecto {
       'visibilidad': visibilidad,
       'imagenUrl': imagenUrl,
       'tareas': tareas.map((t) => t.toJson()).toList(),
+      'areas': areas,
     };
   }
 
@@ -75,21 +80,39 @@ class Proyecto {
       visibilidad: json['visibilidad'] ?? "Privado",
       imagenUrl: json['imagenUrl'],
       tareas: (json['tareas'] as List<dynamic>?)?.map((tareaJson) => Tarea.fromJson(tareaJson)).toList() ?? [],
+      areas: (json['areas'] as Map<String, dynamic>?)?.map(
+                (key, value) => MapEntry(key, List<String>.from(value))) ?? {},
     );
   }
-  factory Proyecto.fromFirestore(DocumentSnapshot doc) {
-  final data = doc.data() as Map<String, dynamic>;
-  return Proyecto(
-    id: doc.id, // ✅ Este siempre funciona
-    nombre: data['nombre'],
-    descripcion: data['descripcion'],
-    fechaInicio: DateTime.parse(data['fechaInicio']),
-    propietario: data['propietario'],
-    participantes: List<String>.from(data['participantes'] ?? []),
-    visibilidad: data['visibilidad'] ?? "Privado",
-    imagenUrl: data['imagenUrl'],
-    tareas: (data['tareas'] as List<dynamic>?)?.map((t) => Tarea.fromJson(t)).toList() ?? [],
-  );
-}
 
-}
+  factory Proyecto.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return Proyecto(
+      id: doc.id, // ✅ Este siempre funciona
+      nombre: data['nombre'],
+      descripcion: data['descripcion'],
+      fechaInicio: DateTime.parse(data['fechaInicio']),
+      propietario: data['propietario'],
+      participantes: List<String>.from(data['participantes'] ?? []),
+      visibilidad: data['visibilidad'] ?? "Privado",
+      imagenUrl: data['imagenUrl'],
+      tareas: (data['tareas'] as List<dynamic>?)?.map((t) => Tarea.fromJson(t)).toList() ?? [],
+      areas: (data['areas'] as Map<String, dynamic>?)?.map(
+                (key, value) => MapEntry(key, List<String>.from(value))) ?? {},
+    );
+  }
+
+  /// Permite agregar o actualizar un área con una lista de participantes
+  Proyecto actualizarArea(String nombreArea, List<String> nuevosParticipantes) {
+    final nuevasAreas = Map<String, List<String>>.from(areas);
+    nuevasAreas[nombreArea] = nuevosParticipantes;
+    return copyWith(areas: nuevasAreas);
+  }
+
+  /// Permite eliminar un área del proyecto
+  Proyecto eliminarArea(String nombreArea) {
+    final nuevasAreas = Map<String, List<String>>.from(areas);
+    nuevasAreas.remove(nombreArea);
+    return copyWith(areas: nuevasAreas);
+  }
+} 

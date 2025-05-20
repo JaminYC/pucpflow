@@ -17,8 +17,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:convert';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+//ignore: avoid_web_libraries_in_flutter
+// import 'dart:html' as html;
 import 'dart:io';
 
 
@@ -254,9 +254,9 @@ Future<void> _exportarPDF() async {
   if (kIsWeb) {
     final base64Data = base64Encode(bytes);
     final url = "data:application/pdf;base64,$base64Data";
-    final anchor = html.AnchorElement(href: url)
-      ..setAttribute("download", fileName)
-      ..click();
+    // final anchor = html.AnchorElement(href: url)
+    //   ..setAttribute("download", fileName)
+    //   ..click();
   } else {
     await showDialog(
       context: context,

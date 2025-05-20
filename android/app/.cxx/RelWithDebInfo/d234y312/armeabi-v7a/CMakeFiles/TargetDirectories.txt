@@ -1,0 +1,2 @@
+C:/Users/User/pucpflow/android/app/.cxx/RelWithDebInfo/d234y312/armeabi-v7a/CMakeFiles/edit_cache.dir
+C:/Users/User/pucpflow/android/app/.cxx/RelWithDebInfo/d234y312/armeabi-v7a/CMakeFiles/rebuild_cache.dir

@@ -41,7 +41,7 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Innova/CrearProye
 import 'idea.dart';
 
 // Web-only (ignore lint for flutter_web)
-import 'dart:html' as html; // ignore: avoid_web_libraries_in_flutter
+// import 'dart:html' as html; // ignore: avoid_web_libraries_in_flutter
 
 
 import 'package:flutter/foundation.dart';
@@ -50,7 +50,7 @@ import 'package:flutter_sound/flutter_sound.dart';
 
 
 import 'dart:typed_data';
-import 'package:record/record.dart';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:speech_to_text/speech_to_text.dart';
@@ -549,9 +549,9 @@ Future<void> generarInformeCompletoPDF() async {
   if (kIsWeb) {
     final base64Data = base64Encode(bytes);
     final url = "data:application/pdf;base64,$base64Data";
-    final anchor = html.AnchorElement(href: url)
-      ..setAttribute("download", fileName)
-      ..click();
+    // final anchor = html.AnchorElement(href: url)
+    //   ..setAttribute("download", fileName)
+    //   ..click();
   } else {
     final output = await getTemporaryDirectory();
     final file = File("${output.path}/$fileName");
@@ -727,9 +727,9 @@ Widget build(BuildContext context) {
               _buildFaseCompleta(
                 titulo: "🧠 Fase 1: Exploración",
                 campos: [
-                  _buildField(_contextoController, "¿A qué parte del proceso corresponde la idea?"),
-                  _buildField(_procesoController, "¿En qué etapa específica se presenta la dificultad?"),
-                  _buildField(_problemaController, "Describe brevemente el problema."),
+                  _buildField(_contextoController, "¿Dónde ocurre el problema"),
+                  _buildField(_procesoController, "¿Describe el problema?"),
+                  _buildField(_problemaController, " ¿Describe las causas?"),
                 ],
                 onGrabar: () => _iniciarDictadoFase(1),
                 onImagen: () async {
@@ -749,9 +749,9 @@ Widget build(BuildContext context) {
               _buildFaseCompleta(
                 titulo: "💡 Fase 2: Propuesta de Solución",
                 campos: [
-                  _buildField(_solucionController, "Describe brevemente tu propuesta de solución."),
-                  _buildField(_ataqueController, "¿Cómo planeas atacar el problema identificado?"),
-                  _buildField(_materialesController, "¿Qué materiales o recursos necesitas?"),
+                  _buildField(_solucionController, "Describe tu solución."),
+                  _buildField(_ataqueController, "¿Cómo atacas las causas?"),
+                  _buildField(_materialesController, "¿Qué materiales o recursos es necesario?"),
                 ],
                 onGrabar: () => _iniciarDictadoFase(2),
                 onImagen: () async {

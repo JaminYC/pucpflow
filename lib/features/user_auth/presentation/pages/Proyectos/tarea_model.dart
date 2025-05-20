@@ -1,17 +1,20 @@
 class Tarea {
   String titulo;
-  DateTime? fecha; // Puede ser nulo para tareas libres
+  DateTime? fecha;
   int duracion;
   int prioridad;
   bool completado;
   int colorId;
-  List<String> responsables; // Lista de IDs de usuarios responsables
-  String tipoTarea; // "Manual", "Libre", "Automática"
-
-  // Nuevos campos para matching y descripción
+  List<String> responsables;
+  String tipoTarea;
   Map<String, int> requisitos;
-  String? dificultad; // "baja", "media", "alta"
+  String? dificultad;
   String? descripcion;
+  List<String> tareasPrevias;
+  String area;
+
+  // CAMPO AUXILIAR (NO SE GUARDA EN FIRESTORE)
+  List<String>? responsablesNombres;
 
   Tarea({
     required this.titulo,
@@ -25,6 +28,9 @@ class Tarea {
     this.requisitos = const {},
     this.dificultad,
     this.descripcion,
+    this.tareasPrevias = const [],
+    this.area = 'General',
+    this.responsablesNombres, // Nuevo campo
   });
 
   Map<String, dynamic> toJson() {
@@ -40,6 +46,8 @@ class Tarea {
       'requisitos': requisitos,
       'dificultad': dificultad,
       'descripcion': descripcion,
+      'tareasPrevias': tareasPrevias,
+      'area': area,
     };
   }
 
@@ -58,6 +66,8 @@ class Tarea {
       requisitos: Map<String, int>.from(json['requisitos'] ?? {}),
       dificultad: json['dificultad'],
       descripcion: json['descripcion'],
+      tareasPrevias: List<String>.from(json['tareasPrevias'] ?? []),
+      area: json['area'] ?? 'General',
     );
   }
 }

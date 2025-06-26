@@ -65,8 +65,11 @@ dependencies:
   permission_handler: ^11.3.1
   flutter_google_maps_webservices: ^1.1.1
   flutter_google_places_sdk: ^0.3.10
-
+  google_maps_flutter_web: ^0.5.12+1
   image_picker: ^1.1.2
+  flutter_map: ^8.1.1
+  latlong2: ^0.9.0
+  flutter_map_marker_popup: ^8.0.1
   fl_chart: ^0.70.2
   lottie: ^3.2.0
   animations: ^2.0.11
@@ -91,7 +94,8 @@ dependencies:
   #Dependencias para el Manejo de Ventanas 
   responsive_builder: ^0.7.1
   flutter_screenutil: ^5.9.3
-
+  geolocator: ^10.1.0
+  flutter_dropzone: ^4.2.1
   web: ^1.1.1
   #record: ^4.4.4  # o explícitamente 4.4.4
   just_audio: ^0.10.2
@@ -149,10 +153,19 @@ flutter:
      - assets/fondodashboard.mp4
      - assets/videoranking.mp4
      - assets/Pomodoro.mp4
+     - assets/nucleo_fondo.jpg
      - assets/logovastoria.png
      - assets/logo_cafillari.png
      - assets/vortystorm.jpg
      - assets/innova/
+     - assets/crear_tarea.jpg
+     - assets/FlowVitakua.png
+     - assets/InnovaHistorico.png
+     - assets/InnovaResumen.png
+     - assets/proyectos.png
+     - assets/Talud_Dique.png
+     - assets/Talud_Linga.jpg
+
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

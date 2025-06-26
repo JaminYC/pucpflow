@@ -825,6 +825,7 @@ Widget build(BuildContext context) {
                             resumenProblema: _respuestaIA?["resumenProblema"] ?? "",
                             resumenSolucion: _respuestaIA?["resumenSolucion"] ?? "",
                             comentarioFinal: _respuestaValidacionFinal?["comentarioFinal"] ?? "",
+                            tituloz: _respuestaIA?["titulo"] ?? "",
                           ),
                         ),
                       );

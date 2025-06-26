@@ -252,16 +252,21 @@ exports.analizarIdea = onCall({ secrets: [openaiKey] }, async (request) => {
   const imagenURL1 = datos.imagenURL1 || "";
   const imagenURL2 = datos.imagenURL2 || "";
   
-  const prompt = `
+  const promptBase = `
   El usuario ha propuesto una idea de innovación. A partir de los siguientes datos, genera:
-  
+
   1. 🧠 Resumen del problema.
   2. 💡 Resumen de la solución.
   3. ✅ Evaluación de viabilidad técnica y económica.
   4. 🔄 Sugerencias o mejoras posibles.
-  
+  5. 📊 Nivel de madurez estimado (valor entre 0% y 100%).
+  6. ⚙️ Esfuerzo estimado para implementar la idea (bajo, medio o alto).
+  7. 🧭 Campo o área de mejora principal (ej. sostenibilidad, viabilidad técnica, modelo de negocio).
+  8. ⚠️ Lista de riesgos detectados.
+  9. ✅ Lista de acciones recomendadas para mejorar la idea.
+  10. 🏷️ Título sugerido para la idea/proyecto.
   Datos ingresados:
-  
+
   🧠 Fase 1: Exploración
   - Contexto: ${datos.contexto}
   - Proceso actual: ${datos.proceso}
@@ -270,22 +275,105 @@ exports.analizarIdea = onCall({ secrets: [openaiKey] }, async (request) => {
   - Herramientas involucradas: ${datos.herramientas}
   - Transcripción por voz (Fase 1): ${transcripcionFase1}
   - Imagen asociada (Fase 1): ${imagenURL1}
-  
+
   💡 Fase 2: Propuesta de Solución
   - Solución propuesta: ${datos.solucion}
   - Cómo ataca el problema: ${datos.ataque}
   - Materiales necesarios: ${datos.materiales}
   - Transcripción por voz (Fase 2): ${transcripcionFase2}
   - Imagen asociada (Fase 2): ${imagenURL2}
-  
-  Devuélvelo en JSON así:
+
+  Devuélvelo en formato JSON así:
   {
     "resumenProblema": "...",
     "resumenSolucion": "...",
     "evaluacion": "...",
-    "sugerencias": "..."
+    "sugerencias": ["..."],
+    "madurez": 78,
+    "esfuerzo": "medio",
+    "campo": "sostenibilidad",
+    "riesgosDetectados": ["..."],
+    "accionesRecomendadas": ["..."]
+    "titulo": "...",
   }
   `;
+
+
+  const contenidoTecnico =`Operación del Sistema de Relaves LingaMina Cerro Verde
+        La operación de Relaves Linga se inicia con la descarga del relave espesado proveniente de los cuatro espesadores principales hacia los boxes 102 y 2203, puntos estratégicos para la distribución del material hacia diferentes etapas del proceso.
+
+        Desde el Box 102, el relave se dirige por gravedad hacia los puntos de deposición (DPs) que forman parte de la estrategia de construcción del dique: DP14, DP15, DP16, DP13, F17, DP18, DP19, DP01, DP02A, DP03 y DP11A. El otro 50% del flujo es derivado al Box 2203, el cual alimenta directamente a la primera estación de ciclones, un sistema de clasificación fundamental para garantizar las condiciones ideales del relave que será finalmente depositado.
+
+        1. Clasificación por Ciclones
+        En la primera estación, se encuentran dos baterías de ciclones Gmax-15, con 30 unidades cada una. Estas clasifican el relave en:
+
+        Underflow: partículas gruesas, recolectadas en el Box 2204.
+
+        Overflow: partículas finas, conducidas por el sistema Jacking Overflow hacia la playa del embalse.
+
+        Posteriormente, el material del Box 2204 se bombea a la segunda estación de ciclones, que cuenta con 14 ciclones Gmax-26 de alta capacidad. Nuevamente se separa el:
+
+        Overflow hacia la playa del embalse.
+
+        Underflow hacia el Box 2115, donde se almacena el relave grueso ya clasificado.
+
+        Este relave debe cumplir con estándares técnicos: menos del 10.5% de finos en su composición para asegurar buena compactación, y no superar el 15% de finos una vez depositado.
+
+        2. Gestión del Dique de Relaves
+        El dique contiene el embalse de relaves y se encuentra segmentado en seis zonas (de la zona -1 a la 4), lo cual permite un plan de descarga ordenado. Esta estructura también incluye un sistema de drenes horizontales y verticales que canalizan las filtraciones hacia el pozo Seepage.
+
+        En este pozo operan tres barcazas con bombas sumergibles:
+
+        PW71, PW72, y PW73, encargadas de bombear el agua recuperada hacia los:
+
+        Tanques 47 → 26 → 2126, desde donde el agua es reutilizada principalmente en la segunda estación de ciclones.
+
+        3. Recuperación de Agua del Embalse
+        El relave que llega a la playa del embalse mediante Jacking Overflow se consolida naturalmente. Sin embargo, en épocas de alta humedad o baja evaporación, este proceso no es suficiente. Por ello se emplean equipos MudMaster, que:
+
+        Realizan consolidación mecánica del relave.
+
+        Abren canales de evacuación de aguas parásitas, mejorando la conducción del agua hacia el valle central de recuperación.
+
+        Este valle central mantiene normalmente 1 millón de m³ de agua, volumen crítico para el proceso de recirculación. Dos barcazas con cuatro bombas cada una (PW11) extraen el agua acumulada y la trasladan a los tanques de proceso TK-730 y TK-731, desde donde se reinyecta a la concentradora.
+
+        Operaciones Técnicas Detalladas según el PETS SORpr0030
+        A continuación, se listan las operaciones clave descritas en el PETS de bombeo de agua recuperada:
+
+        A. Operación de Barcazas Seepage
+        Verificación diaria del estado de bombas PW71 a PW73.
+        Supervisión del nivel del pozo Seepage.
+        Coordinación con la sala de control para encendido/apagado remoto.
+        Monitoreo de presiones de succión/descarga de las bombas.
+        Drenado del pozo en condiciones de lluvia intensa.
+
+        B. Operación de Barcazas Valle Central
+        Control y operación de las barcazas equipadas con bombas centrífugas verticales (PW11).
+        Revisión y limpieza de filtros de succión.
+        Control de caudal mediante válvulas de compuerta y check válvulas.
+        Inspección de mangueras, niveles de aceite y temperatura de motores.
+
+        C. Sistemas de Bombeo Auxiliares
+        Tanques 2126 y 47 incluyen bombas verticales tipo turbina (VTP) que elevan el agua hacia el sistema de recirculación.
+        Estas bombas operan con variadores de velocidad y sensores de nivel en tanques para automatizar el control.
+
+        D. Sistemas Eléctricos y de Control
+        Los tableros de control para bombas y barcazas son monitoreados desde la Sala Eléctrica C-103 y C-120.
+        Se emplean variadores VFD y arrancadores suaves para control de motores.
+        Las alarmas por alta temperatura, sobrecorriente o fallo de presión son atendidas según protocolo.
+
+        Resumen de Equipos Críticos
+        Bombas de ciclones:
+        Primera estación: 3820-PP-2901, PP-2902
+        Segunda estación: 3830-PP-2901, PP-2902, PP-2903
+
+        Boxes de control:
+        Box 102: entrada principal de relave.
+        Box 2203: previo a 1ra estación de ciclones.
+        Box 2204: previo a 2da estación.
+        Box 2115: salida final hacia deposición de relave grueso.
+        `;
+
   const openai = new OpenAI({ apiKey: openaiKey.value() });
 
   const completion = await openai.chat.completions.create({
@@ -293,7 +381,7 @@ exports.analizarIdea = onCall({ secrets: [openaiKey] }, async (request) => {
     temperature: 0.4,
     messages: [
       { role: "system", content: "Eres un asistente experto en innovación tecnológica en procesos en mineria." },
-      { role: "user", content: prompt },
+      { role: "user",  content: `${promptBase}\n\n${contenidoTecnico}`},
     ],
   });
 
@@ -361,6 +449,60 @@ exports.iterarIdea = onCall({ secrets: [openaiKey] }, async (request) => {
       return { error: "❌ Error en iterarIdea", detalles: err.message };
     }
   });
+exports.reforzarIdea = onCall({ secrets: [openaiKey] }, async (request) => {
+  const { ideaId, respuestas, comentariosAdicionales } = request.data;
+
+  const prompt = `
+  El usuario ha proporcionado nuevas respuestas para mejorar su idea de innovación.
+  A partir de estas respuestas, evalúa nuevamente la idea:
+
+  Respuestas del usuario:
+  ${Object.entries(respuestas).map(([q, r]) => `Q: ${q}\nA: ${r}`).join('\n\n')}
+
+  Comentarios adicionales: ${comentariosAdicionales}
+
+  Devuélvelo en formato JSON:
+  {
+    "resumenProblema": "...",
+    "resumenSolucion": "...",
+    "evaluacion": "...",
+    "sugerencias": ["..."],
+    "madurez": 84,
+    "esfuerzo": "medio",
+    "campo": "viabilidad técnica",
+    "riesgosDetectados": ["..."],
+    "accionesRecomendadas": ["..."]
+  }
+  `;
+
+  const openai = new OpenAI({ apiKey: openaiKey.value() });
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4",
+    temperature: 0.4,
+    messages: [
+      { role: "system", content: "Eres un asistente de innovación industrial." },
+      { role: "user", content: prompt },
+    ],
+  });
+
+  const content = completion.choices[0].message.content;
+
+  try {
+    const resultado = JSON.parse(content.slice(content.indexOf("{"), content.lastIndexOf("}") + 1));
+
+    // Actualiza Firestore con el nuevo análisis
+    await admin.firestore().collection("ideas").doc(ideaId).update({
+      resultadoIA: resultado,
+      estado: "reforzada",
+      fechaReforzada: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return resultado;
+  } catch (err) {
+    return { error: "❌ Falló el análisis IA", raw: content };
+  }
+});
 
 exports.validarRespuestasIteracion = onCall({ secrets: [openaiKey] }, async (request) => {
       const datos = request.data;

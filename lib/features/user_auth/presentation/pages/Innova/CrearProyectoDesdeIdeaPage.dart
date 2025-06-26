@@ -27,6 +27,7 @@ class CrearProyectoDesdeIdeaPage extends StatefulWidget {
   final String resumenSolucion;
   final String resumenProblema;
   final String comentarioFinal;
+  final String tituloz;
 
   const CrearProyectoDesdeIdeaPage({
     super.key,
@@ -34,12 +35,12 @@ class CrearProyectoDesdeIdeaPage extends StatefulWidget {
     required this.resumenSolucion,
     required this.resumenProblema,
     required this.comentarioFinal,
+    required this.tituloz,
   });
 
   @override
   State<CrearProyectoDesdeIdeaPage> createState() => _CrearProyectoDesdeIdeaPageState();
 }
-
 class _CrearProyectoDesdeIdeaPageState extends State<CrearProyectoDesdeIdeaPage> {
   final TextEditingController nombreController = TextEditingController();
   final TextEditingController descripcionController = TextEditingController();
@@ -55,7 +56,9 @@ Future<void> _crearProyectoConTareas() async {
     final prefs = await SharedPreferences.getInstance();
 
     final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid ?? prefs.getString('uid_empresarial') ?? 'sin_uid';
     final nombre = prefs.getString('empresaNombre') ?? user?.email ?? 'CERRO VERDE';
+
 
     if (nombre.isEmpty) {
       throw Exception("No se pudo identificar al usuario");
@@ -94,8 +97,8 @@ Future<void> _crearProyectoConTareas() async {
       'ideaId': widget.ideaId,
       'publico': esPublico,
       'visibilidad': esPublico ? 'Publico' : 'Privado',
-      'propietario': nombre,
-      'participantes': [nombre],
+      'propietario': uid,
+      'participantes': [uid],
       'imagenUrl':
           'https://firebasestorage.googleapis.com/v0/b/pucp-flow.firebasestorage.app/o/proyecto_imagenes%2Fimagen_por_defecto.jpg?alt=media&token=67db12bf-0ce4-4697-98f3-3c6126467595',
       'tareas': tareasSinResponsables.map((t) => {
@@ -318,8 +321,6 @@ pw.Widget _seccionPDF(String titulo, pw.TextStyle titleStyle, pw.TextStyle bodyS
 
 @override
 Widget build(BuildContext context) {
-  descripcionController.text = widget.resumenSolucion;
-
   return Scaffold(
     extendBodyBehindAppBar: true,
     appBar: AppBar(
@@ -334,7 +335,7 @@ Widget build(BuildContext context) {
         // Fondo
         Positioned.fill(
           child: Image.asset(
-            'assets/FondoCoheteNegro2.jpg',
+            'assets/proyectos.png',
             fit: BoxFit.cover,
           ),
         ),
@@ -409,6 +410,12 @@ Widget build(BuildContext context) {
       ],
     ),
   );
+}
+@override
+void initState() {
+  super.initState();
+  nombreController.text = widget.tituloz; // Nombre del proyecto por defecto
+  descripcionController.text = widget.resumenSolucion; // Esto ya lo hacías en build, mejor aquí
 }
 
 Widget _buildCard(String titulo, List<Widget> campos) {

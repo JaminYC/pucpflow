@@ -3,6 +3,8 @@ import 'package:pucpflow/Cafillari/screens/home/Cafillarihomepage.dart' show Caf
 import 'package:video_player/video_player.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_page.dart'; // HomePage de FLOW
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pucpflow/FlowVitakua/presentationVitakua/pagesVitakua/vitakua_home_page.dart';
+
 
 class VastoriaHomePage extends StatefulWidget {
   const VastoriaHomePage({Key? key}) : super(key: key);
@@ -103,6 +105,16 @@ class _VastoriaHomePageState extends State<VastoriaHomePage> {
                     description: "La nueva generación del café peruano: frescura, tecnología y raíces andinas.",
                     onTap: () {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const CafillariHomePage()));
+                    },
+                  ),
+                  const SizedBox(height: 30),
+                  _buildProgramButton(
+                    context: context,
+                    icon: Icons.water_drop,
+                    title: "FLOW VITAKUA",
+                    description: "Tecnología inteligente para acceso justo y sostenible al agua.",
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const VitakuaHomePage()));
                     },
                   ),
 

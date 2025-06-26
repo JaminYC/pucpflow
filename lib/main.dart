@@ -17,6 +17,10 @@ import 'package:webview_flutter/webview_flutter.dart' as webview;
 
 import 'package:webview_flutter_android/webview_flutter_android.dart'; // SurfaceAndroidWebView ✅
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter_web/google_maps_flutter_web.dart';
+
 
 // 🔹 Configuración de Firebase para Web
 const firebaseOptions = FirebaseOptions(

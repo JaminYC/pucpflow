@@ -11,6 +11,8 @@ import 'dart:io';
 import 'proyecto_model.dart';
 import 'ProyectoDetallePage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart'; // ⬅️ Esto permite formatear fechas
+import 'package:flutter_dropzone/flutter_dropzone.dart';
 
 import 'dart:typed_data';
 import 'dart:io' as io;
@@ -25,6 +27,8 @@ class _ProyectosPageState extends State<ProyectosPage>  with AutomaticKeepAliveC
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
+  DropzoneViewController? dropzoneController;
+  Uint8List? imagenPreviewBytes;
   
   String filtroVisibilidad = "Todos";
   late VideoPlayerController _videoController;
@@ -52,12 +56,12 @@ class _ProyectosPageState extends State<ProyectosPage>  with AutomaticKeepAliveC
 Stream<List<Proyecto>> obtenerProyectos() async* {
   final prefs = await SharedPreferences.getInstance();
   final user = _auth.currentUser;
-  final uidEmpresarial = prefs.getString("uid_empresarial");
+  final uid = user?.uid ?? prefs.getString("uid_empresarial");
 
-  final uid = user != null ? user.uid : prefs.getString("uid_empresarial");
-
+  print("✅ UID actual: $uid");
 
   if (uid == null) {
+    print("⚠️ UID nulo");
     yield [];
     return;
   }
@@ -67,12 +71,20 @@ Stream<List<Proyecto>> obtenerProyectos() async* {
       .where("participantes", arrayContains: uid)
       .snapshots()
       .map((snapshot) {
-    return snapshot.docs.map((doc) => Proyecto.fromJson(doc.data())).where((proyecto) {
-      if (filtroVisibilidad == "Todos") return true;
-      return proyecto.visibilidad == filtroVisibilidad;
-    }).toList();
-  });
+        print("📦 Documentos recibidos: ${snapshot.docs.length}");
+        for (var doc in snapshot.docs) {
+          print("📄 Proyecto: ${doc.data()}");
+        }
+        return snapshot.docs
+            .map((doc) => Proyecto.fromJson(doc.data()))
+            .where((proyecto) {
+              print("🔎 Proyecto ${proyecto.nombre} → visibilidad: ${proyecto.visibilidad}");
+              return filtroVisibilidad == "Todos" || proyecto.visibilidad == filtroVisibilidad;
+            })
+            .toList();
+      });
 }
+
 
 Future<void> cargarNombresPropietarios(List<Proyecto> proyectos) async {
   final uids = proyectos.map((p) => p.propietario).toSet();
@@ -153,7 +165,14 @@ Future<String?> _subirImagenPlataforma(XFile archivo) async {
 
 
 
-Future<void> _crearProyecto(String nombre, String visibilidad, XFile? imagenFile) async {
+Future<void> _crearProyecto(
+  String nombre,
+  String visibilidad,
+  XFile? imagenFile,
+  Uint8List? imagenBytes,
+  DateTime fechaInicio,
+  DateTime? fechaFin,
+) async {
   final prefs = await SharedPreferences.getInstance();
   final uid = FirebaseAuth.instance.currentUser?.uid ?? prefs.getString("uid_empresarial");
   if (uid == null) return;
@@ -162,24 +181,46 @@ Future<void> _crearProyecto(String nombre, String visibilidad, XFile? imagenFile
 
   if (imagenFile != null) {
     urlImagen = await _subirImagenPlataforma(imagenFile) ?? _imagenPorDefecto();
+  } else if (imagenBytes != null) {
+    final nombreArchivo = "drag_${DateTime.now().millisecondsSinceEpoch}.png";
+    urlImagen = await subirImagenDesdeBytes(imagenBytes, nombreArchivo) ?? _imagenPorDefecto();
   } else {
     urlImagen = _imagenPorDefecto();
   }
+
 
   final nuevoProyecto = Proyecto(
     id: FirebaseFirestore.instance.collection('proyectos').doc().id,
     nombre: nombre,
     descripcion: "Descripción del proyecto...",
-    fechaInicio: DateTime.now(),
+    fechaInicio: fechaInicio,
+    fechaFin: fechaFin,
+    fechaCreacion: DateTime.now(),
     propietario: uid,
     participantes: [uid],
     visibilidad: visibilidad,
     imagenUrl: urlImagen,
   );
 
-  await FirebaseFirestore.instance.collection("proyectos").doc(nuevoProyecto.id).set(nuevoProyecto.toJson());
+  await FirebaseFirestore.instance
+      .collection("proyectos")
+      .doc(nuevoProyecto.id)
+      .set(nuevoProyecto.toJson());
 }
 
+Future<String?> subirImagenDesdeBytes(Uint8List bytes, String nombreArchivo) async {
+  try {
+    final ref = FirebaseStorage.instance.ref().child('proyecto_imagenes/$nombreArchivo');
+    final uploadTask = await ref.putData(
+      bytes,
+      SettableMetadata(contentType: 'image/png'),
+    );
+    return await uploadTask.ref.getDownloadURL();
+  } catch (e) {
+    debugPrint('❌ Error al subir imagen desde bytes: $e');
+    return null;
+  }
+}
 
 String _imagenPorDefecto() {
   return "https://firebasestorage.googleapis.com/v0/b/pucp-flow.firebasestorage.app/o/proyecto_imagenes%2Fimagen_por_defecto.jpg?alt=media&token=67db12bf-0ce4-4697-98f3-3c6126467595";
@@ -191,6 +232,11 @@ void _mostrarDialogoNuevoProyecto() {
   String nombreProyecto = "";
   String visibilidad = "Privado";
   XFile? imagenSeleccionada;
+  Uint8List? imagenPreviewBytes;
+  DateTime? fechaInicio;
+  DateTime? fechaFin;
+
+  DropzoneViewController? dropzoneController;
 
   showDialog(
     context: context,
@@ -207,12 +253,92 @@ void _mostrarDialogoNuevoProyecto() {
                     decoration: const InputDecoration(hintText: "Nombre del proyecto"),
                     onChanged: (value) => nombreProyecto = value,
                   ),
+                  const SizedBox(height: 10),
+
+                  /// Fecha de inicio
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final seleccionada = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (seleccionada != null) {
+                        setStateDialog(() => fechaInicio = seleccionada);
+                      }
+                    },
+                    icon: const Icon(Icons.calendar_today, color: Colors.white),
+                    label: Text(
+                      fechaInicio != null
+                          ? "Inicio: ${DateFormat('dd/MM/yyyy').format(fechaInicio!)}"
+                          : "Seleccionar fecha de inicio",
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  /// Fecha de fin
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final seleccionada = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (seleccionada != null) {
+                        setStateDialog(() => fechaFin = seleccionada);
+                      }
+                    },
+                    icon: const Icon(Icons.event, color: Colors.white),
+                    label: Text(
+                      fechaFin != null
+                          ? "Fin: ${DateFormat('dd/MM/yyyy').format(fechaFin!)}"
+                          : "Seleccionar fecha de fin",
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
+                  ),
+
+                  /// Visibilidad
                   DropdownButton<String>(
                     value: visibilidad,
                     onChanged: (value) => setStateDialog(() => visibilidad = value!),
-                    items: ["Privado", "Publico"].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                    items: ["Privado", "Publico"]
+                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
                   ),
+
                   const SizedBox(height: 10),
+
+                  /// Dropzone para arrastrar imagen
+                  SizedBox(
+                    height: 100,
+                    child: Stack(
+                      children: [
+                        DropzoneView(
+                          onCreated: (ctrl) => dropzoneController = ctrl,
+                          onDropFile: (file) async {
+                            final bytes = await dropzoneController!.getFileData(file);
+                            setStateDialog(() {
+                              imagenPreviewBytes = bytes;
+                              imagenSeleccionada = null;
+                            });
+                          },
+                        ),
+                        const Center(
+                          child: Text("Arrastra una imagen aquí", style: TextStyle(color: Colors.grey)),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  /// Botón para seleccionar imagen
                   ElevatedButton.icon(
                     icon: const Icon(Icons.image),
                     label: const Text("Seleccionar imagen"),
@@ -220,16 +346,26 @@ void _mostrarDialogoNuevoProyecto() {
                       final picker = ImagePicker();
                       final picked = await picker.pickImage(source: ImageSource.gallery);
                       if (picked != null) {
-                        setStateDialog(() => imagenSeleccionada = picked);
+                        setStateDialog(() {
+                          imagenSeleccionada = picked;
+                          imagenPreviewBytes = null;
+                        });
                       }
                     },
                   ),
+
+                  /// Previsualización
                   if (imagenSeleccionada != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 10),
                       child: kIsWeb
                           ? Image.network(imagenSeleccionada!.path, height: 100)
                           : Image.file(io.File(imagenSeleccionada!.path), height: 100),
+                    )
+                  else if (imagenPreviewBytes != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Image.memory(imagenPreviewBytes!, height: 100),
                     ),
                 ],
               ),
@@ -241,15 +377,17 @@ void _mostrarDialogoNuevoProyecto() {
               ),
               ElevatedButton(
                 onPressed: () async {
-                  if (nombreProyecto.isNotEmpty) {
-                    await _crearProyecto(nombreProyecto, visibilidad, imagenSeleccionada);
+                  if (nombreProyecto.isNotEmpty && fechaInicio != null) {
+                    _crearProyecto(nombreProyecto, visibilidad, imagenSeleccionada, imagenPreviewBytes, fechaInicio!, fechaFin);
                     Navigator.pop(context);
                   } else {
-                    print("⚠️ Falta nombre o imagen");
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("⚠️ Debes ingresar nombre y fecha de inicio")),
+                    );
                   }
                 },
                 child: const Text("Crear"),
-              )
+              ),
             ],
           );
         },
@@ -262,11 +400,16 @@ void _mostrarDialogoNuevoProyecto() {
 
 
 
+
 void _editarProyecto(Proyecto proyecto) {
   final nombreController = TextEditingController(text: proyecto.nombre);
   final descripcionController = TextEditingController(text: proyecto.descripcion);
   String visibilidad = proyecto.visibilidad;
   XFile? imagenSeleccionada;
+  Uint8List? imagenPreviewBytes;
+  DropzoneViewController? dropzoneController;
+  DateTime? fechaInicio = proyecto.fechaInicio;
+  DateTime? fechaFin = proyecto.fechaFin;
 
   showDialog(
     context: context,
@@ -294,24 +437,108 @@ void _editarProyecto(Proyecto proyecto) {
                         .map((v) => DropdownMenuItem(value: v, child: Text(v)))
                         .toList(),
                   ),
+                    const SizedBox(height: 10),
+
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        final seleccionada = await showDatePicker(
+                          context: context,
+                          initialDate: fechaInicio ?? DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                        );
+                        if (seleccionada != null) {
+                          setStateDialog(() => fechaInicio = seleccionada);
+                        }
+                      },
+                      icon: const Icon(Icons.calendar_today, color: Colors.white),
+                      label: Text(
+                        fechaInicio != null
+                          ? "Inicio: ${DateFormat('dd/MM/yyyy').format(fechaInicio!)}"
+                          : "Seleccionar fecha de inicio",
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900]),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        final seleccionada = await showDatePicker(
+                          context: context,
+                          initialDate: fechaFin ?? DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                        );
+                        if (seleccionada != null) {
+                          setStateDialog(() => fechaFin = seleccionada);
+                        }
+                      },
+                      icon: const Icon(Icons.event, color: Colors.white),
+                      label: Text(
+                        fechaFin != null
+                          ? "Fin: ${DateFormat('dd/MM/yyyy').format(fechaFin!)}"
+                          : "Seleccionar fecha de fin",
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
+                    ),
+
                   const SizedBox(height: 10),
+
+                  /// 🔹 Dropzone para arrastrar nueva imagen
+                  SizedBox(
+                    height: 100,
+                    child: Stack(
+                      children: [
+                        DropzoneView(
+                          onCreated: (ctrl) => dropzoneController = ctrl,
+                          onDropFile: (file) async {
+                            final bytes = await dropzoneController!.getFileData(file);
+                            setStateDialog(() {
+                              imagenPreviewBytes = bytes;
+                              imagenSeleccionada = null;
+                            });
+                          },
+                        ),
+                        const Center(
+                          child: Text("Arrastra una nueva imagen aquí", style: TextStyle(color: Colors.grey)),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  /// 🔹 Botón para seleccionar imagen con ImagePicker
                   ElevatedButton.icon(
                     icon: const Icon(Icons.image),
-                    label: const Text("Cambiar imagen"),
+                    label: const Text("Seleccionar nueva imagen"),
                     onPressed: () async {
                       final picker = ImagePicker();
                       final picked = await picker.pickImage(source: ImageSource.gallery);
                       if (picked != null) {
-                        setStateDialog(() => imagenSeleccionada = picked);
+                        setStateDialog(() {
+                          imagenSeleccionada = picked;
+                          imagenPreviewBytes = null;
+                        });
                       }
                     },
                   ),
+
+                  /// 🔹 Previsualización de imagen nueva (arrastrada o seleccionada)
                   if (imagenSeleccionada != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 10),
                       child: kIsWeb
                           ? Image.network(imagenSeleccionada!.path, height: 100)
                           : Image.file(io.File(imagenSeleccionada!.path), height: 100),
+                    )
+                  else if (imagenPreviewBytes != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Image.memory(imagenPreviewBytes!, height: 100),
                     ),
                 ],
               ),
@@ -331,6 +558,9 @@ void _editarProyecto(Proyecto proyecto) {
 
                   if (imagenSeleccionada != null) {
                     imagenUrl = await _subirImagenPlataforma(imagenSeleccionada!);
+                  } else if (imagenPreviewBytes != null) {
+                    final nombreArchivo = "edit_drag_${DateTime.now().millisecondsSinceEpoch}.png";
+                    imagenUrl = await subirImagenDesdeBytes(imagenPreviewBytes!, nombreArchivo);
                   }
 
                   await FirebaseFirestore.instance.collection("proyectos").doc(proyecto.id).update({
@@ -338,11 +568,14 @@ void _editarProyecto(Proyecto proyecto) {
                     "descripcion": descripcionController.text,
                     "visibilidad": visibilidad,
                     "imagenUrl": imagenUrl,
+                    "fechaInicio": fechaInicio,
+                    "fechaFin": fechaFin,
                     "propietario": uid,
                     "participantes": FieldValue.arrayUnion([uid]),
                   });
 
-                  setState(() {});
+
+                  setState(() {}); // Actualiza vista
                   Navigator.pop(context);
                 },
                 child: const Text("Guardar"),
@@ -354,6 +587,7 @@ void _editarProyecto(Proyecto proyecto) {
     },
   );
 }
+
 
 
 
@@ -409,19 +643,32 @@ Widget build(BuildContext context) {
             if (!prefsSnapshot.hasData) return const Center(child: CircularProgressIndicator());
             final uidEmpresarial = prefsSnapshot.data!.getString("uid_empresarial");
             return StreamBuilder<List<Proyecto>>(
-              stream: obtenerProyectos(),
+stream: obtenerProyectos(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text("Error al cargar proyectos: ${snapshot.error}"),
+                  );
+                }
+
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
                 final proyectos = snapshot.data!;
+                if (proyectos.isEmpty) {
+                  return const Center(child: Text("No hay proyectos disponibles."));
+                }             
 
                 final nuevosUids = proyectos
                     .map((p) => p.propietario)
                     .where((uid) => !nombresPropietarios.containsKey(uid))
                     .toSet();
                 if (nuevosUids.isNotEmpty) {
-                  Future.microtask(() => cargarNombresPropietarios(proyectos));
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    cargarNombresPropietarios(proyectos);
+                  });
                 }
-
                 return GridView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
@@ -524,6 +771,24 @@ Widget build(BuildContext context) {
                                               fontSize: 12,
                                             ),
                                           ),
+                                          Text(
+                                          "📅 Inicio: ${DateFormat('dd/MM/yyyy').format(proyecto.fechaInicio)}",
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                        if (proyecto.fechaFin != null)
+                                          Text(
+                                            "⏳ Fin: ${DateFormat('dd/MM/yyyy').format(proyecto.fechaFin!)}",
+                                            style: TextStyle(
+                                              color: proyecto.fechaFin!.isBefore(DateTime.now()) ? Colors.redAccent : Colors.white70,
+                                              fontSize: 11,
+                                              fontWeight: proyecto.fechaFin!.isBefore(DateTime.now()) ? FontWeight.bold : FontWeight.normal,
+                                            ),
+                                          ),
+
+
                                           if (isOwner)
                                             Row(
                                               mainAxisAlignment: MainAxisAlignment.end,

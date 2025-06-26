@@ -1,4 +1,5 @@
 class Idea {
+  final String? titulo;
   final String? contexto;
   final String? proceso;
   final String? problema;
@@ -9,6 +10,7 @@ class Idea {
   final String? materiales;
 
   Idea({
+    this.titulo,
     this.contexto,
     this.proceso,
     this.problema,
@@ -19,22 +21,23 @@ class Idea {
     this.materiales,
   });
 
-    Map<String, dynamic> toJson() {
-      return {
-        'contexto': contexto?.trim() ?? '',
-        'proceso': proceso?.trim() ?? '',
-        'problema': problema?.trim() ?? '',
-        'causas': causas?.trim() ?? '',
-        'herramientas': herramientas?.trim() ?? '',
-        'solucion': solucion?.trim() ?? '',
-        'ataque': ataque?.trim() ?? '',
-        'materiales': materiales?.trim() ?? '',
-      };
-    }
-
+  Map<String, dynamic> toJson() {
+    return {
+      'titulo': titulo?.trim() ?? '',
+      'contexto': contexto?.trim() ?? '',
+      'proceso': proceso?.trim() ?? '',
+      'problema': problema?.trim() ?? '',
+      'causas': causas?.trim() ?? '',
+      'herramientas': herramientas?.trim() ?? '',
+      'solucion': solucion?.trim() ?? '',
+      'ataque': ataque?.trim() ?? '',
+      'materiales': materiales?.trim() ?? '',
+    };
+  }
 
   factory Idea.fromJson(Map<String, dynamic> json) {
     return Idea(
+      titulo: json['titulo'],
       contexto: json['contexto'],
       proceso: json['proceso'],
       problema: json['problema'],

@@ -11,6 +11,7 @@ import 'package:pucpflow/Cafillari/screens/alerts/alerts_screen.dart';
 import 'package:pucpflow/Cafillari/screens/data_visualization/data_visualization_screen.dart';
 import 'package:pucpflow/Cafillari/screens/remote_control/remote_control_screen.dart';
 import 'package:pucpflow/Cafillari/screens/reports/reports_screen.dart';
+import 'package:pucpflow/Cafillari/screens/reports/coffee_map_screen.dart';
 
 
 class CafillariHomePage extends StatelessWidget {
@@ -49,7 +50,11 @@ class CafillariHomePage extends StatelessWidget {
               const SizedBox(height: 8),
               const Text('El nuevo amanecer del café inteligente.', style: AppTextStyles.subtitle, textAlign: TextAlign.center),
               const SizedBox(height: 30),
-
+              FeatureCard(
+              icon: Icons.map,
+              title: 'Mapa Cafetalero',
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DashboardCafetalero())),
+            ),
               FeatureCard(
                 icon: Icons.sensors,
                 title: 'Monitoreo en Tiempo Real',

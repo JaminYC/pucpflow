@@ -12,6 +12,7 @@ class Tarea {
   String? descripcion;
   List<String> tareasPrevias;
   String area;
+  List<String> habilidadesRequeridas; // ✅ Nuevo campo
 
   // CAMPO AUXILIAR (NO SE GUARDA EN FIRESTORE)
   List<String>? responsablesNombres;
@@ -30,7 +31,8 @@ class Tarea {
     this.descripcion,
     this.tareasPrevias = const [],
     this.area = 'General',
-    this.responsablesNombres, // Nuevo campo
+    this.habilidadesRequeridas = const [], // ✅ Nuevo campo inicializado
+    this.responsablesNombres,
   });
 
   Map<String, dynamic> toJson() {
@@ -48,6 +50,7 @@ class Tarea {
       'descripcion': descripcion,
       'tareasPrevias': tareasPrevias,
       'area': area,
+      'habilidadesRequeridas': habilidadesRequeridas, // ✅ Exporta el campo
     };
   }
 
@@ -59,15 +62,14 @@ class Tarea {
       prioridad: json['prioridad'] ?? 2,
       completado: json['completado'] ?? false,
       colorId: json['colorId'] ?? 0,
-      responsables: json['responsables'] != null
-          ? List<String>.from(json['responsables'])
-          : [],
+      responsables: List<String>.from(json['responsables'] ?? []),
       tipoTarea: json['tipoTarea'] ?? 'General',
       requisitos: Map<String, int>.from(json['requisitos'] ?? {}),
       dificultad: json['dificultad'],
       descripcion: json['descripcion'],
       tareasPrevias: List<String>.from(json['tareasPrevias'] ?? []),
       area: json['area'] ?? 'General',
+      habilidadesRequeridas: List<String>.from(json['habilidadesRequeridas'] ?? []), // ✅ Importa el campo
     );
   }
 }

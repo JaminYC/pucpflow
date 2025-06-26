@@ -5,15 +5,89 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectosPage.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectosPageInnova.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Innova/ProponerIdeaPage.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Innova/ProponerIdeaPageNuevo.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Innova/VerIdeasPage.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Innova/Historicodeideaspage.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Innova/geolocator.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Innova/mapa_dique_tiempo_real.dart';
 
 import 'package:pucpflow/features/user_auth/presentation/pages/Innova/WorkflowMockupPage.dart';
 import 'package:video_player/video_player.dart';
 
+class _CarruselVisual extends StatefulWidget {
+  final List<String> fondos;
+  const _CarruselVisual({required this.fondos});
+
+  @override
+  State<_CarruselVisual> createState() => _CarruselVisualState();
+}
+
+class _CarruselVisualState extends State<_CarruselVisual> {
+  int _indiceActual = 0;
+  VideoPlayerController? _videoController;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _cambiarContenido();
+  }
+
+  void _cambiarContenido() async {
+    final actual = widget.fondos[_indiceActual];
+    _indiceActual = (_indiceActual + 1) % widget.fondos.length;
+
+    if (actual.endsWith('.mp4')) {
+      _videoController?.dispose();
+      _videoController = VideoPlayerController.asset(actual);
+      await _videoController!.initialize();
+      _videoController!.setLooping(false);
+      _videoController!.setVolume(0);
+      _videoController!.play();
+      setState(() {});
+
+      _videoController!.addListener(() {
+        if (_videoController!.value.position >= _videoController!.value.duration) {
+          _cambiarContenido();
+        }
+      });
+    } else {
+      _videoController?.pause();
+      setState(() {});
+      _timer = Timer(const Duration(seconds: 5), _cambiarContenido);
+    }
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fondoActual = widget.fondos[(_indiceActual - 1 + widget.fondos.length) % widget.fondos.length];
+
+    return Container(
+      height: 200,
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: _videoController != null && _videoController!.value.isInitialized
+            ? VideoPlayer(_videoController!)
+            : Image.asset(fondoActual, fit: BoxFit.cover),
+      ),
+    );
+  }
+}
 
 class HomeEmpresaPage extends StatefulWidget {
   @override
@@ -28,7 +102,7 @@ class _HomeEmpresaPageState extends State<HomeEmpresaPage> {
   String? empresaNombre;
   String? empresaCorreo;
 
-final List<String> _fondos = [
+final List<String> _fondos  = [
   'assets/innova/videorelave1.mp4',
   'assets/innova/videorelave2.mp4',
   'assets/innova/imagenrelave1.png',
@@ -46,8 +120,8 @@ final List<String> _fondos = [
 ];
 
 
+
 int _indiceActual = 0;
-bool _esVideo = false;
 VideoPlayerController? _videoController;
 late Timer _timer;
 
@@ -56,7 +130,7 @@ late Timer _timer;
 void initState() {
   super.initState();
   _cargarTareas();
-  _cambiarFondo(); // inicia el ciclo
+  _cambiarFondo();
 }
 
 
@@ -67,42 +141,39 @@ void dispose() {
   super.dispose();
 }
 
-
-void _iniciarRotacion() {
-  _cambiarFondo();
-  _timer = Timer.periodic(Duration(seconds: 7), (_) {
-    _cambiarFondo();
-  });
-}
-
-Future<void> _cambiarFondo() async {
-  final fondo = _fondos[_indiceActual];
+void _cambiarFondo() async {
+  final actual = _fondos[_indiceActual];
   _indiceActual = (_indiceActual + 1) % _fondos.length;
 
-  if (fondo.endsWith('.mp4')) {
-    _esVideo = true;
-    _videoController?.dispose();
-    _videoController = VideoPlayerController.asset(fondo);
-    await _videoController!.initialize();
-    _videoController!.setVolume(0.0); // 🔇 SILENCIAR
-    _videoController!.setLooping(false);
-    await _videoController!.play();
+  if (actual.endsWith('.mp4')) {
+    try {
+      _videoController?.dispose();
+      final controller = VideoPlayerController.asset(actual);
+      await controller.initialize();
+      controller.setLooping(false);
+      controller.setVolume(0);
+      controller.play();
 
-    // Esperar duración real del video antes de pasar al siguiente
-    final duracion = _videoController!.value.duration;
-    Future.delayed(duracion, _cambiarFondo);
+      controller.addListener(() {
+        if (controller.value.position >= controller.value.duration && mounted) {
+          _cambiarFondo();
+        }
+      });
+
+      setState(() {
+        _videoController = controller;
+      });
+    } catch (e) {
+      print("Error cargando video: $e");
+      _cambiarFondo(); // salta al siguiente
+    }
   } else {
-    _esVideo = false;
-    _videoController?.pause();
-
-    // Mostrar imagen durante 5 segundos
+    _videoController?.dispose();
+    _videoController = null;
+    setState(() {});
     _timer = Timer(const Duration(seconds: 5), _cambiarFondo);
   }
-
-  setState(() {});
 }
-
-
 
 
   Future<void> _cargarTareas() async {
@@ -130,6 +201,7 @@ Future<void> _cambiarFondo() async {
         final tarea = Tarea.fromJson(tareaJson);
         if (tarea.responsables == uid) {
           asignadas.add(tarea);
+        // ignore: unnecessary_null_comparison
         } else if (tarea.responsables == null) {
           libres.add(tarea);
         }
@@ -222,11 +294,80 @@ Future<void> _cambiarFondo() async {
   }
 
   Future<void> _cerrarSesion() async {
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     if (!mounted) return;
     Navigator.pushReplacementNamed(context, '/');
   }
+
+  Widget _buildBotonesCentrales() {
+    final Color colorBoton = const Color(0xFF5B4115);
+
+    final botones = [
+      {'texto': "CREAR IDEA", 'onTap': () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => ProponerIdeaPageEstiloInnova()))},
+      {'texto': "HISTÓRICO DE IDEAS", 'onTap': () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => HistoricoDeIdeasPage()))},
+      {'texto': "PROYECTOS EN PROCESO", 'onTap': () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => ProyectosPageInnova()))},
+      {'texto': "PONLO A PRUEBA", 'onTap': () {/* … */}},
+      // {'texto': "MAPA", …}  ⟵  fuera del grid
+    ];
+
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: GridView.count(
+        physics: const NeverScrollableScrollPhysics(), // para que no interfiera con el scroll general
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 12,
+        childAspectRatio: 2.5,
+        children: botones.map((btn) {
+          return ElevatedButton(
+            onPressed: btn['onTap'] as void Function(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colorBoton,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+            child: Text(
+              btn['texto'] as String, // 👈 evita el error aquí
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                letterSpacing: 0.5,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+Widget _buildCarruselDeVideos() {
+  final actualFondo = _fondos[(_indiceActual - 1 + _fondos.length) % _fondos.length];
+
+  return Container(
+    height: 200,
+    margin: const EdgeInsets.only(bottom: 20),
+    decoration: BoxDecoration(
+      color: Colors.black.withOpacity(0.6),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: _videoController != null && _videoController!.value.isInitialized
+          ? VideoPlayer(_videoController!)
+          : Image.asset(actualFondo, fit: BoxFit.cover),
+    ),
+  );
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -264,12 +405,12 @@ Future<void> _cambiarFondo() async {
             ListTile(
               leading: const Icon(Icons.folder_open),
               title: const Text('Mis Proyectos'),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProyectosPage())),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProyectosPageInnova())),
             ),
             ListTile(
               leading: const Icon(Icons.lightbulb),
               title: const Text('Proponer Idea'),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProponerIdeaPage())),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProponerIdeaPageEstiloInnova())),
             ),
             ListTile(
               leading: const Icon(Icons.visibility),
@@ -300,7 +441,8 @@ Future<void> _cambiarFondo() async {
             Expanded(
               child: Text(
                 empresaNombre ?? "Empresa",
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
               ),
             ),
           ],
@@ -311,99 +453,54 @@ Future<void> _cambiarFondo() async {
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
-      ),
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 800),
-              child: _esVideo && _videoController?.value.isInitialized == true
-                  ? SizedBox(
-                      width: MediaQuery.of(context).size.width,
-                      height: MediaQuery.of(context).size.height,
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width: _videoController!.value.size.width,
-                          height: _videoController!.value.size.height,
-                          child: VideoPlayer(_videoController!),
-                        ),
-                      ),
-                    )
-                  : Image.asset(
-                      _fondos[_indiceActual],
-                      key: ValueKey(_fondos[_indiceActual]),
-                      fit: BoxFit.cover,
-                      width: MediaQuery.of(context).size.width,
-                      height: MediaQuery.of(context).size.height,
-                    ),
+        // ← aquí:
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(30),
+              onTap: () => obtenerYProcesarUbicacion(context),
+              child: CircleAvatar(
+                radius: 22,                       // tamaño del círculo
+                backgroundColor: const Color(0xFF5B4115), // dorado-negro que ya usas
+                child: const Icon(Icons.map_outlined,
+                    color: Colors.white, size: 26),
+              ),
             ),
           ),
+        ],
 
+      ),
 
-          Positioned.fill(child: Container(color: Colors.black.withOpacity(0.6))),
-          Positioned.fill(
-            child: SingleChildScrollView(
+        body: Stack(
+          children: [
+            // Fondo
+            Positioned.fill(
+              child: Image.asset(
+                'assets/nucleo_fondo.jpg',
+                fit: BoxFit.cover,
+              ),
+            ),
+            // Contenido desplazable
+            SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: const Text(
-                      "📋 Tareas de la Empresa",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  _buildResumenTareas(),
-                  _construirListaTareas("Tareas Asignadas", tareasAsignadas),
-                  _construirListaTareas("Tareas Libres", tareasLibres),
-                  const SizedBox(height: 100),
+                  const SizedBox(height: 350),
+                
+                  // Botones
+                  _buildBotonesCentrales(),
+
+
+                  // Carrusel
+                  _buildCarruselDeVideos(),
                 ],
               ),
             ),
-          )
+          ],
+        ),
 
-        ],
-      ),
-      floatingActionButton: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          FloatingActionButton.extended(
-            heroTag: "proyectos",
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => ProyectosPage()));
-            },
-            icon: const Icon(Icons.folder_open, color: Colors.white),
-            label: const Text("Ir a Proyectos", style: TextStyle(color: Colors.white)),
-            backgroundColor: Colors.tealAccent[700],
-          ),
-          const SizedBox(width: 10),
-          FloatingActionButton.extended(
-            heroTag: "Iniciar Idea",
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => ProponerIdeaPage()));
-            },
-            icon: const Icon(Icons.lightbulb, color: Colors.white),
-            label: const Text("Iniciar Idea", style: TextStyle(color: Colors.white)),
-            backgroundColor: Colors.indigo,
-          ),
-          const SizedBox(width: 10),
-          FloatingActionButton.extended(
-            heroTag: "verIdeas",
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => VerIdeasPage()));
-            },
-            icon: const Icon(Icons.visibility, color: Colors.white),
-            label: const Text("Ver Ideas", style: TextStyle(color: Colors.white)),
-            backgroundColor: Colors.green,
-          ),
-        ],
-      ),
     );
   }
 }

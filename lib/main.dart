@@ -12,15 +12,10 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_page.d
 import 'package:pucpflow/features/user_auth/presentation/pages/login_page.dart'; // Otra opción de página de login
 import 'package:pucpflow/features/user_auth/presentation/pages/Login/sign_up_page.dart'; // Página de registro
 import 'package:pucpflow/features/user_auth/presentation/pages/proyectos/ProyectosPage.dart';
+import 'package:pucpflow/LandingPage/VastoriaMainLanding.dart'; // Landing principal del ecosistema con SSO
 
 import 'package:webview_flutter/webview_flutter.dart' as webview;
-
 import 'package:webview_flutter_android/webview_flutter_android.dart'; // SurfaceAndroidWebView ✅
-
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
-import 'package:google_maps_flutter_web/google_maps_flutter_web.dart';
-
 
 // 🔹 Configuración de Firebase para Web
 const firebaseOptions = FirebaseOptions(
@@ -51,11 +46,38 @@ Future<void> main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+  /// Detecta qué aplicación mostrar según el subdominio (solo en Web)
+  Widget _getInitialPage() {
+    if (kIsWeb) {
+      final currentUrl = Uri.base.host.toLowerCase();
+
+      // Detectar subdominio
+      if (currentUrl.contains('flow.')) {
+        // flow.teamvastoria.com → App Flow
+        return const SplashScreen();
+      } else if (currentUrl == 'teamvastoria.com' || currentUrl == 'www.teamvastoria.com') {
+        // teamvastoria.com → Landing del ecosistema
+        return const VastoriaMainLanding();
+      } else if (currentUrl.contains('localhost') || currentUrl.contains('127.0.0.1')) {
+        // Desarrollo local → App Flow por defecto
+        return const SplashScreen();
+      } else {
+        // Cualquier otro subdominio → Landing por defecto
+        return const VastoriaMainLanding();
+      }
+    } else {
+      // En móvil, siempre mostrar Flow
+      return const SplashScreen();
+    }
+  }
+
 @override
 Widget build(BuildContext context) {
   return MaterialApp(
     debugShowCheckedModeBanner: false, // Oculta el banner de "Debug"
-    title: 'FLOW',
+    title: kIsWeb && Uri.base.host.contains('flow.')
+        ? 'Flow - Gestión de Proyectos | Vastoria'
+        : 'Vastoria - Ecosistema de Soluciones',
     theme: ThemeData(
       fontFamily: 'Poppins', // 🔥 Aplica Poppins a toda la app
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
@@ -71,12 +93,13 @@ Widget build(BuildContext context) {
       ),
       // Puedes agregar más personalizaciones si deseas
     ),
-    home: const SplashScreen(),   
+    home: _getInitialPage(),
     routes: {
       '/home': (context) => HomePage(),
       '/login': (context) => const CustomLoginPage(),
       '/signUp': (context) => const SignUpPage(),
       '/proyectos': (context) =>  ProyectosPage(),
+      '/ecosystem': (context) => const VastoriaMainLanding(),
     },
 
   );

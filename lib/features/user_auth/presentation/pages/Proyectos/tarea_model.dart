@@ -11,8 +11,15 @@ class Tarea {
   String? dificultad;
   String? descripcion;
   List<String> tareasPrevias;
-  String area;
-  List<String> habilidadesRequeridas; // ✅ Nuevo campo
+  String area; // ✅ Para recursos: "Equipo Desarrollo", "Consultor Externo", etc.
+  List<String> habilidadesRequeridas;
+
+  // ========================================
+  // 🆕 CAMPOS PMI - Jerarquía del Proyecto
+  // ========================================
+  String? fasePMI;        // "Iniciación", "Planificación", "Ejecución", "Monitoreo", "Cierre"
+  String? entregable;     // "Project Charter", "Plan de Proyecto", "Informe Final"
+  String? paqueteTrabajo; // "Documentación Inicial", "Análisis de Riesgos", "Testing"
 
   // CAMPO AUXILIAR (NO SE GUARDA EN FIRESTORE)
   List<String>? responsablesNombres;
@@ -31,7 +38,11 @@ class Tarea {
     this.descripcion,
     this.tareasPrevias = const [],
     this.area = 'General',
-    this.habilidadesRequeridas = const [], // ✅ Nuevo campo inicializado
+    this.habilidadesRequeridas = const [],
+    // Campos PMI opcionales
+    this.fasePMI,
+    this.entregable,
+    this.paqueteTrabajo,
     this.responsablesNombres,
   });
 
@@ -50,7 +61,11 @@ class Tarea {
       'descripcion': descripcion,
       'tareasPrevias': tareasPrevias,
       'area': area,
-      'habilidadesRequeridas': habilidadesRequeridas, // ✅ Exporta el campo
+      'habilidadesRequeridas': habilidadesRequeridas,
+      // Campos PMI
+      'fasePMI': fasePMI,
+      'entregable': entregable,
+      'paqueteTrabajo': paqueteTrabajo,
     };
   }
 
@@ -69,7 +84,11 @@ class Tarea {
       descripcion: json['descripcion'],
       tareasPrevias: List<String>.from(json['tareasPrevias'] ?? []),
       area: json['area'] ?? 'General',
-      habilidadesRequeridas: List<String>.from(json['habilidadesRequeridas'] ?? []), // ✅ Importa el campo
+      habilidadesRequeridas: List<String>.from(json['habilidadesRequeridas'] ?? []),
+      // Campos PMI
+      fasePMI: json['fasePMI'],
+      entregable: json['entregable'],
+      paqueteTrabajo: json['paqueteTrabajo'],
     );
   }
 }

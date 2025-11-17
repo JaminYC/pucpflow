@@ -25,6 +25,18 @@ class Proyecto {
   final String estado;                // 🔹 Nuevo: "Activo", "Finalizado", etc.
   List<Tarea> tareas;
 
+  // ========================================
+  // 🆕 CAMPOS PMI (opcionales para retrocompatibilidad)
+  // ========================================
+  final bool esPMI;                        // Indica si el proyecto sigue metodología PMI
+  final String? objetivo;                  // Objetivo del proyecto
+  final String? alcance;                   // Alcance formal del proyecto
+  final double? presupuesto;               // Presupuesto total planificado
+  final double? costoActual;               // Costo actual acumulado
+  final String? fasePMIActual;             // Fase actual: "Iniciación", "Planificación", etc.
+  final List<String>? documentosIniciales; // URLs de documentos subidos (charter, etc.)
+  final Map<String, dynamic>? metadatasPMI; // Metadata adicional flexible
+
   Proyecto({
     required this.id,
     required this.nombre,
@@ -40,6 +52,15 @@ class Proyecto {
     this.tareas = const [],
     this.areas = const {},
     this.estado = "Activo",
+    // Campos PMI opcionales
+    this.esPMI = false,
+    this.objetivo,
+    this.alcance,
+    this.presupuesto,
+    this.costoActual,
+    this.fasePMIActual,
+    this.documentosIniciales,
+    this.metadatasPMI,
   });
 
   Proyecto copyWith({
@@ -57,6 +78,14 @@ class Proyecto {
     List<Tarea>? tareas,
     Map<String, List<String>>? areas,
     String? estado,
+    bool? esPMI,
+    String? objetivo,
+    String? alcance,
+    double? presupuesto,
+    double? costoActual,
+    String? fasePMIActual,
+    List<String>? documentosIniciales,
+    Map<String, dynamic>? metadatasPMI,
   }) {
     return Proyecto(
       id: id ?? this.id,
@@ -73,6 +102,14 @@ class Proyecto {
       tareas: tareas ?? this.tareas,
       areas: areas ?? this.areas,
       estado: estado ?? this.estado,
+      esPMI: esPMI ?? this.esPMI,
+      objetivo: objetivo ?? this.objetivo,
+      alcance: alcance ?? this.alcance,
+      presupuesto: presupuesto ?? this.presupuesto,
+      costoActual: costoActual ?? this.costoActual,
+      fasePMIActual: fasePMIActual ?? this.fasePMIActual,
+      documentosIniciales: documentosIniciales ?? this.documentosIniciales,
+      metadatasPMI: metadatasPMI ?? this.metadatasPMI,
     );
   }
 
@@ -92,6 +129,15 @@ Map<String, dynamic> toJson() {
     'tareas': tareas.map((t) => t.toJson()).toList(),
     'areas': areas,
     'estado': estado,
+    // Campos PMI
+    'esPMI': esPMI,
+    'objetivo': objetivo,
+    'alcance': alcance,
+    'presupuesto': presupuesto,
+    'costoActual': costoActual,
+    'fasePMIActual': fasePMIActual,
+    'documentosIniciales': documentosIniciales,
+    'metadatasPMI': metadatasPMI,
   };
 }
 
@@ -113,6 +159,17 @@ factory Proyecto.fromJson(Map<String, dynamic> json) {
     areas: (json['areas'] as Map<String, dynamic>?)?.map(
           (key, value) => MapEntry(key, List<String>.from(value))) ?? {},
     estado: json['estado'] ?? "Activo",
+    // Campos PMI con valores por defecto para retrocompatibilidad
+    esPMI: json['esPMI'] ?? false,
+    objetivo: json['objetivo'],
+    alcance: json['alcance'],
+    presupuesto: json['presupuesto']?.toDouble(),
+    costoActual: json['costoActual']?.toDouble(),
+    fasePMIActual: json['fasePMIActual'],
+    documentosIniciales: json['documentosIniciales'] != null
+        ? List<String>.from(json['documentosIniciales'])
+        : null,
+    metadatasPMI: json['metadatasPMI'],
   );
 }
 

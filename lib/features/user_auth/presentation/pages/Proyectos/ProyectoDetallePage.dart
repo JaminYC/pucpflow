@@ -12,6 +12,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ReunionPresencialPage.dart';
 
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/grafo_tareas_page.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/grafo_tareas_pmi_page.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/asignacion_inteligente_service.dart';
 
 Color _colorDesdeUID(String uid) {
   final int hash = uid.hashCode;
@@ -33,6 +35,7 @@ class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TareaService _tareaService = TareaService();
+  final AsignacionInteligenteService _asignacionService = AsignacionInteligenteService();
 
   List<Tarea> tareas = [];
   Map<String, String> nombreResponsables = {};
@@ -42,6 +45,12 @@ class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
   bool mostrarPendientes = true;
   Map<String, List<String>> areas = {};
   String? areaSeleccionada; // null = ver todas
+
+  // ========================================
+  // 🆕 Variables para Proyectos PMI
+  // ========================================
+  String? faseSeleccionada; // null = ver todas las fases
+  Map<String, List<String>> recursos = {}; // Recursos del proyecto (reemplazo de areas para PMI)
 
 
   @override
@@ -545,6 +554,734 @@ Widget _buildParticipantesSection() {
   return nombre.replaceAll('.', '-').replaceAll('[', '').replaceAll(']', '');
 }
 
+// ========================================
+// 🆕 SECCIÓN: FASES PMI
+// ========================================
+Widget _buildFasesPMISection() {
+  // Contar tareas por fase
+  final Map<String, int> tareasPorFase = {};
+  final Map<String, int> completadasPorFase = {};
+
+  for (var tarea in tareas) {
+    final fase = tarea.fasePMI ?? 'Sin fase';
+    tareasPorFase[fase] = (tareasPorFase[fase] ?? 0) + 1;
+    if (tarea.completado) {
+      completadasPorFase[fase] = (completadasPorFase[fase] ?? 0) + 1;
+    }
+  }
+
+  final fases = ['Iniciación', 'Planificación', 'Ejecución', 'Monitoreo y Control', 'Cierre'];
+  final coloresFases = {
+    'Iniciación': const Color(0xFF4CAF50),
+    'Planificación': const Color(0xFF2196F3),
+    'Ejecución': const Color(0xFFFF9800),
+    'Monitoreo y Control': const Color(0xFF9C27B0),
+    'Cierre': const Color(0xFF607D8B),
+  };
+
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.account_tree, color: Colors.white, size: 20),
+            SizedBox(width: 8),
+            Text(
+              "Fases PMI del Proyecto",
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: fases.map((fase) {
+            final totalTareas = tareasPorFase[fase] ?? 0;
+            final completadas = completadasPorFase[fase] ?? 0;
+            final color = coloresFases[fase] ?? Colors.grey;
+            final isSelected = faseSeleccionada == fase;
+
+            return FilterChip(
+              selected: isSelected,
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    fase,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : color,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                  if (totalTareas > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.white.withOpacity(0.3) : color.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$completadas/$totalTareas',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? Colors.white : color,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              backgroundColor: Colors.grey.shade900,
+              selectedColor: color,
+              checkmarkColor: Colors.white,
+              side: BorderSide(color: color, width: 1),
+              onSelected: (selected) {
+                setState(() {
+                  faseSeleccionada = selected ? fase : null;
+                });
+              },
+            );
+          }).toList(),
+        ),
+      ],
+    ),
+  );
+}
+
+// ========================================
+// 🆕 CONTENIDO PRINCIPAL PMI
+// ========================================
+Widget _buildContenidoPMI() {
+  // Agrupar tareas por Fase → Entregable → Paquete
+  final Map<String, Map<String, Map<String, List<Tarea>>>> jerarquia = {};
+
+  for (var tarea in tareas) {
+    // Aplicar filtro por fase si está seleccionada
+    if (faseSeleccionada != null && tarea.fasePMI != faseSeleccionada) {
+      continue;
+    }
+
+    final fase = tarea.fasePMI ?? 'Sin fase';
+    final entregable = tarea.entregable ?? 'Sin entregable';
+    final paquete = tarea.paqueteTrabajo ?? 'Sin paquete';
+
+    jerarquia.putIfAbsent(fase, () => {});
+    jerarquia[fase]!.putIfAbsent(entregable, () => {});
+    jerarquia[fase]![entregable]!.putIfAbsent(paquete, () => []);
+    jerarquia[fase]![entregable]![paquete]!.add(tarea);
+  }
+
+  // Ordenar fases según orden PMI
+  final fasesOrdenadas = _ordenarFasesPMI(jerarquia.keys.toList());
+
+  if (fasesOrdenadas.isEmpty) {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(24),
+        child: Text(
+          'No hay tareas para mostrar',
+          style: TextStyle(color: Colors.white70, fontSize: 16),
+        ),
+      ),
+    );
+  }
+
+  return ListView(
+    padding: const EdgeInsets.only(left: 16, right: 16, bottom: 100),
+    children: fasesOrdenadas.map((fase) {
+      final colorFase = _obtenerColorFasePMI(fase);
+      final entregables = jerarquia[fase]!;
+
+      return _buildFaseCardPMI(fase, entregables, colorFase);
+    }).toList(),
+  );
+}
+
+Widget _buildFaseCardPMI(
+  String nombreFase,
+  Map<String, Map<String, List<Tarea>>> entregables,
+  Color colorFase,
+) {
+  int totalTareas = 0;
+  int tareasCompletadas = 0;
+
+  entregables.forEach((_, paquetes) {
+    paquetes.forEach((_, tareas) {
+      totalTareas += tareas.length;
+      tareasCompletadas += tareas.where((t) => t.completado).length;
+    });
+  });
+
+  final progreso = totalTareas > 0 ? tareasCompletadas / totalTareas : 0.0;
+
+  return Card(
+    margin: const EdgeInsets.only(bottom: 16),
+    color: Colors.grey.shade900,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: BorderSide(color: colorFase, width: 2),
+    ),
+    child: ExpansionTile(
+      tilePadding: const EdgeInsets.all(16),
+      childrenPadding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: colorFase.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colorFase, width: 2),
+        ),
+        child: Icon(_obtenerIconoFasePMI(nombreFase), color: colorFase),
+      ),
+      title: Text(
+        nombreFase,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          Text(
+            '$tareasCompletadas/$totalTareas tareas completadas',
+            style: const TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: progreso,
+            backgroundColor: Colors.grey.shade800,
+            valueColor: AlwaysStoppedAnimation<Color>(colorFase),
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ],
+      ),
+      children: entregables.entries.map((entregableEntry) {
+        return _buildEntregableSectionPMI(
+          entregableEntry.key,
+          entregableEntry.value,
+          colorFase,
+        );
+      }).toList(),
+    ),
+  );
+}
+
+Widget _buildEntregableSectionPMI(
+  String nombreEntregable,
+  Map<String, List<Tarea>> paquetes,
+  Color colorFase,
+) {
+  return Container(
+    margin: const EdgeInsets.only(top: 12, bottom: 12),
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: 0.3),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: colorFase.withValues(alpha: 0.3), width: 1),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.inventory_2, color: colorFase, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '📦 $nombreEntregable',
+                style: TextStyle(
+                  color: colorFase,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ...paquetes.entries.map((paqueteEntry) {
+          return _buildPaqueteTrabajoSectionPMI(
+            paqueteEntry.key,
+            paqueteEntry.value,
+            colorFase,
+          );
+        }),
+      ],
+    ),
+  );
+}
+
+Widget _buildPaqueteTrabajoSectionPMI(
+  String nombrePaquete,
+  List<Tarea> tareas,
+  Color colorFase,
+) {
+  return Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Colors.grey.shade800.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.folder_open, color: Colors.white70, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                nombrePaquete,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: colorFase.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${tareas.length} tareas',
+                style: TextStyle(
+                  color: colorFase,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...tareas.map((tarea) => _buildTareaItemPMI(tarea, colorFase)),
+      ],
+    ),
+  );
+}
+
+Widget _buildTareaItemPMI(Tarea tarea, Color colorFase) {
+  final tieneResponsables = tarea.responsables.isNotEmpty;
+  final tieneHabilidades = tarea.habilidadesRequeridas.isNotEmpty;
+
+  return Container(
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: tarea.completado
+          ? Colors.green.shade900.withValues(alpha: 0.3)
+          : Colors.grey.shade900,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(
+        color: tarea.completado ? Colors.green : Colors.white.withValues(alpha: 0.2),
+        width: 1,
+      ),
+    ),
+    child: Column(
+      children: [
+        Row(
+          children: [
+            GestureDetector(
+              onTap: () async {
+                // Marcar como completada/pendiente
+                await _firestore
+                    .collection('proyectos')
+                    .doc(widget.proyectoId)
+                    .update({
+                  'tareas': tareas.map((t) {
+                    if (t.titulo == tarea.titulo) {
+                      t.completado = !t.completado;
+                    }
+                    return t.toJson();
+                  }).toList(),
+                });
+                setState(() {
+                  tarea.completado = !tarea.completado;
+                });
+              },
+              child: Icon(
+                tarea.completado ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: tarea.completado ? Colors.green : Colors.white54,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _mostrarDialogoDetalleTareaPMI(tarea),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tarea.titulo,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        decoration: tarea.completado
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        if (tarea.area != 'Sin asignar' && tarea.area != 'General')
+                          _buildChipPMI('👥 ${tarea.area}', Colors.blue.shade700),
+                        if (tarea.dificultad != null)
+                          _buildChipPMI('🎯 ${tarea.dificultad}', Colors.purple.shade700),
+                        _buildChipPMI('⏱️ ${tarea.duracion} min', Colors.indigo.shade700),
+                        if (tarea.prioridad >= 4)
+                          _buildChipPMI('🔥 Alta prioridad', Colors.red.shade700),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Botones de acción
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Botón de editar
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.blue, size: 18),
+                  tooltip: 'Editar tarea',
+                  onPressed: () => _mostrarDialogoEditarTareaNueva(tarea),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 8),
+                // Botón de asignación inteligente (solo si no tiene responsables)
+                if (!tieneResponsables && tieneHabilidades)
+                  IconButton(
+                    icon: const Icon(Icons.person_add_alt_1, color: Colors.orange, size: 18),
+                    tooltip: 'Asignar inteligentemente',
+                    onPressed: () => _mostrarDialogoAsignacionInteligente(tarea),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        // Mostrar responsables asignados con justificación
+        if (tieneResponsables) ...[
+          const SizedBox(height: 8),
+          ...tarea.responsables.map((uid) {
+            return FutureBuilder<Map<String, dynamic>?>(
+              future: _obtenerJustificacionAsignacion(tarea, uid),
+              builder: (context, snapshot) {
+                final justificacion = snapshot.data;
+                final nombre = nombreResponsables[uid] ?? 'Usuario';
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 4),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade900.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.green.withValues(alpha: 0.5), width: 1),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.person, color: Colors.green, size: 14),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              nombre,
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          if (justificacion != null) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _getScoreColor(justificacion['matchScore']),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '${justificacion['matchScore']}%',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (justificacion != null && justificacion['habilidadesCoincidentes'].isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
+                          children: (justificacion['habilidadesCoincidentes'] as List<String>)
+                              .map((hab) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade700.withValues(alpha: 0.8),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '✓ $hab',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            );
+          }),
+        ],
+      ],
+    ),
+  );
+}
+
+Color _getScoreColor(int score) {
+  if (score >= 80) return Colors.green;
+  if (score >= 60) return Colors.orange;
+  return Colors.red;
+}
+
+Future<Map<String, dynamic>?> _obtenerJustificacionAsignacion(Tarea tarea, String uid) async {
+  if (tarea.habilidadesRequeridas.isEmpty) return null;
+
+  try {
+    // Obtener habilidades del usuario
+    final userDoc = await _firestore.collection('users').doc(uid).get();
+    if (!userDoc.exists) return null;
+
+    final habilidadesUsuario = Map<String, int>.from(userDoc.data()!['habilidades'] ?? {});
+
+    // Calcular compatibilidad
+    List<String> habilidadesCoincidentes = [];
+    int sumaNiveles = 0;
+    int coincidencias = 0;
+
+    for (String habilidadRequerida in tarea.habilidadesRequeridas) {
+      final habilidadKey = habilidadesUsuario.keys.firstWhere(
+        (key) => key.toLowerCase().trim() == habilidadRequerida.toLowerCase().trim() ||
+                 key.toLowerCase().contains(habilidadRequerida.toLowerCase()) ||
+                 habilidadRequerida.toLowerCase().contains(key.toLowerCase()),
+        orElse: () => '',
+      );
+
+      if (habilidadKey.isNotEmpty) {
+        final nivel = habilidadesUsuario[habilidadKey]!;
+        habilidadesCoincidentes.add(habilidadKey);
+        sumaNiveles += nivel;
+        coincidencias++;
+      }
+    }
+
+    if (coincidencias == 0) return null;
+
+    final nivelPromedio = sumaNiveles / coincidencias;
+    final porcentajeCoincidencia = (coincidencias / tarea.habilidadesRequeridas.length) * 100;
+    final matchScore = (porcentajeCoincidencia * 0.7 + (nivelPromedio / 5 * 100) * 0.3).round();
+
+    return {
+      'matchScore': matchScore,
+      'habilidadesCoincidentes': habilidadesCoincidentes,
+      'nivelPromedio': nivelPromedio,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+Widget _buildChipPMI(String label, Color color) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.8),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      label,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 10,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
+}
+
+// ========================================
+// 🆕 UTILIDADES PMI
+// ========================================
+
+List<String> _ordenarFasesPMI(List<String> fases) {
+  final orden = {
+    'Iniciación': 1,
+    'Planificación': 2,
+    'Ejecución': 3,
+    'Monitoreo y Control': 4,
+    'Monitoreo': 4,
+    'Cierre': 5,
+  };
+
+  fases.sort((a, b) {
+    final ordenA = orden[a] ?? 999;
+    final ordenB = orden[b] ?? 999;
+    return ordenA.compareTo(ordenB);
+  });
+
+  return fases;
+}
+
+Color _obtenerColorFasePMI(String fase) {
+  switch (fase) {
+    case 'Iniciación':
+      return const Color(0xFF4CAF50);
+    case 'Planificación':
+      return const Color(0xFF2196F3);
+    case 'Ejecución':
+      return const Color(0xFFFF9800);
+    case 'Monitoreo y Control':
+    case 'Monitoreo':
+      return const Color(0xFF9C27B0);
+    case 'Cierre':
+      return const Color(0xFF607D8B);
+    default:
+      return const Color(0xFF757575);
+  }
+}
+
+IconData _obtenerIconoFasePMI(String fase) {
+  switch (fase) {
+    case 'Iniciación':
+      return Icons.flag;
+    case 'Planificación':
+      return Icons.edit_calendar;
+    case 'Ejecución':
+      return Icons.build;
+    case 'Monitoreo y Control':
+    case 'Monitoreo':
+      return Icons.monitor_heart;
+    case 'Cierre':
+      return Icons.check_circle;
+    default:
+      return Icons.work;
+  }
+}
+
+// ========================================
+// 🆕 SECCIÓN: RECURSOS (reemplaza Áreas para PMI)
+// ========================================
+Widget _buildRecursosSection() {
+  // Construir mapa de recursos desde las tareas
+  final Map<String, List<String>> recursosPorArea = {};
+
+  for (var tarea in tareas) {
+    final recurso = tarea.area;
+    if (recurso != 'General' && recurso != 'Sin asignar') {
+      if (!recursosPorArea.containsKey(recurso)) {
+        recursosPorArea[recurso] = [];
+      }
+    }
+  }
+
+  return ExpansionTile(
+    title: const Row(
+      children: [
+        Icon(Icons.group, color: Colors.white, size: 20),
+        SizedBox(width: 8),
+        Text(
+          "Recursos del Proyecto",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ],
+    ),
+    backgroundColor: Colors.white10,
+    collapsedIconColor: Colors.white,
+    iconColor: Colors.white,
+    childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    children: [
+      SizedBox(
+        height: 300,
+        child: recursosPorArea.isEmpty
+            ? const Center(
+                child: Text(
+                  'No hay recursos asignados aún',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              )
+            : ListView.builder(
+                itemCount: recursosPorArea.length,
+                itemBuilder: (context, index) {
+                  final recurso = recursosPorArea.keys.elementAt(index);
+                  final tareasRecurso = tareas.where((t) => t.area == recurso).length;
+                  final completadas = tareas
+                      .where((t) => t.area == recurso && t.completado)
+                      .length;
+
+                  return Card(
+                    color: Colors.blueGrey.shade800,
+                    margin: const EdgeInsets.symmetric(vertical: 6),
+                    child: ListTile(
+                      leading: const Icon(Icons.person, color: Colors.blue),
+                      title: Text(
+                        recurso,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '📋 $completadas/$tareasRecurso tareas completadas',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                      trailing: CircularProgressIndicator(
+                        value: tareasRecurso > 0 ? completadas / tareasRecurso : 0,
+                        backgroundColor: Colors.grey.shade700,
+                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
+    ],
+  );
+}
+
 Widget _buildAreasSection() {
   return ExpansionTile(
     title: const Text(
@@ -985,6 +1722,856 @@ void _confirmarEliminarTareaDesdeDialogo(Tarea tarea) {
   );
 }
 
+// ========================================
+// 🆕 DIÁLOGO DE DETALLE PARA TAREAS PMI
+// ========================================
+
+void _mostrarDialogoDetalleTareaPMI(Tarea tarea) {
+  showDialog(
+    context: context,
+    builder: (context) {
+      return FutureBuilder<List<Map<String, dynamic>>>(
+        future: _obtenerJustificacionesTodosResponsables(tarea),
+        builder: (context, snapshot) {
+          final justificaciones = snapshot.data ?? [];
+
+          return AlertDialog(
+            backgroundColor: Colors.grey.shade900,
+            title: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: _obtenerColorFasePMI(tarea.fasePMI ?? ''),
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Detalle de Tarea PMI',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Título de la tarea
+                  Text(
+                    tarea.titulo,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Jerarquía PMI
+                  _buildDetalleSeccion(
+                    'Jerarquía PMI',
+                    Icons.account_tree,
+                    Colors.blue,
+                    [
+                      if (tarea.fasePMI != null)
+                        _buildDetalleItem('Fase', tarea.fasePMI!),
+                      if (tarea.entregable != null)
+                        _buildDetalleItem('Entregable', tarea.entregable!),
+                      if (tarea.paqueteTrabajo != null)
+                        _buildDetalleItem('Paquete de Trabajo', tarea.paqueteTrabajo!),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24, height: 24),
+
+                  // Descripción
+                  if (tarea.descripcion?.isNotEmpty == true) ...[
+                    _buildDetalleSeccion(
+                      'Descripción',
+                      Icons.description,
+                      Colors.purple,
+                      [
+                        Text(
+                          tarea.descripcion!,
+                          style: const TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                    const Divider(color: Colors.white24, height: 24),
+                  ],
+
+                  // Información general
+                  _buildDetalleSeccion(
+                    'Información General',
+                    Icons.info,
+                    Colors.orange,
+                    [
+                      _buildDetalleItem('Duración', '${tarea.duracion} minutos'),
+                      _buildDetalleItem('Prioridad', '${tarea.prioridad}/5'),
+                      if (tarea.dificultad != null)
+                        _buildDetalleItem('Dificultad', tarea.dificultad!),
+                      _buildDetalleItem('Estado', tarea.completado ? 'Completada' : 'Pendiente'),
+                      _buildDetalleItem('Recurso recomendado', tarea.area),
+                    ],
+                  ),
+                  const Divider(color: Colors.white24, height: 24),
+
+                  // Habilidades requeridas
+                  if (tarea.habilidadesRequeridas.isNotEmpty) ...[
+                    _buildDetalleSeccion(
+                      'Habilidades Requeridas',
+                      Icons.psychology,
+                      Colors.indigo,
+                      [
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: tarea.habilidadesRequeridas.map((hab) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.indigo.shade700,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                hab,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                    const Divider(color: Colors.white24, height: 24),
+                  ],
+
+                  // Responsables con justificación
+                  if (tarea.responsables.isNotEmpty) ...[
+                    _buildDetalleSeccion(
+                      'Responsables Asignados',
+                      Icons.people,
+                      Colors.green,
+                      [
+                        ...justificaciones.map((just) {
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade900.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.green.withValues(alpha: 0.5),
+                                width: 1,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        just['nombre'] ?? 'Usuario',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    if (just['matchScore'] != null) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _getScoreColor(just['matchScore']),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.stars,
+                                              color: Colors.white,
+                                              size: 14,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '${just['matchScore']}%',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                if (just['habilidadesCoincidentes'] != null &&
+                                    (just['habilidadesCoincidentes'] as List).isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Habilidades que coinciden:',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    spacing: 4,
+                                    runSpacing: 4,
+                                    children: (just['habilidadesCoincidentes'] as List<String>)
+                                        .map((hab) {
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade700,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          '✓ $hab',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                  if (just['nivelPromedio'] != null) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '⭐ Nivel promedio: ${(just['nivelPromedio'] as double).toStringAsFixed(1)}/5',
+                                      style: const TextStyle(
+                                        color: Colors.white60,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'Cerrar',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _mostrarDialogoEditarTareaNueva(tarea);
+                },
+                icon: const Icon(Icons.edit),
+                label: const Text('Editar'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
+Widget _buildDetalleSeccion(String titulo, IconData icon, Color color, List<Widget> children) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            titulo,
+            style: TextStyle(
+              color: color,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      ...children,
+    ],
+  );
+}
+
+Widget _buildDetalleItem(String label, String value) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 140,
+          child: Text(
+            '$label:',
+            style: const TextStyle(
+              color: Colors.white60,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Future<List<Map<String, dynamic>>> _obtenerJustificacionesTodosResponsables(Tarea tarea) async {
+  List<Map<String, dynamic>> resultados = [];
+
+  for (String uid in tarea.responsables) {
+    final justificacion = await _obtenerJustificacionAsignacion(tarea, uid);
+    resultados.add({
+      'uid': uid,
+      'nombre': nombreResponsables[uid] ?? 'Usuario',
+      ...?justificacion,
+    });
+  }
+
+  return resultados;
+}
+
+// ========================================
+// 🆕 ASIGNACIÓN INTELIGENTE
+// ========================================
+
+Future<void> _mostrarDialogoAsignacionInteligente(Tarea tarea) async {
+  // Mostrar loading
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => Center(
+      child: Image.asset(
+        'assets/animation.gif',
+        width: 120,
+        height: 120,
+      ),
+    ),
+  );
+
+  try {
+    // Obtener sugerencias
+    final participantesIds = participantes.map((p) => p['uid']!).toList();
+    final sugerencias = await _asignacionService.sugerirAsignaciones(
+      tarea: tarea,
+      participantesIds: participantesIds,
+    );
+
+    // Cerrar loading
+    if (mounted) Navigator.pop(context);
+
+    if (sugerencias.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ No se encontraron candidatos con las habilidades requeridas'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Mostrar dialog con sugerencias
+    if (mounted) {
+      // Variable para rastrear selecciones
+      final Set<String> seleccionados = {};
+
+      showDialog(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setStateDialog) => AlertDialog(
+          backgroundColor: Colors.grey.shade900,
+          title: const Row(
+            children: [
+              Icon(Icons.psychology, color: Colors.orange),
+              SizedBox(width: 8),
+              Text(
+                'Asignación Inteligente',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tarea: ${tarea.titulo}',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Habilidades requeridas: ${tarea.habilidadesRequeridas.join(", ")}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                const Divider(color: Colors.white24, height: 24),
+                const Text(
+                  'Candidatos sugeridos:',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 300,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: sugerencias.length,
+                    itemBuilder: (context, index) {
+                      final sugerencia = sugerencias[index];
+                      final matchScore = sugerencia['matchScore'] as int;
+                      final nombre = sugerencia['nombre'] as String;
+                      final habilidadesCoincidentes =
+                          sugerencia['habilidadesCoincidentes'] as List<String>;
+                      final nivelPromedio = sugerencia['nivelPromedio'] as double;
+
+                      // Color según el score
+                      Color scoreColor;
+                      if (matchScore >= 80) {
+                        scoreColor = Colors.green;
+                      } else if (matchScore >= 60) {
+                        scoreColor = Colors.orange;
+                      } else {
+                        scoreColor = Colors.red;
+                      }
+
+                      return Card(
+                        color: Colors.grey.shade800,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: scoreColor,
+                            child: Text(
+                              '$matchScore',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            nombre,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Text(
+                                '✓ ${habilidadesCoincidentes.length} de ${tarea.habilidadesRequeridas.length} habilidades',
+                                style: const TextStyle(color: Colors.white70, fontSize: 11),
+                              ),
+                              Text(
+                                '⭐ Nivel promedio: ${nivelPromedio.toStringAsFixed(1)}/5',
+                                style: const TextStyle(color: Colors.white70, fontSize: 11),
+                              ),
+                              if (habilidadesCoincidentes.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Wrap(
+                                  spacing: 4,
+                                  runSpacing: 4,
+                                  children: habilidadesCoincidentes.take(3).map((hab) {
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.shade700,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        hab,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ],
+                            ],
+                          ),
+                          trailing: ElevatedButton(
+                            onPressed: () async {
+                              Navigator.pop(context);
+                              await _asignarTareaAUsuario(tarea, sugerencia['uid']);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: scoreColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                            ),
+                            child: const Text('Asignar'),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+            if (sugerencias.isNotEmpty)
+              ElevatedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _asignarTareaAUsuario(tarea, sugerencias.first['uid']);
+                },
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('Auto-asignar Mejor'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+          ],
+        ),
+          ),
+        );
+    }
+  } catch (e) {
+    // Cerrar loading si está abierto
+    if (mounted) Navigator.pop(context);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error al obtener sugerencias: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
+Future<void> _asignarTareaAUsuario(Tarea tarea, String uid) async {
+  // Mostrar loading
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => Center(
+      child: Image.asset(
+        'assets/animation.gif',
+        width: 120,
+        height: 120,
+      ),
+    ),
+  );
+
+  try {
+    // Actualizar tarea con el responsable
+    final tareaActualizada = Tarea(
+      titulo: tarea.titulo,
+      fecha: tarea.fecha,
+      duracion: tarea.duracion,
+      prioridad: tarea.prioridad,
+      completado: tarea.completado,
+      colorId: tarea.colorId,
+      responsables: [uid],
+      tipoTarea: 'Asignada',
+      requisitos: tarea.requisitos,
+      dificultad: tarea.dificultad,
+      descripcion: tarea.descripcion,
+      tareasPrevias: tarea.tareasPrevias,
+      area: tarea.area,
+      habilidadesRequeridas: tarea.habilidadesRequeridas,
+      fasePMI: tarea.fasePMI,
+      entregable: tarea.entregable,
+      paqueteTrabajo: tarea.paqueteTrabajo,
+    );
+
+    // Actualizar en Firestore
+    final tareasActualizadas = tareas.map((t) {
+      if (t.titulo == tarea.titulo) {
+        return tareaActualizada;
+      }
+      return t;
+    }).toList();
+
+    await _firestore.collection('proyectos').doc(widget.proyectoId).update({
+      'tareas': tareasActualizadas.map((t) => t.toJson()).toList(),
+    });
+
+    // Recargar tareas
+    await _cargarTareas();
+
+    // Cerrar loading
+    if (mounted) Navigator.pop(context);
+
+    // Mostrar éxito
+    if (mounted) {
+      final nombreUsuario = nombreResponsables[uid] ?? 'Usuario';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ Tarea asignada a $nombreUsuario'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  } catch (e) {
+    // Cerrar loading
+    if (mounted) Navigator.pop(context);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error al asignar tarea: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
+Future<void> _asignarTodasAutomaticamente() async {
+  // Confirmación
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: Colors.grey.shade900,
+      title: const Row(
+        children: [
+          Icon(Icons.auto_awesome, color: Colors.orange),
+          SizedBox(width: 8),
+          Text(
+            'Asignación Automática',
+            style: TextStyle(color: Colors.white),
+          ),
+        ],
+      ),
+      content: const Text(
+        '¿Deseas asignar automáticamente todas las tareas sin responsables basándose en las habilidades de los participantes?',
+        style: TextStyle(color: Colors.white70),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancelar', style: TextStyle(color: Colors.white70)),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.orange,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Asignar Todas'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirm != true) return;
+
+  // Mostrar loading
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Image.asset(
+            'assets/animation.gif',
+            width: 120,
+            height: 120,
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Asignando tareas...',
+            style: TextStyle(color: Colors.white, fontSize: 16),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  try {
+    final participantesIds = participantes.map((p) => p['uid']!).toList();
+
+    // Obtener el propietario del proyecto
+    final proyectoDoc = await _firestore.collection('proyectos').doc(widget.proyectoId).get();
+    final propietarioId = proyectoDoc.exists ? proyectoDoc.data()!['propietario'] as String? : null;
+
+    final resultado = await _asignacionService.asignarTodasAutomaticamente(
+      proyectoId: widget.proyectoId,
+      tareas: tareas,
+      participantesIds: participantesIds,
+      propietarioId: propietarioId, // ✅ Pasar el ID del creador
+    );
+
+    // Recargar tareas
+    await _cargarTareas();
+
+    // Cerrar loading
+    if (mounted) Navigator.pop(context);
+
+    // Mostrar resultados
+    if (mounted) {
+      final asignadas = resultado['asignadas'] as int;
+      final sinCandidatos = resultado['sinCandidatos'] as int;
+      final resultados = resultado['resultados'] as List<Map<String, dynamic>>;
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.grey.shade900,
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 8),
+              Text(
+                'Asignación Completada',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '✅ Tareas asignadas: $asignadas',
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                ),
+                if (sinCandidatos > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '⚠️ Sin candidatos: $sinCandidatos',
+                    style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                  ),
+                ],
+                if (resultados.isNotEmpty) ...[
+                  const Divider(color: Colors.white24, height: 24),
+                  const Text(
+                    'Resumen de asignaciones:',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  ...resultados.take(10).map((r) {
+                    final totalAsignados = r['totalAsignados'] ?? 1;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '• ${r['tarea']}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '  → ${r['asignado']}',
+                            style: const TextStyle(color: Colors.green, fontSize: 11),
+                          ),
+                          Text(
+                            '  📊 Score promedio: ${r['matchScore']}% | 👥 $totalAsignados persona${totalAsignados > 1 ? "s" : ""} asignada${totalAsignados > 1 ? "s" : ""}',
+                            style: const TextStyle(color: Colors.white60, fontSize: 10),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  if (resultados.length > 10)
+                    Text(
+                      '\n... y ${resultados.length - 10} más',
+                      style: const TextStyle(color: Colors.white54, fontSize: 11),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+    }
+  } catch (e) {
+    // Cerrar loading
+    if (mounted) Navigator.pop(context);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error en asignación automática: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
 @override
 Widget build(BuildContext context) {
   return FutureBuilder<DocumentSnapshot>(
@@ -1033,13 +2620,21 @@ Widget build(BuildContext context) {
               icon: const Icon(Icons.account_tree, color: Colors.white, size: 28),
               tooltip: "Visualizar flujo de tareas del proyecto",
               onPressed: () {
+                // Detectar si es proyecto PMI
+                final esPMI = proyecto.esPMI;
+
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => GrafoTareasPage(
-                      tareas: tareas,
-                      nombreResponsables: nombreResponsables,
-                    ),
+                    builder: (_) => esPMI
+                        ? GrafoTareasPMIPage(
+                            tareas: tareas,
+                            nombreResponsables: nombreResponsables,
+                          )
+                        : GrafoTareasPage(
+                            tareas: tareas,
+                            nombreResponsables: nombreResponsables,
+                          ),
                   ),
                 );
               },
@@ -1055,21 +2650,33 @@ Widget build(BuildContext context) {
                     children: [
                       const SizedBox(height: 80),
                       _buildParticipantesSection(),
-                      _buildAreasSection(),
-                      _buildFiltroAreas(),
-                      Expanded(
-                        child: ListView(
-                          padding: const EdgeInsets.only(bottom: 100),
-                          children: [
-                            for (final area in (areas.keys.toList()..sort()))
-                              if (areaSeleccionada == null || areaSeleccionada == area)
-                                _buildGrupoHorizontal(area),
-                            if ((areaSeleccionada == null || areaSeleccionada == "General") &&
-                                !areas.keys.contains("General"))
-                              _buildGrupoHorizontal("General"),
-                          ],
+
+                      // ========================================
+                      // 🔄 CONDICIONAL: PMI vs Normal
+                      // ========================================
+                      if (proyecto.esPMI) ...[
+                        // Vista PMI
+                        _buildFasesPMISection(),
+                        _buildRecursosSection(),
+                        Expanded(child: _buildContenidoPMI()),
+                      ] else ...[
+                        // Vista Normal
+                        _buildAreasSection(),
+                        _buildFiltroAreas(),
+                        Expanded(
+                          child: ListView(
+                            padding: const EdgeInsets.only(bottom: 100),
+                            children: [
+                              for (final area in (areas.keys.toList()..sort()))
+                                if (areaSeleccionada == null || areaSeleccionada == area)
+                                  _buildGrupoHorizontal(area),
+                              if ((areaSeleccionada == null || areaSeleccionada == "General") &&
+                                  !areas.keys.contains("General"))
+                                _buildGrupoHorizontal("General"),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
           ],
@@ -1084,6 +2691,17 @@ Widget _buildFloatingButtons(Proyecto proyecto) {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
+      // Botón de asignación automática (solo para proyectos PMI)
+      if (proyecto.esPMI) ...[
+        FloatingActionButton.extended(
+          heroTag: "autoAsignarBtn",
+          backgroundColor: Colors.orange,
+          icon: const Icon(Icons.auto_awesome, color: Colors.white),
+          label: const Text("Auto-asignar", style: TextStyle(color: Colors.white)),
+          onPressed: _asignarTodasAutomaticamente,
+        ),
+        const SizedBox(height: 10),
+      ],
       FloatingActionButton.extended(
         heroTag: "reunionBtn",
         backgroundColor: Colors.black,

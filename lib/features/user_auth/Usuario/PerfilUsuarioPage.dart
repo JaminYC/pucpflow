@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import 'package:pucpflow/features/skills/pages/upload_cv_page.dart';
 import 'package:pucpflow/features/skills/services/skills_service.dart';
 import 'package:pucpflow/features/skills/models/skill_model.dart';
+import 'package:pucpflow/features/skills/init_skills_db.dart';
 
 class PerfilUsuarioPage extends StatefulWidget {
   final String uid;
@@ -31,6 +32,7 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
   List<UserSkillModel> _professionalSkills = [];
   Map<String, List<UserSkillModel>> _skillsBySector = {};
   bool _loadingSkills = true;
+  bool _initializingSkills = false;
 
   Map<String, List<String>> categorias = {
     "Cognitivas": ["pensamiento_logico", "planeamiento_estrategico", "toma_de_decisiones"],
@@ -98,6 +100,34 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
       user!.tipoPersonalidad = _tipoController.text;
       await OpenAIAssistantService().generarResumenYHabilidades(user!);
       await cargarUsuario();
+    }
+  }
+
+  Future<void> _initializeSkillsCatalog() async {
+    if (_initializingSkills) return;
+    setState(() => _initializingSkills = true);
+    try {
+      await InitSkillsDB().initializeSkills();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Catalogo de habilidades actualizado'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      await _cargarSkillsProfesionales();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error inicializando skills: $e'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _initializingSkills = false);
+      }
     }
   }
 
@@ -653,20 +683,48 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
     );
   }
 
-Widget _buildActionButtons() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: actualizarPerfilConIA,
-        icon: const Icon(Icons.refresh, size: 18),
-        label: const Text("Actualizar perfil con IA"),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue.shade600,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  Widget _buildActionButtons() {
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: actualizarPerfilConIA,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text("Actualizar perfil con IA"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.shade600,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
         ),
-      ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _initializingSkills ? null : _initializeSkillsCatalog,
+            icon: _initializingSkills
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.orange.shade300,
+                    ),
+                  )
+                : const Icon(Icons.upgrade),
+            label: Text(_initializingSkills ? "Actualizando catalogo..." : "Inicializar catalogo de skills"),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.orange.shade300,
+              side: BorderSide(color: Colors.orange.shade300.withValues(alpha: 0.3)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

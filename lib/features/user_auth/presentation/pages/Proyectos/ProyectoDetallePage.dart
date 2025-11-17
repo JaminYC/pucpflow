@@ -47,7 +47,7 @@ class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
   String? areaSeleccionada; // null = ver todas
 
   // ========================================
-  // 🆕 Variables para Proyectos PMI
+  //  Variables para Proyectos PMI
   // ========================================
   String? faseSeleccionada; // null = ver todas las fases
   Map<String, List<String>> recursos = {}; // Recursos del proyecto (reemplazo de areas para PMI)
@@ -64,7 +64,10 @@ class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
   Future<void> _cargarTareas() async {
     tareas = await _tareaService.obtenerTareasDelProyecto(widget.proyectoId);
     await _cargarNombresResponsables();
-    setState(() => loading = false);
+    setState(() {
+      loading = false;
+      areas = _mergeAreasWithTaskAreas(areas);
+    });
   }
 
   Future<void> _cargarNombresResponsables() async {
@@ -198,10 +201,50 @@ class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
       (data["areas"] ?? {}).map((k, v) => MapEntry(k, List<String>.from(v)))
     );
     setState(() {
-      areas = fetchedAreas;
+      areas = _mergeAreasWithTaskAreas(fetchedAreas);
     });
   }
 }
+
+  Map<String, List<String>> _mergeAreasWithTaskAreas(Map<String, List<String>> base) {
+    final updated = Map<String, List<String>>.from(base);
+    final derived = <String>{};
+    for (final tarea in tareas) {
+      final nombre = tarea.area.isNotEmpty ? tarea.area : "General";
+      derived.add(nombre);
+    }
+    if (derived.isEmpty) derived.add("General");
+    for (final area in derived) {
+      updated.putIfAbsent(area, () => []);
+    }
+    return updated;
+  }
+
+  List<String> _obtenerAreasDisponibles() {
+    final set = <String>{};
+    set.addAll(areas.keys);
+    for (final tarea in tareas) {
+      final nombre = tarea.area.isNotEmpty ? tarea.area : "General";
+      set.add(nombre);
+    }
+    if (set.isEmpty) set.add("General");
+    final list = set.toList();
+    list.sort();
+    return list;
+  }
+
+  List<String> _extractStringList(dynamic source) {
+    if (source is List) {
+      return source
+          .whereType<String>()
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    } else if (source is String && source.isNotEmpty) {
+      return [source];
+    }
+    return [];
+  }
 
 void _mostrarDialogoNuevaTarea() {
   showDialog(
@@ -239,7 +282,7 @@ void _mostrarDialogoNuevaTarea() {
                                 if (context.mounted) {
                                   Navigator.of(context).pop();
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text("✅ Tarea agregada")),
+                                    const SnackBar(content: Text("a Tarea agregada")),
                                   );
                                 }
                               },
@@ -265,23 +308,23 @@ void _mostrarDialogoNuevaTarea() {
   );
 }
 
- Widget _buildFiltroAreas() {
-  final List<String> nombresAreas = areas.keys.toList();
+Widget _buildFiltroAreas() {
+  final List<String> nombresAreas = _obtenerAreasDisponibles();
   return Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     child: Row(
       children: [
-        const Text("Filtrar por área:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        const Text("Filtrar por Area:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         const SizedBox(width: 12),
         DropdownButton<String>(
           dropdownColor: Colors.black,
-          value: areaSeleccionada ?? "Todas",  // ✅ si es null, usa "Todas"
+          value: areaSeleccionada ?? "Todas",  // a si es null, usa "Todas"
           style: const TextStyle(color: Colors.white),
           iconEnabledColor: Colors.white,
           items: [
             const DropdownMenuItem<String>(
               value: "Todas",
-              child: Text("Todas las áreas", style: TextStyle(color: Colors.white)),
+              child: Text("Todas las Areas", style: TextStyle(color: Colors.white)),
             ),
             ...nombresAreas.map(
               (area) => DropdownMenuItem<String>(
@@ -293,7 +336,7 @@ void _mostrarDialogoNuevaTarea() {
           onChanged: (value) {
             setState(() {
               areaSeleccionada = value == "Todas" ? null : value;
-              debugPrint("🎯 Área seleccionada: $areaSeleccionada");
+              debugPrint("  Area seleccionada: $areaSeleccionada");
             });
           },
         ),
@@ -393,6 +436,96 @@ Widget _buildParticipantesSection() {
   );
 }
 
+  Widget _buildBlueprintSummary(Proyecto proyecto) {
+    final blueprint = proyecto.blueprintIA;
+    if (blueprint == null || blueprint.isEmpty) return const SizedBox.shrink();
+
+    final resumen = blueprint['resumenEjecutivo'] ?? proyecto.descripcion;
+    final objetivos = _extractStringList(blueprint['objetivosSMART']);
+    final backlog = (blueprint['backlogInicial'] as List?) ?? [];
+    final hitos = (blueprint['hitosPrincipales'] as List?) ?? [];
+    final previewTareas = backlog
+        .whereType<Map>()
+        .map((e) => (e['nombre'] ?? e['titulo'] ?? '') as String)
+        .where((e) => e.isNotEmpty)
+        .take(3)
+        .toList();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Blueprint IA',
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            if (resumen != null && resumen.toString().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                resumen,
+                style: TextStyle(color: Colors.white70, height: 1.4),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 20,
+              runSpacing: 8,
+              children: [
+                _buildBlueprintStat('Objetivos', objetivos.length),
+                _buildBlueprintStat('Backlog', backlog.length),
+                _buildBlueprintStat('Hitos', hitos.length),
+              ],
+            ),
+            if (objetivos.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('Objetivos SMART', style: TextStyle(color: Colors.white.withOpacity(0.8))),
+              const SizedBox(height: 4),
+              ...objetivos.take(3).map(
+                (o) => Text('a $o', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              ),
+            ],
+            if (previewTareas.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('Primeras tareas sugeridas', style: TextStyle(color: Colors.white.withOpacity(0.8))),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                children: previewTareas
+                    .map((t) => Chip(
+                          label: Text(t),
+                          labelStyle: const TextStyle(fontSize: 12),
+                          backgroundColor: Colors.blueGrey.shade700,
+                        ))
+                    .toList(),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBlueprintStat(String label, int value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$value',
+          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+      ],
+    );
+  }
+
  void _mostrarTareasDelParticipante(String uid, String nombre) {
   final tareasUsuario = tareas.where((t) => t.responsables.contains(uid)).toList();
 
@@ -446,7 +579,7 @@ Widget _buildParticipantesSection() {
     context: context,
     builder: (_) {
       return _dialogoArea(
-        titulo: "Crear Nueva Área",
+        titulo: "Crear Nueva Area",
         nombreInicial: "",
         seleccionInicial: [],
         onGuardar: (nombre, uids) => _guardarArea(nombre, uids),
@@ -460,7 +593,7 @@ Widget _buildParticipantesSection() {
     context: context,
     builder: (_) {
       return _dialogoArea(
-        titulo: "Editar Área: $nombreArea",
+        titulo: "Editar Area: $nombreArea",
         nombreInicial: nombreArea,
         seleccionInicial: actuales,
         onGuardar: (nuevoNombre, uids) async {
@@ -488,7 +621,7 @@ Widget _buildParticipantesSection() {
   required String nombreInicial,
   required List<String> seleccionInicial,
   required Function(String, List<String>) onGuardar,
-  Function()? onEliminar, // nuevo parámetro opcional
+  Function()? onEliminar, // nuevo parAmetro opcional
 }) {
   String nombreArea = nombreInicial;
   List<String> seleccionados = List<String>.from(seleccionInicial);
@@ -501,7 +634,7 @@ Widget _buildParticipantesSection() {
           child: Column(
             children: [
               TextField(
-                decoration: const InputDecoration(labelText: "Nombre del área"),
+                decoration: const InputDecoration(labelText: "Nombre del Area"),
                 controller: TextEditingController(text: nombreArea),
                 onChanged: (v) => nombreArea = v,
               ),
@@ -555,7 +688,7 @@ Widget _buildParticipantesSection() {
 }
 
 // ========================================
-// 🆕 SECCIÓN: FASES PMI
+//  SECCIAN: FASES PMI
 // ========================================
 Widget _buildFasesPMISection() {
   // Contar tareas por fase
@@ -570,11 +703,11 @@ Widget _buildFasesPMISection() {
     }
   }
 
-  final fases = ['Iniciación', 'Planificación', 'Ejecución', 'Monitoreo y Control', 'Cierre'];
+  final fases = ['IniciaciA3n', 'PlanificaciA3n', 'EjecuciA3n', 'Monitoreo y Control', 'Cierre'];
   final coloresFases = {
-    'Iniciación': const Color(0xFF4CAF50),
-    'Planificación': const Color(0xFF2196F3),
-    'Ejecución': const Color(0xFFFF9800),
+    'IniciaciA3n': const Color(0xFF4CAF50),
+    'PlanificaciA3n': const Color(0xFF2196F3),
+    'EjecuciA3n': const Color(0xFFFF9800),
     'Monitoreo y Control': const Color(0xFF9C27B0),
     'Cierre': const Color(0xFF607D8B),
   };
@@ -654,14 +787,14 @@ Widget _buildFasesPMISection() {
 }
 
 // ========================================
-// 🆕 CONTENIDO PRINCIPAL PMI
+//  CONTENIDO PRINCIPAL PMI
 // ========================================
 Widget _buildContenidoPMI() {
-  // Agrupar tareas por Fase → Entregable → Paquete
+  // Agrupar tareas por Fase a Entregable a Paquete
   final Map<String, Map<String, Map<String, List<Tarea>>>> jerarquia = {};
 
   for (var tarea in tareas) {
-    // Aplicar filtro por fase si está seleccionada
+    // Aplicar filtro por fase si estA seleccionada
     if (faseSeleccionada != null && tarea.fasePMI != faseSeleccionada) {
       continue;
     }
@@ -676,7 +809,7 @@ Widget _buildContenidoPMI() {
     jerarquia[fase]![entregable]![paquete]!.add(tarea);
   }
 
-  // Ordenar fases según orden PMI
+  // Ordenar fases segAon orden PMI
   final fasesOrdenadas = _ordenarFasesPMI(jerarquia.keys.toList());
 
   if (fasesOrdenadas.isEmpty) {
@@ -798,7 +931,7 @@ Widget _buildEntregableSectionPMI(
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                '📦 $nombreEntregable',
+                ' $nombreEntregable',
                 style: TextStyle(
                   color: colorFase,
                   fontSize: 16,
@@ -944,23 +1077,23 @@ Widget _buildTareaItemPMI(Tarea tarea, Color colorFase) {
                       runSpacing: 4,
                       children: [
                         if (tarea.area != 'Sin asignar' && tarea.area != 'General')
-                          _buildChipPMI('👥 ${tarea.area}', Colors.blue.shade700),
+                          _buildChipPMI(' ${tarea.area}', Colors.blue.shade700),
                         if (tarea.dificultad != null)
-                          _buildChipPMI('🎯 ${tarea.dificultad}', Colors.purple.shade700),
-                        _buildChipPMI('⏱️ ${tarea.duracion} min', Colors.indigo.shade700),
+                          _buildChipPMI('  ${tarea.dificultad}', Colors.purple.shade700),
+                        _buildChipPMI('ai  ${tarea.duracion} min', Colors.indigo.shade700),
                         if (tarea.prioridad >= 4)
-                          _buildChipPMI('🔥 Alta prioridad', Colors.red.shade700),
+                          _buildChipPMI(' Alta prioridad', Colors.red.shade700),
                       ],
                     ),
                   ],
                 ),
               ),
             ),
-            // Botones de acción
+            // Botones de acciA3n
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Botón de editar
+                // BotA3n de editar
                 IconButton(
                   icon: const Icon(Icons.edit, color: Colors.blue, size: 18),
                   tooltip: 'Editar tarea',
@@ -969,7 +1102,7 @@ Widget _buildTareaItemPMI(Tarea tarea, Color colorFase) {
                   constraints: const BoxConstraints(),
                 ),
                 const SizedBox(width: 8),
-                // Botón de asignación inteligente (solo si no tiene responsables)
+                // BotA3n de asignaciA3n inteligente (solo si no tiene responsables)
                 if (!tieneResponsables && tieneHabilidades)
                   IconButton(
                     icon: const Icon(Icons.person_add_alt_1, color: Colors.orange, size: 18),
@@ -982,7 +1115,7 @@ Widget _buildTareaItemPMI(Tarea tarea, Color colorFase) {
             ),
           ],
         ),
-        // Mostrar responsables asignados con justificación
+        // Mostrar responsables asignados con justificaciA3n
         if (tieneResponsables) ...[
           const SizedBox(height: 8),
           ...tarea.responsables.map((uid) {
@@ -1050,7 +1183,7 @@ Widget _buildTareaItemPMI(Tarea tarea, Color colorFase) {
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                '✓ $hab',
+                                'a $hab',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 9,
@@ -1144,14 +1277,14 @@ Widget _buildChipPMI(String label, Color color) {
 }
 
 // ========================================
-// 🆕 UTILIDADES PMI
+//  UTILIDADES PMI
 // ========================================
 
 List<String> _ordenarFasesPMI(List<String> fases) {
   final orden = {
-    'Iniciación': 1,
-    'Planificación': 2,
-    'Ejecución': 3,
+    'IniciaciA3n': 1,
+    'PlanificaciA3n': 2,
+    'EjecuciA3n': 3,
     'Monitoreo y Control': 4,
     'Monitoreo': 4,
     'Cierre': 5,
@@ -1168,11 +1301,11 @@ List<String> _ordenarFasesPMI(List<String> fases) {
 
 Color _obtenerColorFasePMI(String fase) {
   switch (fase) {
-    case 'Iniciación':
+    case 'IniciaciA3n':
       return const Color(0xFF4CAF50);
-    case 'Planificación':
+    case 'PlanificaciA3n':
       return const Color(0xFF2196F3);
-    case 'Ejecución':
+    case 'EjecuciA3n':
       return const Color(0xFFFF9800);
     case 'Monitoreo y Control':
     case 'Monitoreo':
@@ -1186,11 +1319,11 @@ Color _obtenerColorFasePMI(String fase) {
 
 IconData _obtenerIconoFasePMI(String fase) {
   switch (fase) {
-    case 'Iniciación':
+    case 'IniciaciA3n':
       return Icons.flag;
-    case 'Planificación':
+    case 'PlanificaciA3n':
       return Icons.edit_calendar;
-    case 'Ejecución':
+    case 'EjecuciA3n':
       return Icons.build;
     case 'Monitoreo y Control':
     case 'Monitoreo':
@@ -1202,8 +1335,22 @@ IconData _obtenerIconoFasePMI(String fase) {
   }
 }
 
+Color _colorPorTipoContextual(String? tipo) {
+  switch ((tipo ?? '').toLowerCase()) {
+    case 'descubrimiento':
+      return Colors.lightBlueAccent.shade200;
+    case 'ejecucion':
+    case 'ejecuciA3n':
+      return Colors.tealAccent.shade200;
+    case 'seguimiento':
+      return Colors.amberAccent.shade200;
+    default:
+      return Colors.blueGrey.shade200;
+  }
+}
+
 // ========================================
-// 🆕 SECCIÓN: RECURSOS (reemplaza Áreas para PMI)
+//  SECCIAN: RECURSOS (reemplaza Areas para PMI)
 // ========================================
 Widget _buildRecursosSection() {
   // Construir mapa de recursos desde las tareas
@@ -1239,7 +1386,7 @@ Widget _buildRecursosSection() {
         child: recursosPorArea.isEmpty
             ? const Center(
                 child: Text(
-                  'No hay recursos asignados aún',
+                  'No hay recursos asignados aAon',
                   style: TextStyle(color: Colors.white70),
                 ),
               )
@@ -1265,7 +1412,7 @@ Widget _buildRecursosSection() {
                         ),
                       ),
                       subtitle: Text(
-                        '📋 $completadas/$tareasRecurso tareas completadas',
+                        ' $completadas/$tareasRecurso tareas completadas',
                         style: const TextStyle(color: Colors.white70),
                       ),
                       trailing: CircularProgressIndicator(
@@ -1282,10 +1429,11 @@ Widget _buildRecursosSection() {
   );
 }
 
+
 Widget _buildAreasSection() {
   return ExpansionTile(
     title: const Text(
-      "Áreas del Proyecto",
+      "Areas del Proyecto",
       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
     ),
     backgroundColor: Colors.white10,
@@ -1293,15 +1441,14 @@ Widget _buildAreasSection() {
     iconColor: Colors.white,
     childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     children: [
-      /// 🧭 Sección scrollable limitada en altura
       SizedBox(
-        height: 300, // Puedes ajustar esta altura
+        height: 300,
         child: ListView.builder(
-          itemCount: areas.length,
+          itemCount: _obtenerAreasDisponibles().length,
           itemBuilder: (context, index) {
-            final entry = areas.entries.elementAt(index);
-            final area = entry.key;
-            final miembros = entry.value.map((uid) {
+            final area = _obtenerAreasDisponibles()[index];
+            final miembrosUID = areas[area] ?? [];
+            final miembros = miembrosUID.map((uid) {
               final p = participantes.firstWhere(
                 (e) => e["uid"] == uid,
                 orElse: () => {"nombre": "?"}
@@ -1314,19 +1461,22 @@ Widget _buildAreasSection() {
               margin: const EdgeInsets.symmetric(vertical: 6),
               child: ListTile(
                 title: Text(area, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                subtitle: Text("👥 $miembros", style: const TextStyle(color: Colors.white70)),
+                subtitle: Text(
+                  miembros.isEmpty ? "Sin integrantes asignados" : "Participantes: " + miembros,
+                  style: const TextStyle(color: Colors.white70),
+                ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
                       icon: const Icon(Icons.edit, color: Colors.orange),
-                      onPressed: () => _mostrarDialogoEditarArea(area, entry.value),
-                      tooltip: "Editar área",
+                      onPressed: () => _mostrarDialogoEditarArea(area, miembrosUID),
+                      tooltip: "Editar Area",
                     ),
                     IconButton(
                       icon: const Icon(Icons.delete, color: Colors.red),
                       onPressed: () => _confirmarEliminarArea(area),
-                      tooltip: "Eliminar área",
+                      tooltip: "Eliminar Area",
                     ),
                   ],
                 ),
@@ -1338,7 +1488,7 @@ Widget _buildAreasSection() {
       const SizedBox(height: 8),
       ElevatedButton.icon(
         icon: const Icon(Icons.add),
-        label: const Text("Agregar Área"),
+        label: const Text("Agregar Area"),
         onPressed: _mostrarDialogoNuevaArea,
         style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
       ),
@@ -1346,12 +1496,13 @@ Widget _buildAreasSection() {
   );
 }
 
+
  void _confirmarEliminarArea(String nombreArea) {
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text("¿Eliminar área?"),
-      content: Text("¿Estás seguro de que deseas eliminar el área \"$nombreArea\"? Esta acción no se puede deshacer."),
+      title: const Text("AEliminar Area?"),
+      content: Text("AEstAs seguro de que deseas eliminar el Area \"$nombreArea\"? Esta acciA3n no se puede deshacer."),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
@@ -1384,8 +1535,10 @@ Widget _buildGrupoHorizontal(String area) {
     children: [
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Text(area,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+        child: Text(
+          area,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
       ),
       if (pendientes.isNotEmpty)
         Column(
@@ -1393,10 +1546,10 @@ Widget _buildGrupoHorizontal(String area) {
           children: [
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text("⏳ Pendientes", style: TextStyle(color: Colors.white70)),
+              child: Text('Pendientes', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 6),
-            ...pendientes.map(_buildTareaCardCompacta).toList(),
+            ...pendientes.map(_buildTareaCardContextual).toList(),
           ],
         ),
       if (completadas.isNotEmpty)
@@ -1405,15 +1558,16 @@ Widget _buildGrupoHorizontal(String area) {
           children: [
             const Padding(
               padding: EdgeInsets.only(top: 12, left: 16),
-              child: Text("✅ Completadas", style: TextStyle(color: Colors.greenAccent)),
+              child: Text('Completadas', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 6),
-            ...completadas.map(_buildTareaCardCompacta).toList(),
+            ...completadas.map(_buildTareaCardContextual).toList(),
           ],
         ),
     ],
   );
 }
+
 
 Future<void> _actualizarHabilidades(String uid, Map<String, int> requisitos, String tituloTarea) async {
   final userRef = FirebaseFirestore.instance.collection("users").doc(uid);
@@ -1455,7 +1609,7 @@ Future<void> _actualizarEstadoTarea(Tarea tarea) async {
 
   await docRef.update({"tareas": tareasJson});
 
-  // ✅ Si fue completada, actualiza habilidades
+  // a Si fue completada, actualiza habilidades
   if (tarea.completado) {
     for (final uid in tarea.responsables) {
       await _actualizarHabilidades(uid, tarea.requisitos, tarea.titulo);
@@ -1464,79 +1618,130 @@ Future<void> _actualizarEstadoTarea(Tarea tarea) async {
   }
 }
 
-Widget _buildTareaCardCompacta(Tarea tarea) {
+Widget _buildTareaCardContextual(Tarea tarea) {
+  final bool tieneResponsables = tarea.responsables.isNotEmpty;
+  final bool tieneHabilidades = tarea.habilidadesRequeridas.isNotEmpty;
+  final Color color = _colorPorTipoContextual(tarea.tipoTarea);
+
   final responsablesNombres = tarea.responsables
-      .map((id) => nombreResponsables[id] ?? "-usuario-")
+      .map((id) => nombreResponsables[id] ?? '-usuario-')
       .take(2)
-      .join(", ") +
-      (tarea.responsables.length > 2 ? "..." : "");
+      .join(', ') + (tarea.responsables.length > 2 ? '...' : '');
 
-  final Color colorIndicador = tarea.responsables.isNotEmpty
-      ? _colorDesdeUID(tarea.responsables.first)
-      : Colors.grey;
-
-  return Card(
-    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-    color: tarea.completado ? Colors.green[50] : Colors.white,
-    elevation: 2,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => _mostrarDialogoDetalleTarea(tarea),
-                  child: Text(
-                    tarea.titulo,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
+  return Container(
+    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: tarea.completado
+          ? Colors.green.shade900.withValues(alpha: 0.25)
+          : Colors.grey.shade900.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(
+        color: tarea.completado ? Colors.green : color.withValues(alpha: 0.4),
+        width: 1,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: color.withValues(alpha: 0.2),
+          blurRadius: 12,
+          offset: const Offset(0, 6),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            GestureDetector(
+              onTap: () async {
+                tarea.completado = !tarea.completado;
+                setState(() {});
+                await _actualizarEstadoTarea(tarea);
+              },
+              child: Icon(
+                tarea.completado ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: tarea.completado ? Colors.greenAccent : Colors.white54,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _mostrarDialogoDetalleTarea(tarea),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tarea.titulo,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        decoration: tarea.completado
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        _buildChipPMI(tarea.tipoTarea, color),
+                        if (tarea.dificultad != null)
+                          _buildChipPMI('Nivel ${tarea.dificultad}', Colors.purple.shade600),
+                        if (tarea.area.isNotEmpty)
+                          _buildChipPMI(tarea.area, Colors.blueGrey.shade700),
+                        _buildChipPMI('${tarea.duracion} min', Colors.deepOrange.shade400),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              Checkbox(
-                value: tarea.completado,
-                onChanged: (value) async {
-                  setState(() {
-                    tarea.completado = value!;
-                  });
-                  await _actualizarEstadoTarea(tarea);
-                },
-              )
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Chip(
-                label: Text(tarea.tipoTarea),
-                backgroundColor: Colors.black,
-                labelStyle: const TextStyle(color: Colors.white),
-                padding: EdgeInsets.zero,
-              ),
-              const SizedBox(width: 6),
-              if (tarea.dificultad != null)
-                Chip(
-                  label: Text("Dif: ${tarea.dificultad}"),
-                  backgroundColor: Colors.black54,
-                  labelStyle: const TextStyle(color: Colors.white),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.blueAccent, size: 18),
+                  tooltip: 'Editar tarea',
+                  onPressed: () => _mostrarDialogoEditarTareaNueva(tarea),
                   padding: EdgeInsets.zero,
-                )
-            ],
-          ),
-          const SizedBox(height: 4),
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 4),
+                if (!tieneResponsables && tieneHabilidades)
+                  IconButton(
+                    icon: const Icon(Icons.person_add_alt_1, color: Colors.orange, size: 18),
+                    tooltip: 'Asignar inteligentemente',
+                    onPressed: () => _mostrarDialogoAsignacionInteligente(tarea),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          tieneResponsables
+              ? 'Responsables: $responsablesNombres'
+              : 'Sin responsables asignados',
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+        if (tarea.descripcion?.isNotEmpty == true) ...[
+          const SizedBox(height: 6),
           Text(
-            "👤 $responsablesNombres",
-            style: const TextStyle(fontSize: 12, color: Colors.black87),
-            overflow: TextOverflow.ellipsis,
+            tarea.descripcion!,
+            style: const TextStyle(color: Colors.white60, fontSize: 12),
           ),
         ],
-      ),
+      ],
     ),
   );
 }
+
 
 void _mostrarDialogoDetalleTarea(Tarea tarea) {
   final responsablesNombres = tarea.responsables
@@ -1573,20 +1778,20 @@ void _mostrarDialogoDetalleTarea(Tarea tarea) {
                       labelStyle: const TextStyle(color: Colors.white),
                     ),
                   Chip(
-                    label: Text(tarea.completado ? "✅ Completada" : "⏳ Pendiente"),
+                    label: Text(tarea.completado ? "a Completada" : "a3 Pendiente"),
                     backgroundColor: tarea.completado ? Colors.green : Colors.orange,
                     labelStyle: const TextStyle(color: Colors.white),
                   ),
                 ],
               ),
               const SizedBox(height: 10),
-              Text("👥 Responsables:\n$responsablesNombres", style: const TextStyle(color: Colors.white70)),
+              Text(" Responsables:\n$responsablesNombres", style: const TextStyle(color: Colors.white70)),
               if (tarea.requisitos.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                const Text("🎯 Habilidades requeridas:",
+                const Text("  Habilidades requeridas:",
                     style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ...tarea.requisitos.entries.map((e) =>
-                    Text("• ${e.key}: ${e.value}", style: const TextStyle(color: Colors.white70))),
+                    Text("a ${e.key}: ${e.value}", style: const TextStyle(color: Colors.white70))),
               ]
             ],
           ),
@@ -1601,7 +1806,7 @@ void _mostrarDialogoDetalleTarea(Tarea tarea) {
             tooltip: "Editar",
             onPressed: () {
               Navigator.pop(context);
-              _mostrarDialogoEditarTareaNueva(tarea); // 👈 tu función existente
+              _mostrarDialogoEditarTareaNueva(tarea); //  tu funciA3n existente
             },
           ),
           IconButton(
@@ -1609,7 +1814,7 @@ void _mostrarDialogoDetalleTarea(Tarea tarea) {
             tooltip: "Eliminar",
             onPressed: () {
               Navigator.pop(context);
-              _confirmarEliminarTareaDesdeDialogo(tarea); // 👈 nueva función abajo
+              _confirmarEliminarTareaDesdeDialogo(tarea); //  nueva funciA3n abajo
             },
           ),
         ],
@@ -1654,7 +1859,7 @@ void _mostrarDialogoEditarTareaNueva(Tarea tarea) {
                               if (context.mounted) {
                                 Navigator.of(context).pop();
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text("✅ Tarea actualizada")),
+                                  const SnackBar(content: Text("a Tarea actualizada")),
                                 );
                               }
                             },
@@ -1682,8 +1887,8 @@ void _confirmarEliminarTareaDesdeDialogo(Tarea tarea) {
   showDialog(
     context: context,
     builder: (_) => AlertDialog(
-      title: const Text("¿Eliminar tarea?"),
-      content: const Text("Esta acción no se puede deshacer."),
+      title: const Text("AEliminar tarea?"),
+      content: const Text("Esta acciA3n no se puede deshacer."),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
@@ -1708,10 +1913,10 @@ void _confirmarEliminarTareaDesdeDialogo(Tarea tarea) {
                 );
               },
             );
-            await _eliminarTarea(tarea); // ✅ ya la tienes
+            await _eliminarTarea(tarea); // a ya la tienes
             Navigator.of(loaderContext).pop();
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("✅ Tarea eliminada")),
+              const SnackBar(content: Text("a Tarea eliminada")),
             );
           },
           style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -1723,7 +1928,7 @@ void _confirmarEliminarTareaDesdeDialogo(Tarea tarea) {
 }
 
 // ========================================
-// 🆕 DIÁLOGO DE DETALLE PARA TAREAS PMI
+//  DIALOGO DE DETALLE PARA TAREAS PMI
 // ========================================
 
 void _mostrarDialogoDetalleTareaPMI(Tarea tarea) {
@@ -1757,7 +1962,7 @@ void _mostrarDialogoDetalleTareaPMI(Tarea tarea) {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Título de la tarea
+                  // TAtulo de la tarea
                   Text(
                     tarea.titulo,
                     style: const TextStyle(
@@ -1768,9 +1973,9 @@ void _mostrarDialogoDetalleTareaPMI(Tarea tarea) {
                   ),
                   const SizedBox(height: 16),
 
-                  // Jerarquía PMI
+                  // JerarquAa PMI
                   _buildDetalleSeccion(
-                    'Jerarquía PMI',
+                    'JerarquAa PMI',
                     Icons.account_tree,
                     Colors.blue,
                     [
@@ -1784,10 +1989,10 @@ void _mostrarDialogoDetalleTareaPMI(Tarea tarea) {
                   ),
                   const Divider(color: Colors.white24, height: 24),
 
-                  // Descripción
+                  // DescripciA3n
                   if (tarea.descripcion?.isNotEmpty == true) ...[
                     _buildDetalleSeccion(
-                      'Descripción',
+                      'DescripciA3n',
                       Icons.description,
                       Colors.purple,
                       [
@@ -1800,13 +2005,13 @@ void _mostrarDialogoDetalleTareaPMI(Tarea tarea) {
                     const Divider(color: Colors.white24, height: 24),
                   ],
 
-                  // Información general
+                  // InformaciA3n general
                   _buildDetalleSeccion(
-                    'Información General',
+                    'InformaciA3n General',
                     Icons.info,
                     Colors.orange,
                     [
-                      _buildDetalleItem('Duración', '${tarea.duracion} minutos'),
+                      _buildDetalleItem('DuraciA3n', '${tarea.duracion} minutos'),
                       _buildDetalleItem('Prioridad', '${tarea.prioridad}/5'),
                       if (tarea.dificultad != null)
                         _buildDetalleItem('Dificultad', tarea.dificultad!),
@@ -1849,7 +2054,7 @@ void _mostrarDialogoDetalleTareaPMI(Tarea tarea) {
                     const Divider(color: Colors.white24, height: 24),
                   ],
 
-                  // Responsables con justificación
+                  // Responsables con justificaciA3n
                   if (tarea.responsables.isNotEmpty) ...[
                     _buildDetalleSeccion(
                       'Responsables Asignados',
@@ -1943,7 +2148,7 @@ void _mostrarDialogoDetalleTareaPMI(Tarea tarea) {
                                           borderRadius: BorderRadius.circular(4),
                                         ),
                                         child: Text(
-                                          '✓ $hab',
+                                          'a $hab',
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontSize: 10,
@@ -1955,7 +2160,7 @@ void _mostrarDialogoDetalleTareaPMI(Tarea tarea) {
                                   if (just['nivelPromedio'] != null) ...[
                                     const SizedBox(height: 6),
                                     Text(
-                                      '⭐ Nivel promedio: ${(just['nivelPromedio'] as double).toStringAsFixed(1)}/5',
+                                      'a Nivel promedio: ${(just['nivelPromedio'] as double).toStringAsFixed(1)}/5',
                                       style: const TextStyle(
                                         color: Colors.white60,
                                         fontSize: 11,
@@ -2072,7 +2277,7 @@ Future<List<Map<String, dynamic>>> _obtenerJustificacionesTodosResponsables(Tare
 }
 
 // ========================================
-// 🆕 ASIGNACIÓN INTELIGENTE
+//  ASIGNACIAN INTELIGENTE
 // ========================================
 
 Future<void> _mostrarDialogoAsignacionInteligente(Tarea tarea) async {
@@ -2104,7 +2309,7 @@ Future<void> _mostrarDialogoAsignacionInteligente(Tarea tarea) async {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ No se encontraron candidatos con las habilidades requeridas'),
+            content: Text('a No se encontraron candidatos con las habilidades requeridas'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -2127,7 +2332,7 @@ Future<void> _mostrarDialogoAsignacionInteligente(Tarea tarea) async {
               Icon(Icons.psychology, color: Colors.orange),
               SizedBox(width: 8),
               Text(
-                'Asignación Inteligente',
+                'AsignaciA3n Inteligente',
                 style: TextStyle(color: Colors.white),
               ),
             ],
@@ -2172,7 +2377,7 @@ Future<void> _mostrarDialogoAsignacionInteligente(Tarea tarea) async {
                           sugerencia['habilidadesCoincidentes'] as List<String>;
                       final nivelPromedio = sugerencia['nivelPromedio'] as double;
 
-                      // Color según el score
+                      // Color segAon el score
                       Color scoreColor;
                       if (matchScore >= 80) {
                         scoreColor = Colors.green;
@@ -2209,11 +2414,11 @@ Future<void> _mostrarDialogoAsignacionInteligente(Tarea tarea) async {
                             children: [
                               const SizedBox(height: 4),
                               Text(
-                                '✓ ${habilidadesCoincidentes.length} de ${tarea.habilidadesRequeridas.length} habilidades',
+                                'a ${habilidadesCoincidentes.length} de ${tarea.habilidadesRequeridas.length} habilidades',
                                 style: const TextStyle(color: Colors.white70, fontSize: 11),
                               ),
                               Text(
-                                '⭐ Nivel promedio: ${nivelPromedio.toStringAsFixed(1)}/5',
+                                'a Nivel promedio: ${nivelPromedio.toStringAsFixed(1)}/5',
                                 style: const TextStyle(color: Colors.white70, fontSize: 11),
                               ),
                               if (habilidadesCoincidentes.isNotEmpty) ...[
@@ -2294,13 +2499,13 @@ Future<void> _mostrarDialogoAsignacionInteligente(Tarea tarea) async {
         );
     }
   } catch (e) {
-    // Cerrar loading si está abierto
+    // Cerrar loading si estA abierto
     if (mounted) Navigator.pop(context);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Error al obtener sugerencias: $e'),
+          content: Text('a Error al obtener sugerencias: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -2362,12 +2567,12 @@ Future<void> _asignarTareaAUsuario(Tarea tarea, String uid) async {
     // Cerrar loading
     if (mounted) Navigator.pop(context);
 
-    // Mostrar éxito
+    // Mostrar Axito
     if (mounted) {
       final nombreUsuario = nombreResponsables[uid] ?? 'Usuario';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Tarea asignada a $nombreUsuario'),
+          content: Text('a Tarea asignada a $nombreUsuario'),
           backgroundColor: Colors.green,
         ),
       );
@@ -2379,7 +2584,7 @@ Future<void> _asignarTareaAUsuario(Tarea tarea, String uid) async {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Error al asignar tarea: $e'),
+          content: Text('a Error al asignar tarea: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -2388,7 +2593,7 @@ Future<void> _asignarTareaAUsuario(Tarea tarea, String uid) async {
 }
 
 Future<void> _asignarTodasAutomaticamente() async {
-  // Confirmación
+  // ConfirmaciA3n
   final confirm = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
@@ -2398,13 +2603,13 @@ Future<void> _asignarTodasAutomaticamente() async {
           Icon(Icons.auto_awesome, color: Colors.orange),
           SizedBox(width: 8),
           Text(
-            'Asignación Automática',
+            'AsignaciA3n AutomAtica',
             style: TextStyle(color: Colors.white),
           ),
         ],
       ),
       content: const Text(
-        '¿Deseas asignar automáticamente todas las tareas sin responsables basándose en las habilidades de los participantes?',
+        'ADeseas asignar automAticamente todas las tareas sin responsables basAndose en las habilidades de los participantes?',
         style: TextStyle(color: Colors.white70),
       ),
       actions: [
@@ -2460,7 +2665,7 @@ Future<void> _asignarTodasAutomaticamente() async {
       proyectoId: widget.proyectoId,
       tareas: tareas,
       participantesIds: participantesIds,
-      propietarioId: propietarioId, // ✅ Pasar el ID del creador
+      propietarioId: propietarioId, // a Pasar el ID del creador
     );
 
     // Recargar tareas
@@ -2484,7 +2689,7 @@ Future<void> _asignarTodasAutomaticamente() async {
               Icon(Icons.check_circle, color: Colors.green),
               SizedBox(width: 8),
               Text(
-                'Asignación Completada',
+                'AsignaciA3n Completada',
                 style: TextStyle(color: Colors.white),
               ),
             ],
@@ -2495,13 +2700,13 @@ Future<void> _asignarTodasAutomaticamente() async {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '✅ Tareas asignadas: $asignadas',
+                  'a Tareas asignadas: $asignadas',
                   style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                 ),
                 if (sinCandidatos > 0) ...[
                   const SizedBox(height: 8),
                   Text(
-                    '⚠️ Sin candidatos: $sinCandidatos',
+                    'a i  Sin candidatos: $sinCandidatos',
                     style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -2520,7 +2725,7 @@ Future<void> _asignarTodasAutomaticamente() async {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '• ${r['tarea']}',
+                            'a ${r['tarea']}',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -2528,11 +2733,11 @@ Future<void> _asignarTodasAutomaticamente() async {
                             ),
                           ),
                           Text(
-                            '  → ${r['asignado']}',
+                            '  a ${r['asignado']}',
                             style: const TextStyle(color: Colors.green, fontSize: 11),
                           ),
                           Text(
-                            '  📊 Score promedio: ${r['matchScore']}% | 👥 $totalAsignados persona${totalAsignados > 1 ? "s" : ""} asignada${totalAsignados > 1 ? "s" : ""}',
+                            '   Score promedio: ${r['matchScore']}% |  $totalAsignados persona${totalAsignados > 1 ? "s" : ""} asignada${totalAsignados > 1 ? "s" : ""}',
                             style: const TextStyle(color: Colors.white60, fontSize: 10),
                           ),
                         ],
@@ -2541,7 +2746,7 @@ Future<void> _asignarTodasAutomaticamente() async {
                   }),
                   if (resultados.length > 10)
                     Text(
-                      '\n... y ${resultados.length - 10} más',
+                      '\n... y ${resultados.length - 10} mAs',
                       style: const TextStyle(color: Colors.white54, fontSize: 11),
                     ),
                 ],
@@ -2564,7 +2769,7 @@ Future<void> _asignarTodasAutomaticamente() async {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ Error en asignación automática: $e'),
+          content: Text('a Error en asignaciA3n automAtica: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -2650,9 +2855,10 @@ Widget build(BuildContext context) {
                     children: [
                       const SizedBox(height: 80),
                       _buildParticipantesSection(),
+                      if (!proyecto.esPMI) _buildBlueprintSummary(proyecto),
 
                       // ========================================
-                      // 🔄 CONDICIONAL: PMI vs Normal
+                      //  CONDICIONAL: PMI vs Normal
                       // ========================================
                       if (proyecto.esPMI) ...[
                         // Vista PMI
@@ -2691,22 +2897,19 @@ Widget _buildFloatingButtons(Proyecto proyecto) {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
-      // Botón de asignación automática (solo para proyectos PMI)
-      if (proyecto.esPMI) ...[
-        FloatingActionButton.extended(
-          heroTag: "autoAsignarBtn",
-          backgroundColor: Colors.orange,
-          icon: const Icon(Icons.auto_awesome, color: Colors.white),
-          label: const Text("Auto-asignar", style: TextStyle(color: Colors.white)),
-          onPressed: _asignarTodasAutomaticamente,
-        ),
-        const SizedBox(height: 10),
-      ],
+      FloatingActionButton.extended(
+        heroTag: "autoAsignarBtn",
+        backgroundColor: Colors.orange,
+        icon: const Icon(Icons.auto_awesome, color: Colors.white),
+        label: const Text("Auto-asignar", style: TextStyle(color: Colors.white)),
+        onPressed: _asignarTodasAutomaticamente,
+      ),
+      const SizedBox(height: 10),
       FloatingActionButton.extended(
         heroTag: "reunionBtn",
         backgroundColor: Colors.black,
         icon: const Icon(Icons.mic, color: Colors.white),
-        label: const Text("Reunión", style: TextStyle(color: Colors.white)),
+        label: const Text("ReuniA3n", style: TextStyle(color: Colors.white)),
         onPressed: () {
           Navigator.push(
             context,

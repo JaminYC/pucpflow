@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart'; // ⬅️ Esto permite formatear fechas
 import 'package:flutter_dropzone/flutter_dropzone.dart';
 import 'crear_proyecto_pmi_page.dart';
+import 'proyecto_ia_gateway_page.dart';
 
 import 'dart:typed_data';
 import 'dart:io' as io;
@@ -834,17 +835,17 @@ stream: obtenerProyectos(),
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => const CrearProyectoPMIPage(),
+                builder: (context) => const ProyectoIAGatewayPage(),
               ),
             );
           },
           backgroundColor: Colors.blue,
           icon: const Icon(Icons.auto_awesome, color: Colors.white),
           label: const Text(
-            'PMI con IA',
+            'Proyectos con IA',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
-          heroTag: 'pmi_ia',
+          heroTag: 'ia_gateway',
         ),
         const SizedBox(height: 16),
         // Botón Crear Proyecto Normal

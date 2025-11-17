@@ -23,6 +23,7 @@ class _ReviewSkillsPageState extends State<ReviewSkillsPage> {
   late List<MappedSkill> _selectedSkills;
   late Map<String, int> _skillLevels; // skillId -> level
   bool _isSaving = false;
+  bool _showAllMissingSkills = false;
 
   @override
   void initState() {
@@ -41,6 +42,9 @@ class _ReviewSkillsPageState extends State<ReviewSkillsPage> {
   Widget build(BuildContext context) {
     final foundSkills = widget.mappedSkills.where((s) => s.isFound).toList();
     final notFoundSkills = widget.mappedSkills.where((s) => !s.isFound).toList();
+    final displayedMissingSkills = _showAllMissingSkills
+        ? notFoundSkills
+        : notFoundSkills.take(6).toList();
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -207,7 +211,7 @@ class _ReviewSkillsPageState extends State<ReviewSkillsPage> {
                               const Text(
                                 'Estas habilidades no están en nuestra base de datos',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: Color.fromARGB(255, 0, 0, 0),
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -218,15 +222,39 @@ class _ReviewSkillsPageState extends State<ReviewSkillsPage> {
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
-                            children: notFoundSkills.map((skill) {
+                            children: displayedMissingSkills.map((skill) {
                               return Chip(
                                 label: Text(skill.aiSkill),
                                 backgroundColor: Colors.orange.shade800.withValues(alpha: 0.3),
-                                labelStyle: TextStyle(color: Colors.orange.shade200),
+                                labelStyle: TextStyle(color: const Color.fromARGB(255, 0, 0, 0)),
                                 side: BorderSide(color: Colors.orange.shade400.withValues(alpha: 0.5)),
                               );
                             }).toList(),
                           ),
+                          if (notFoundSkills.length > 6) ...[
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _showAllMissingSkills = !_showAllMissingSkills;
+                                  });
+                                },
+                                icon: Icon(
+                                  _showAllMissingSkills ? Icons.expand_less : Icons.expand_more,
+                                  color: Colors.orange.shade300,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  _showAllMissingSkills
+                                      ? 'Mostrar menos'
+                                      : 'Ver todas (${notFoundSkills.length})',
+                                  style: TextStyle(color: Colors.orange.shade200),
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),

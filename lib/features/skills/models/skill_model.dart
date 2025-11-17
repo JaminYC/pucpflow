@@ -1,5 +1,51 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+enum SkillNature {
+  technical,
+  soft,
+  leadership,
+  business,
+  creative,
+}
+
+SkillNature _skillNatureFromString(dynamic value) {
+  if (value is String) {
+    switch (value.toLowerCase()) {
+      case 'soft':
+      case 'blanda':
+        return SkillNature.soft;
+      case 'leadership':
+      case 'liderazgo':
+        return SkillNature.leadership;
+      case 'business':
+      case 'negocio':
+        return SkillNature.business;
+      case 'creative':
+      case 'creativa':
+        return SkillNature.creative;
+      default:
+        return SkillNature.technical;
+    }
+  }
+  return SkillNature.technical;
+}
+
+String _skillNatureToString(SkillNature nature) {
+  switch (nature) {
+    case SkillNature.soft:
+      return 'soft';
+    case SkillNature.leadership:
+      return 'leadership';
+    case SkillNature.business:
+      return 'business';
+    case SkillNature.creative:
+      return 'creative';
+    case SkillNature.technical:
+    default:
+      return 'technical';
+  }
+}
+
 /// Modelo de Skill (habilidad profesional) almacenada en Firestore
 /// Colección: 'skills'
 class SkillModel {
@@ -8,6 +54,7 @@ class SkillModel {
   final String sector; // ej: "Programación", "Cloud", "Frontend"
   final String? description;
   final int standardLevel; // Nivel estándar recomendado (1-10)
+  final SkillNature nature;
 
   SkillModel({
     required this.id,
@@ -15,6 +62,7 @@ class SkillModel {
     required this.sector,
     this.description,
     this.standardLevel = 5,
+    this.nature = SkillNature.technical,
   });
 
   factory SkillModel.fromMap(Map<String, dynamic> map, String documentId) {
@@ -24,6 +72,7 @@ class SkillModel {
       sector: map['sector'] ?? 'General',
       description: map['description'],
       standardLevel: map['standardLevel'] ?? 5,
+      nature: _skillNatureFromString(map['nature']),
     );
   }
 
@@ -33,6 +82,7 @@ class SkillModel {
       'sector': sector,
       'description': description,
       'standardLevel': standardLevel,
+      'nature': _skillNatureToString(nature),
     };
   }
 
@@ -53,6 +103,7 @@ class UserSkillModel {
   final String notes;
   final DateTime acquiredAt;
   final DateTime? updatedAt;
+  final SkillNature nature;
 
   UserSkillModel({
     required this.id,
@@ -63,6 +114,7 @@ class UserSkillModel {
     this.notes = '',
     required this.acquiredAt,
     this.updatedAt,
+    this.nature = SkillNature.technical,
   });
 
   factory UserSkillModel.fromMap(Map<String, dynamic> map, String documentId) {
@@ -79,6 +131,7 @@ class UserSkillModel {
       updatedAt: map['updatedAt'] != null
           ? (map['updatedAt'] as Timestamp).toDate()
           : null,
+      nature: _skillNatureFromString(map['nature']),
     );
   }
 
@@ -91,6 +144,7 @@ class UserSkillModel {
       'notes': notes,
       'acquiredAt': Timestamp.fromDate(acquiredAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
+      'nature': _skillNatureToString(nature),
     };
   }
 
@@ -109,6 +163,7 @@ class UserSkillModel {
     String? notes,
     DateTime? acquiredAt,
     DateTime? updatedAt,
+    SkillNature? nature,
   }) {
     return UserSkillModel(
       id: id ?? this.id,
@@ -119,6 +174,7 @@ class UserSkillModel {
       notes: notes ?? this.notes,
       acquiredAt: acquiredAt ?? this.acquiredAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      nature: nature ?? this.nature,
     );
   }
 }

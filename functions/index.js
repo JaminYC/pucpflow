@@ -685,6 +685,246 @@ exports.transcribirAudio = onCall({ secrets: [openaiKey], timeoutSeconds: 300 },
 });
 
 // ========================================
+// GENERAR BLUEPRINT GENERAL CON IA
+// ========================================
+
+exports.generarBlueprintProyecto = onCall({
+  secrets: [openaiKey],
+  timeoutSeconds: 420,
+  memory: "512MiB"
+}, async (request) => {
+  try {
+    const {
+      documentosBase64 = [],
+      nombreProyecto = "Proyecto sin nombre",
+      descripcionBreve = "",
+      methodology = "general",
+      config = {},
+      skillMatrix = [],
+      workflowContext = {}
+    } = request.data || {};
+
+    if ((!documentosBase64 || documentosBase64.length === 0) &&
+        !descripcionBreve &&
+        !config.customContext) {
+      return { error: "Debes proporcionar documentos, una descripción o un contexto base" };
+    }
+
+    const openai = new OpenAI({ apiKey: openaiKey.value() });
+    let textoCompleto = descripcionBreve || "";
+
+    for (let i = 0; i < documentosBase64.length; i++) {
+      try {
+        const buffer = Buffer.from(documentosBase64[i], "base64");
+        const pdfData = await pdfParse(buffer);
+        textoCompleto += `\n\n=== DOCUMENTO ${i + 1} ===\n${pdfData.text}`;
+      } catch (pdfError) {
+        logger.warn("�?O Error parseando documento para blueprint general:", pdfError);
+      }
+    }
+
+    textoCompleto = textoCompleto.substring(0, 15000);
+
+    const focusAreas = (config.focusAreas || []).join(", ") || "No especificadas";
+    const softSkills = (config.softSkillFocus || []).join(", ") || "No priorizadas";
+    const businessDrivers = (config.businessDrivers || []).join(", ") || "No declarados";
+    const customContext = config.customContext ? JSON.stringify(config.customContext) : "";
+
+    const skillSummary = (skillMatrix || []).map((skill) => {
+      const nature = skill.nature || "technical";
+      return `- ${skill.name || skill.skillName} (${nature}) nivel ${skill.level || 5}`;
+    }).join("\n");
+
+    const prompt = `
+Eres un Project Strategist que diseña blueprints híbridos (metodología base: ${methodology}).
+Necesitas combinar visión de negocio + habilidades blandas + IA contextual.
+
+Áreas de enfoque: ${focusAreas}
+Soft skills prioritarias: ${softSkills}
+Drivers de negocio: ${businessDrivers}
+Contexto adjunto: ${customContext}
+
+Inventario de habilidades:
+${skillSummary || "Sin inventario (asume equipo multidisciplinario)"}
+
+Documentación / notas:
+${textoCompleto}
+
+Devuelve SOLO un JSON con esta estructura:
+{
+  "resumenEjecutivo": "...",
+  "objetivosSMART": ["...", "..."],
+  "hitosPrincipales": [
+    { "nombre": "...", "mes": 1, "riesgosHumanos": ["..."], "softSkillsClaves": ["..."] }
+  ],
+  "backlogInicial": [
+    { "nombre": "...", "tipo": "descubrimiento|ejecucion|seguimiento", "entregables": ["..."], "metricasExito": ["..."] }
+  ],
+  "skillMatrixSugerida": [
+    { "skill": "...", "nature": "soft|technical|leadership|creative", "nivelMinimo": 7, "aplicaciones": ["..."] }
+  ],
+  "softSkillsPlan": {
+    "enfoque": ["..."],
+    "rituales": ["..."]
+  },
+  "recomendacionesPMI": {
+    "cuandoAplicarPMI": "...",
+    "fasesCompatibles": ["..."]
+  }
+}
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.35,
+      max_tokens: 3200,
+      messages: [
+        {
+          role: "system",
+          content: "Eres un estratega de proyectos que combina contexto humano, habilidades blandas y frameworks ágiles/PMI."
+        },
+        { role: "user", content: prompt }
+      ]
+    });
+
+    const content = completion.choices[0].message.content || "";
+    let blueprint;
+    try {
+      const start = content.indexOf("{");
+      const end = content.lastIndexOf("}");
+      const jsonString = content.slice(start, end + 1);
+      blueprint = JSON.parse(jsonString);
+    } catch (errorParse) {
+      logger.error("�?O Error parseando blueprint general:", errorParse);
+      return { error: "No se pudo interpretar la respuesta de IA para el blueprint" };
+    }
+
+    return {
+      success: true,
+      blueprint
+    };
+  } catch (error) {
+    logger.error("�?O Error generando blueprint general:", error);
+    return { error: "Error generando blueprint general", message: error.message };
+  }
+});
+
+// ========================================
+// GENERAR WORKFLOW CONTEXTUAL
+// ========================================
+
+exports.generarWorkflowContextual = onCall({
+  secrets: [openaiKey],
+  timeoutSeconds: 360,
+  memory: "512MiB"
+}, async (request) => {
+  try {
+    const {
+      nombreProyecto,
+      methodology = "general",
+      objective = "",
+      macroEntregables = [],
+      skillMatrix = [],
+      contexto = {},
+      config = {}
+    } = request.data || {};
+
+    if (!nombreProyecto) {
+      return { error: "nombreProyecto es requerido" };
+    }
+
+    const openai = new OpenAI({ apiKey: openaiKey.value() });
+    const skillSummary = (skillMatrix || []).map((skill) => {
+      const nature = skill.nature || "technical";
+      const sector = skill.sector || "General";
+      return `- ${skill.name || skill.skillName} (${nature}) [${sector}] nivel ${skill.level || 5}`;
+    }).join("\n");
+
+    const macroTexto = (macroEntregables || []).map((item, idx) => `${idx + 1}. ${item}`).join("\n");
+    const contextoLibre = JSON.stringify(contexto || {});
+
+    const prompt = `
+Eres un Workflow Orchestrator que debe generar flujos IA-contextualizados.
+Metodología base: ${methodology}
+Objetivo principal: ${objective}
+
+Macro entregables:
+${macroTexto || "No declarados"}
+
+Inventario de skills:
+${skillSummary || "No hay skills declaradas"}
+
+Contexto adicional:
+${contextoLibre}
+
+Devuelve SOLO un JSON
+{
+  "workflow": [
+    {
+      "nombre": "...",
+      "objetivo": "...",
+      "tipo": "descubrimiento|ejecucion|seguimiento",
+      "duracionDias": 0,
+      "dependencias": ["..."],
+      "indicadoresExito": ["..."],
+      "riesgosHumanos": ["..."],
+      "tareas": [
+        {
+          "titulo": "...",
+          "descripcion": "...",
+          "habilidadesTecnicas": ["..."],
+          "habilidadesBlandas": ["..."],
+          "responsableSugerido": "Equipo/rol",
+          "outputs": ["..."]
+        }
+      ]
+    }
+  ],
+  "recomendaciones": {
+    "ritualesIA": ["..."],
+    "seguimientoHumano": ["..."],
+    "metricasClave": ["..."]
+  }
+}
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.4,
+      max_tokens: 2500,
+      messages: [
+        {
+          role: "system",
+          content: "Actúas como orquestador de workflows considerando habilidades blandas, riesgos humanos y foco de negocio."
+        },
+        { role: "user", content: prompt }
+      ]
+    });
+
+    const content = completion.choices[0].message.content || "";
+    let workflow;
+    try {
+      const start = content.indexOf("{");
+      const end = content.lastIndexOf("}");
+      const jsonString = content.slice(start, end + 1);
+      workflow = JSON.parse(jsonString);
+    } catch (errorParse) {
+      logger.error("�?O Error parseando workflow contextual:", errorParse);
+      return { error: "No se pudo interpretar el workflow generado" };
+    }
+
+    return {
+      success: true,
+      workflow,
+      config
+    };
+  } catch (error) {
+    logger.error("�?O Error generando workflow contextual:", error);
+    return { error: "Error generando workflow contextual", message: error.message };
+  }
+});
+
+// ========================================
 // 📄 SISTEMA DE EXTRACCIÓN DE CV Y SKILLS
 // ========================================
 
@@ -1099,6 +1339,8 @@ exports.guardarSkillsConfirmadas = onCall({ secrets: [openaiKey] }, async (reque
         skillId: skillId,
         skillName: skillInfo.name,
         sector: skillInfo.sector || 'General',
+        nature: skillInfo.nature || 'technical',
+        skillNature: skillInfo.nature || 'technical',
         level: Math.min(Math.max(level, 1), 10), // Validar 1-10
         notes: notes || '',
         acquiredAt: admin.firestore.FieldValue.serverTimestamp(),

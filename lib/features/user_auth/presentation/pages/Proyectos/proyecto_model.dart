@@ -36,6 +36,7 @@ class Proyecto {
   final String? fasePMIActual;             // Fase actual: "Iniciación", "Planificación", etc.
   final List<String>? documentosIniciales; // URLs de documentos subidos (charter, etc.)
   final Map<String, dynamic>? metadatasPMI; // Metadata adicional flexible
+  final Map<String, dynamic>? blueprintIA; // Nuevo: guardamos blueprint contextual
 
   Proyecto({
     required this.id,
@@ -61,6 +62,7 @@ class Proyecto {
     this.fasePMIActual,
     this.documentosIniciales,
     this.metadatasPMI,
+    this.blueprintIA,
   });
 
   Proyecto copyWith({
@@ -86,6 +88,7 @@ class Proyecto {
     String? fasePMIActual,
     List<String>? documentosIniciales,
     Map<String, dynamic>? metadatasPMI,
+    Map<String, dynamic>? blueprintIA,
   }) {
     return Proyecto(
       id: id ?? this.id,
@@ -110,6 +113,7 @@ class Proyecto {
       fasePMIActual: fasePMIActual ?? this.fasePMIActual,
       documentosIniciales: documentosIniciales ?? this.documentosIniciales,
       metadatasPMI: metadatasPMI ?? this.metadatasPMI,
+      blueprintIA: blueprintIA ?? this.blueprintIA,
     );
   }
 
@@ -138,6 +142,7 @@ Map<String, dynamic> toJson() {
     'fasePMIActual': fasePMIActual,
     'documentosIniciales': documentosIniciales,
     'metadatasPMI': metadatasPMI,
+    'blueprintIA': blueprintIA,
   };
 }
 
@@ -170,6 +175,9 @@ factory Proyecto.fromJson(Map<String, dynamic> json) {
         ? List<String>.from(json['documentosIniciales'])
         : null,
     metadatasPMI: json['metadatasPMI'],
+    blueprintIA: json['blueprintIA'] != null
+        ? Map<String, dynamic>.from(json['blueprintIA'])
+        : null,
   );
 }
 

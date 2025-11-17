@@ -203,6 +203,34 @@ class InitSkillsDB {
       {'name': 'Excel', 'sector': 'Productividad', 'description': 'Hoja de cálculo de Microsoft', 'standardLevel': 5},
       {'name': 'Power BI', 'sector': 'Análisis de Datos', 'description': 'Herramienta de visualización de datos', 'standardLevel': 5},
       {'name': 'Tableau', 'sector': 'Análisis de Datos', 'description': 'Plataforma de análisis visual', 'standardLevel': 6},
+
+      // ========== COMPETENCIAS BLANDAS ==========
+      {'name': 'Comunicación efectiva', 'sector': 'Soft Skills', 'description': 'Comunicar ideas de forma clara y empática', 'standardLevel': 7, 'nature': 'soft'},
+      {'name': 'Pensamiento crítico', 'sector': 'Soft Skills', 'description': 'Analizar escenarios complejos antes de decidir', 'standardLevel': 7, 'nature': 'soft'},
+      {'name': 'Colaboración multidisciplinaria', 'sector': 'Soft Skills', 'description': 'Facilitar el trabajo entre perfiles diversos', 'standardLevel': 6, 'nature': 'soft'},
+      {'name': 'Gestión del cambio', 'sector': 'Soft Skills', 'description': 'Guiar equipos durante transformaciones', 'standardLevel': 6, 'nature': 'soft'},
+      {'name': 'Negociación estratégica', 'sector': 'Soft Skills', 'description': 'Encontrar acuerdos que beneficien a todas las partes', 'standardLevel': 7, 'nature': 'soft'},
+      {'name': 'Empatía aplicada', 'sector': 'Soft Skills', 'description': 'Comprender necesidades emocionales del equipo', 'standardLevel': 6, 'nature': 'soft'},
+      {'name': 'Gestión de conflictos', 'sector': 'Soft Skills', 'description': 'Resolver desacuerdos de manera constructiva', 'standardLevel': 6, 'nature': 'soft'},
+
+      // ========== LIDERAZGO & FACILITACIÓN ==========
+      {'name': 'Liderazgo situacional', 'sector': 'Liderazgo', 'description': 'Adaptar el estilo de liderazgo según el contexto', 'standardLevel': 7, 'nature': 'leadership'},
+      {'name': 'Mentoría de equipos', 'sector': 'Liderazgo', 'description': 'Desarrollar talento guiando a otros', 'standardLevel': 6, 'nature': 'leadership'},
+      {'name': 'Facilitación de workshops', 'sector': 'Liderazgo', 'description': 'Diseñar y conducir sesiones colaborativas', 'standardLevel': 6, 'nature': 'leadership'},
+      {'name': 'Storytelling ejecutivo', 'sector': 'Liderazgo', 'description': 'Presentar estrategias con narrativas convincentes', 'standardLevel': 6, 'nature': 'leadership'},
+
+      // ========== NEGOCIO & ESTRATEGIA ==========
+      {'name': 'Modelado de negocio', 'sector': 'Negocio y Estrategia', 'description': 'Diseño de propuestas de valor sostenibles', 'standardLevel': 6, 'nature': 'business'},
+      {'name': 'Análisis financiero básico', 'sector': 'Negocio y Estrategia', 'description': 'Interpretar estados financieros esenciales', 'standardLevel': 5, 'nature': 'business'},
+      {'name': 'Gestión de stakeholders', 'sector': 'Negocio y Estrategia', 'description': 'Mapear y priorizar interesados clave', 'standardLevel': 7, 'nature': 'business'},
+      {'name': 'Customer Centricity', 'sector': 'Negocio y Estrategia', 'description': 'Diseñar decisiones en torno al usuario', 'standardLevel': 6, 'nature': 'business'},
+      {'name': 'Design Thinking', 'sector': 'Negocio y Estrategia', 'description': 'Aplicar proceso de descubrimiento y prototipado', 'standardLevel': 6, 'nature': 'creative'},
+
+      // ========== CREATIVIDAD & INNOVACIÓN ==========
+      {'name': 'Ideación creativa', 'sector': 'Innovación', 'description': 'Generar hipótesis y conceptos originales', 'standardLevel': 6, 'nature': 'creative'},
+      {'name': 'Prototipado rápido', 'sector': 'Innovación', 'description': 'Convertir ideas en pruebas tangibles', 'standardLevel': 6, 'nature': 'creative'},
+      {'name': 'Mapas de experiencia', 'sector': 'Innovación', 'description': 'Visualizar journeys y oportunidades', 'standardLevel': 6, 'nature': 'creative'},
+      {'name': 'Narrativas para pitching', 'sector': 'Innovación', 'description': 'Construir pitches breves y memorables', 'standardLevel': 6, 'nature': 'creative'},
     ];
   }
 }

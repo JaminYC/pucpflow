@@ -224,6 +224,19 @@ class SkillsService {
     return grouped;
   }
 
+  /// Agrupa las skills del usuario por naturaleza (técnica, blanda, liderazgo, etc.)
+  Future<Map<SkillNature, List<UserSkillModel>>> getUserSkillsByNature() async {
+    final skills = await getUserSkills();
+    final Map<SkillNature, List<UserSkillModel>> grouped = {};
+
+    for (var skill in skills) {
+      grouped.putIfAbsent(skill.nature, () => []);
+      grouped[skill.nature]!.add(skill);
+    }
+
+    return grouped;
+  }
+
   /// Stream de skills del usuario (tiempo real)
   Stream<List<UserSkillModel>> watchUserSkills() {
     final user = _auth.currentUser;

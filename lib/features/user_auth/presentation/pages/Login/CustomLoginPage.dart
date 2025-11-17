@@ -265,6 +265,8 @@ Widget build(BuildContext context) {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                // Header superior con botón de regreso a Vastoria
+                _buildVastoriaHeader(),
                 Expanded(
                   child: Center(
                     child: SingleChildScrollView(
@@ -273,16 +275,40 @@ Widget build(BuildContext context) {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const SizedBox(height: 20),
+                          // Header Comunidad Vastoria
                           const Text(
-                            'Inicia sesión en Vastoria',
+                            'COMUNIDAD VASTORIA',
                             style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white70,
+                              letterSpacing: 2.0,
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'FLOW',
+                            style: TextStyle(
+                              fontSize: 36,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: 1.5,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Gestión de Proyectos con IA',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.white60,
+                              letterSpacing: 0.5,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 24),
                           _buildLogo(),
                           const SizedBox(height: 30),
                           /// 🔹 Login estándar con email
@@ -337,11 +363,22 @@ Widget build(BuildContext context) {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  color: Colors.black.withOpacity(0.5),
-                  child: const Text(
-                    "Aplicación desarrollada por VASTORIA © 2025.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFFF7F7F7), fontSize: 12, letterSpacing: 0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        "Parte del ecosistema VASTORIA",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Color(0xFFF7F7F7), fontSize: 11, letterSpacing: 0.5),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "© 2025 Vastoria. Todos los derechos reservados.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Color(0xFFAAAAAA), fontSize: 10),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -352,6 +389,90 @@ Widget build(BuildContext context) {
     ),
   );
 }
+
+  Widget _buildVastoriaHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          // Botón de regreso
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () {
+                if (kIsWeb) {
+                  // En web, navegar a la landing del ecosistema
+                  Navigator.pushReplacementNamed(context, '/ecosystem');
+                } else {
+                  // En móvil, mostrar mensaje o no hacer nada
+                  showToast(message: "Usa la navegación del sistema");
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.arrow_back,
+                      color: Colors.white70,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'VASTORIA',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        Text(
+                          'Ecosistema',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 9,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const Spacer(),
+          // Logo pequeño opcional
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white24, width: 1),
+            ),
+            child: ClipOval(
+              child: Image.asset(
+                'assets/logovastoria.png',
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.apps,
+                  color: Colors.white60,
+                  size: 18,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildEmpresarialField(TextEditingController controller, String hint, bool obscureText) {
   return SizedBox(

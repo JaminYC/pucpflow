@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(firebase functions:log:*)",
+      "Bash(npm install:*)",
+      "Bash(node -e:*)",
+      "Bash(node:*)",
+      "Bash(cat:*)",
+      "Bash(findstr:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(del:*)",
+      "Bash(\"c:\\Users\\User\\pucpflow\\PMI_UI_COMPLETED.md\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,8 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:pucpflow/LandingPage/CustomLandingPage.dart' show CustomLandingPage;
+import 'package:pucpflow/LandingPage/VastoriaMainLanding.dart' show VastoriaMainLanding;
 import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_empresa_page.dart' show HomeEmpresaPage;
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/CustomLoginPage.dart';
+import 'package:pucpflow/core/utils/auth_redirect_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
@@ -69,12 +71,12 @@ class _SplashScreenState extends State<SplashScreen> {
       final isFinished = _controller!.value.position >= _controller!.value.duration;
 
       if (isFinished) {
-        _navegar(const CustomLandingPage()); // ⬅️ Ahora navega al Landing
+        _navegar(const VastoriaMainLanding()); // ⬅️ Navega a la nueva landing con SSO
       }
     });
   } catch (e) {
     debugPrint("❌ Error al inicializar el video: $e");
-    _navegar(const CustomLandingPage()); // fallback si el video falla
+    _navegar(const VastoriaMainLanding()); // fallback si el video falla
   }
 }
 

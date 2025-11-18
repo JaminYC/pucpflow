@@ -131,6 +131,8 @@ class MappedSkill {
   final String? sector;
   final int level; // Nivel sugerido por IA (1-10)
   final bool isFound; // Si se encontró en BD o no
+  final String? suggestedSector; // Sector sugerido para skills custom
+  final String? cvContext; // Contexto del CV donde se mencionó
 
   MappedSkill({
     required this.aiSkill,
@@ -139,6 +141,8 @@ class MappedSkill {
     this.sector,
     required this.level,
     required this.isFound,
+    this.suggestedSector,
+    this.cvContext,
   });
 
   factory MappedSkill.fromFoundMap(Map<String, dynamic> map) {
@@ -158,5 +162,96 @@ class MappedSkill {
       level: level,
       isFound: false,
     );
+  }
+
+  factory MappedSkill.fromNotFoundMap(Map<String, dynamic> map) {
+    return MappedSkill(
+      aiSkill: map['name'] ?? '',
+      level: map['level'] ?? 5,
+      isFound: false,
+      suggestedSector: map['suggestedSector'],
+      cvContext: map['cvContext'],
+    );
+  }
+}
+
+/// Modelo para sugerencias de skills personalizadas
+class SkillSuggestion {
+  final String id;
+  final String suggestedName;
+  final String normalizedName;
+  final String suggestedBy;
+  final String userEmail;
+  final int level;
+  final String cvContext;
+  final int frequency;
+  final String status; // pending, approved, rejected, merged
+  final String? approvedAs;
+  final String suggestedSector;
+  final DateTime createdAt;
+  final DateTime? reviewedAt;
+  final String? reviewedBy;
+
+  SkillSuggestion({
+    required this.id,
+    required this.suggestedName,
+    required this.normalizedName,
+    required this.suggestedBy,
+    required this.userEmail,
+    required this.level,
+    this.cvContext = '',
+    this.frequency = 1,
+    this.status = 'pending',
+    this.approvedAs,
+    this.suggestedSector = 'General',
+    required this.createdAt,
+    this.reviewedAt,
+    this.reviewedBy,
+  });
+
+  factory SkillSuggestion.fromMap(Map<String, dynamic> map, String documentId) {
+    return SkillSuggestion(
+      id: documentId,
+      suggestedName: map['suggestedName'] ?? '',
+      normalizedName: map['normalizedName'] ?? '',
+      suggestedBy: map['suggestedBy'] ?? '',
+      userEmail: map['userEmail'] ?? '',
+      level: map['level'] ?? 5,
+      cvContext: map['cvContext'] ?? '',
+      frequency: map['frequency'] ?? 1,
+      status: map['status'] ?? 'pending',
+      approvedAs: map['approvedAs'],
+      suggestedSector: map['suggestedSector'] ?? 'General',
+      createdAt: map['createdAt'] != null
+          ? (map['createdAt'] as Timestamp).toDate()
+          : DateTime.now(),
+      reviewedAt: map['reviewedAt'] != null
+          ? (map['reviewedAt'] as Timestamp).toDate()
+          : null,
+      reviewedBy: map['reviewedBy'],
+    );
+  }
+
+  factory SkillSuggestion.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return SkillSuggestion.fromMap(data, doc.id);
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'suggestedName': suggestedName,
+      'normalizedName': normalizedName,
+      'suggestedBy': suggestedBy,
+      'userEmail': userEmail,
+      'level': level,
+      'cvContext': cvContext,
+      'frequency': frequency,
+      'status': status,
+      'approvedAs': approvedAs,
+      'suggestedSector': suggestedSector,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'reviewedAt': reviewedAt != null ? Timestamp.fromDate(reviewedAt!) : null,
+      'reviewedBy': reviewedBy,
+    };
   }
 }

@@ -74,7 +74,7 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/Proyect
 
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectosPage.dart';
 
-
+import 'package:pucpflow/features/skills/pages/admin_skill_suggestions_page.dart';
 
 import 'package:video_player/video_player.dart';
 
@@ -260,7 +260,23 @@ Future<void> _determinarUserId() async {
 
 }
 
+  /// Verifica si el usuario actual es administrador
+  Future<bool> _checkIfAdmin() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
 
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      return userDoc.data()?['isAdmin'] == true;
+    } catch (e) {
+      print('Error verificando admin: $e');
+      return false;
+    }
+  }
 
 Future<void> _sincronizarTareasConCalendario() async {
 
@@ -2231,30 +2247,6 @@ Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
 
         ListTile(
 
-          leading: const Icon(Icons.bar_chart, color: Colors.white70),
-
-          title: const Text('Mi Progreso', style: TextStyle(color: Colors.white)),
-
-          onTap: () {
-
-            Navigator.pop(context);
-
-            Navigator.push(
-
-              context,
-
-              MaterialPageRoute(builder: (_) => const DashboardPage()),
-
-            );
-
-          },
-
-        ),
-
-
-
-        ListTile(
-
           leading: const Icon(Icons.folder_open, color: Colors.white70),
 
           title: const Text('Mis Proyectos', style: TextStyle(color: Colors.white)),
@@ -2311,6 +2303,39 @@ Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
           },
 
         ),
+
+        // Admin: Gestionar Skills (solo visible para administradores)
+        FutureBuilder<bool>(
+          future: _checkIfAdmin(),
+          builder: (context, snapshot) {
+            if (snapshot.data == true) {
+              return Column(
+                children: [
+                  const Divider(color: Colors.white24),
+                  ListTile(
+                    leading: const Icon(Icons.admin_panel_settings, color: Colors.purple),
+                    title: const Text(
+                      'Admin: Gestionar Skills',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AdminSkillSuggestionsPage(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+
+        const Divider(color: Colors.white24),
 
         ListTile(
 

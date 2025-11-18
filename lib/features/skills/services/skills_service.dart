@@ -119,16 +119,14 @@ class SkillsService {
       // Skills no encontradas
       if (skillsData['notFound'] != null) {
         for (var skillData in skillsData['notFound']) {
-          // Ahora notFound es un array de objetos {name, level, suggested}
+          // Ahora notFound es un array de objetos {name, level, suggested, suggestedSector, cvContext}
           if (skillData is String) {
             // Retrocompatibilidad: si es solo un string
             mappedSkills.add(MappedSkill.fromNotFound(skillData));
           } else if (skillData is Map) {
             // Nuevo formato: objeto con más información
-            mappedSkills.add(MappedSkill.fromNotFound(
-              skillData['name'] ?? skillData.toString(),
-              level: skillData['level'] ?? 5,
-            ));
+            final skillMap = Map<String, dynamic>.from(skillData);
+            mappedSkills.add(MappedSkill.fromNotFoundMap(skillMap));
           }
         }
       }
@@ -150,6 +148,7 @@ class SkillsService {
   // ========================================
 
   /// Guarda las skills confirmadas por el usuario
+  /// Soporta tanto skills estándar como personalizadas
   Future<bool> saveConfirmedSkills(List<Map<String, dynamic>> confirmedSkills) async {
     try {
       final user = _auth.currentUser;
@@ -168,6 +167,7 @@ class SkillsService {
 
       final result = await callable.call({
         'userId': user.uid,
+        'userEmail': user.email ?? '',
         'confirmedSkills': confirmedSkills,
       });
 
@@ -175,7 +175,10 @@ class SkillsService {
         throw Exception(result.data['error']);
       }
 
-      print('✅ Skills guardadas: ${result.data['savedCount']}');
+      final standardCount = result.data['standardSkillsCount'] ?? 0;
+      final customCount = result.data['customSkillsCount'] ?? 0;
+
+      print('✅ Skills guardadas: $standardCount estándar, $customCount personalizadas');
       return true;
     } catch (e) {
       print('❌ Error guardando skills: $e');

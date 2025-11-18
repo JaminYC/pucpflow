@@ -894,6 +894,7 @@ NO devuelvas ejemplos, devuelve SOLO el análisis real del CV.
       const skillName = (aiSkill.name || '').trim();
       const skillNameLower = skillName.toLowerCase();
       const level = aiSkill.level || 5;
+      const context = aiSkill.context || ''; // Contexto adicional del CV
       let dbSkill = null;
 
       // 1. Búsqueda exacta (case-insensitive)
@@ -1018,13 +1019,36 @@ NO devuelvas ejemplos, devuelve SOLO el análisis real del CV.
         });
         logger.info(`✅ Skill mapeada: ${aiSkill.name} → ${dbSkill.name}`);
       } else {
-        // Skill no encontrada - retornar como sugerencia
+        // Skill no encontrada - retornar como sugerencia personalizada
+        // Intentar inferir el sector basándose en el nombre
+        let suggestedSector = 'General';
+        const skillLower = skillName.toLowerCase();
+
+        // Inferir sector por palabras clave
+        if (/python|java|javascript|typescript|c\+\+|ruby|php|go|rust|kotlin|swift/.test(skillLower)) {
+          suggestedSector = 'Programación';
+        } else if (/react|angular|vue|flutter|android|ios|mobile/.test(skillLower)) {
+          suggestedSector = 'Frontend/Mobile';
+        } else if (/aws|azure|gcp|cloud|docker|kubernetes|devops|jenkins/.test(skillLower)) {
+          suggestedSector = 'Cloud/DevOps';
+        } else if (/sql|mysql|postgres|mongodb|redis|database/.test(skillLower)) {
+          suggestedSector = 'Bases de Datos';
+        } else if (/autocad|solidworks|catia|inventor|3d|cad|cam/.test(skillLower)) {
+          suggestedSector = 'CAD/CAM';
+        } else if (/machine learning|ai|deep learning|tensorflow|pytorch/.test(skillLower)) {
+          suggestedSector = 'IA/Machine Learning';
+        } else if (/figma|photoshop|illustrator|design|ux|ui/.test(skillLower)) {
+          suggestedSector = 'Diseño';
+        }
+
         notFound.push({
           name: aiSkill.name,
           level: level,
-          suggested: true // Flag para que el usuario decida si agregar
+          suggested: true,
+          suggestedSector: suggestedSector,
+          cvContext: context
         });
-        logger.info(`⚠️ Skill no encontrada en BD: ${aiSkill.name}`);
+        logger.info(`⚠️ Skill no encontrada en BD: ${aiSkill.name} (sector sugerido: ${suggestedSector})`);
       }
     }
 
@@ -1058,16 +1082,26 @@ NO devuelvas ejemplos, devuelve SOLO el análisis real del CV.
 
 /**
  * Guarda las skills confirmadas por el usuario en su perfil
+ * Ahora soporta skills estándar y personalizadas
  *
  * Input: {
  *   userId: string,
- *   confirmedSkills: [{ skillId: string, level: number, notes?: string }]
+ *   userEmail: string,
+ *   confirmedSkills: [{
+ *     skillId?: string,           // Para skills estándar
+ *     customName?: string,        // Para skills personalizadas
+ *     level: number,
+ *     notes?: string,
+ *     isCustom: boolean,
+ *     suggestedSector?: string,
+ *     cvContext?: string
+ *   }]
  * }
- * Output: { success: boolean, savedCount: number }
+ * Output: { success: boolean, savedCount: number, customSkillsCount: number }
  */
 exports.guardarSkillsConfirmadas = onCall({ secrets: [openaiKey] }, async (request) => {
   try {
-    const { userId, confirmedSkills } = request.data || {};
+    const { userId, userEmail, confirmedSkills } = request.data || {};
 
     if (!userId || !Array.isArray(confirmedSkills)) {
       return { error: "❌ Parámetros inválidos" };
@@ -1081,43 +1115,449 @@ exports.guardarSkillsConfirmadas = onCall({ secrets: [openaiKey] }, async (reque
     const batch = db.batch();
     const userSkillsRef = db.collection('users').doc(userId).collection('professional_skills');
 
+    let standardCount = 0;
+    let customCount = 0;
+
     for (const skillData of confirmedSkills) {
-      const { skillId, level, notes } = skillData;
+      const { skillId, customName, level, notes, isCustom, suggestedSector, cvContext } = skillData;
 
-      // Obtener datos de la skill de la BD
-      const skillDoc = await db.collection('skills').doc(skillId).get();
-      if (!skillDoc.exists) {
-        logger.warn(`⚠️ Skill no encontrada: ${skillId}`);
-        continue;
+      if (isCustom && customName) {
+        // ========================================
+        // SKILL PERSONALIZADA
+        // ========================================
+
+        // Generar un ID único basado en el nombre (normalizado)
+        const normalizedId = customName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const suggestionId = `custom_${normalizedId}_${userId.substring(0, 8)}`;
+
+        // 1. Crear/actualizar en skill_suggestions
+        const suggestionRef = db.collection('skill_suggestions').doc(suggestionId);
+
+        // Verificar si ya existe
+        const existingDoc = await suggestionRef.get();
+
+        if (existingDoc.exists) {
+          // Ya existe, solo incrementar frecuencia
+          const currentData = existingDoc.data();
+
+          batch.update(suggestionRef, {
+            frequency: (currentData.frequency || 1) + 1,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+          logger.info(`📊 Incrementando frecuencia para: ${customName}`);
+        } else {
+          // Nueva sugerencia
+          batch.set(suggestionRef, {
+            suggestedName: customName,
+            normalizedName: customName,
+            suggestedBy: userId,
+            userEmail: userEmail || '',
+            level: level,
+            cvContext: cvContext || '',
+            frequency: 1,
+            status: 'pending',
+            approvedAs: null,
+            suggestedSector: suggestedSector || 'General',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            reviewedAt: null,
+            reviewedBy: null
+          });
+
+          logger.info(`✨ Nueva skill personalizada sugerida: ${customName}`);
+        }
+
+        // 2. Agregar a professional_skills del usuario
+        const userSkillRef = userSkillsRef.doc(suggestionId);
+        batch.set(userSkillRef, {
+          skillId: suggestionId,
+          skillName: customName,
+          originalName: customName,
+          isStandard: false,
+          isCustom: true,
+          sector: suggestedSector || 'General',
+          level: Math.min(Math.max(level, 1), 10),
+          notes: notes || '',
+          suggestionId: suggestionId,
+          status: 'pending_approval',
+          acquiredAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        customCount++;
+
+      } else if (skillId) {
+        // ========================================
+        // SKILL ESTÁNDAR
+        // ========================================
+
+        // Obtener datos de la skill de la BD
+        const skillDoc = await db.collection('skills').doc(skillId).get();
+        if (!skillDoc.exists) {
+          logger.warn(`⚠️ Skill no encontrada: ${skillId}`);
+          continue;
+        }
+
+        const skillInfo = skillDoc.data();
+
+        // Crear o actualizar UserSkill
+        const userSkillRef = userSkillsRef.doc(skillId);
+        batch.set(userSkillRef, {
+          skillId: skillId,
+          skillName: skillInfo.name,
+          originalName: skillInfo.name,
+          isStandard: true,
+          isCustom: false,
+          sector: skillInfo.sector || 'General',
+          level: Math.min(Math.max(level, 1), 10),
+          notes: notes || '',
+          suggestionId: null,
+          status: 'active',
+          acquiredAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        standardCount++;
       }
-
-      const skillInfo = skillDoc.data();
-
-      // Crear o actualizar UserSkill
-      const userSkillRef = userSkillsRef.doc(skillId);
-      batch.set(userSkillRef, {
-        skillId: skillId,
-        skillName: skillInfo.name,
-        sector: skillInfo.sector || 'General',
-        level: Math.min(Math.max(level, 1), 10), // Validar 1-10
-        notes: notes || '',
-        acquiredAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
     }
 
     await batch.commit();
-    logger.info(`✅ Skills guardadas exitosamente`);
+    logger.info(`✅ Skills guardadas: ${standardCount} estándar, ${customCount} personalizadas`);
 
     return {
       success: true,
-      savedCount: confirmedSkills.length
+      savedCount: confirmedSkills.length,
+      standardSkillsCount: standardCount,
+      customSkillsCount: customCount
     };
 
   } catch (error) {
     logger.error("❌ Error guardando skills:", error);
     return {
       error: "Error guardando skills",
+      message: error.message
+    };
+  }
+});
+
+// ========================================
+// 👨‍💼 GESTIÓN DE SUGERENCIAS DE SKILLS (ADMIN)
+// ========================================
+
+/**
+ * Gestiona sugerencias de skills: aprobar, rechazar o fusionar
+ * Solo accesible por administradores
+ *
+ * Input: {
+ *   adminId: string,
+ *   suggestionId: string,
+ *   action: 'approve' | 'reject' | 'merge',
+ *
+ *   // Para 'approve':
+ *   sector: string,
+ *   description?: string,
+ *
+ *   // Para 'merge':
+ *   mergeWithSkillId: string
+ * }
+ */
+exports.gestionarSugerenciaSkill = onCall({ secrets: [openaiKey] }, async (request) => {
+  try {
+    const { adminId, suggestionId, action, sector, description, mergeWithSkillId } = request.data || {};
+
+    logger.info(`📥 Datos recibidos: ${JSON.stringify(request.data)}`);
+
+    if (!adminId || !suggestionId || !action) {
+      logger.error(`❌ Parámetros inválidos: adminId=${adminId}, suggestionId=${suggestionId}, action=${action}`);
+      return { error: "❌ Parámetros inválidos" };
+    }
+
+    const db = admin.firestore();
+
+    // TODO: Verificar que el usuario sea admin
+    // const adminDoc = await db.collection('users').doc(adminId).get();
+    // if (!adminDoc.exists || !adminDoc.data().isAdmin) {
+    //   return { error: "❌ No tienes permisos de administrador" };
+    // }
+
+    logger.info(`👨‍💼 Admin ${adminId} procesando sugerencia ${suggestionId}: ${action}`);
+
+    // Obtener la sugerencia
+    const suggestionRef = db.collection('skill_suggestions').doc(suggestionId);
+    const suggestionDoc = await suggestionRef.get();
+
+    if (!suggestionDoc.exists) {
+      logger.error(`❌ Sugerencia no encontrada: ${suggestionId}`);
+      return { error: "❌ Sugerencia no encontrada" };
+    }
+
+    const suggestionData = suggestionDoc.data();
+    logger.info(`📊 Datos de sugerencia: ${JSON.stringify(suggestionData)}`);
+
+    if (action === 'approve') {
+      // ========================================
+      // APROBAR COMO NUEVA SKILL ESTÁNDAR
+      // ========================================
+
+      if (!sector) {
+        logger.error(`❌ Sector no proporcionado`);
+        return { error: "❌ Sector requerido para aprobar" };
+      }
+
+      // Validar que tengamos el nombre de la skill
+      const skillName = suggestionData.suggestedName || suggestionData.normalizedName;
+      if (!skillName) {
+        logger.error(`❌ Nombre de skill no encontrado en suggestionData: ${JSON.stringify(suggestionData)}`);
+        return { error: "❌ Datos de sugerencia incompletos" };
+      }
+
+      logger.info(`✅ Aprobando skill: ${skillName} en sector: ${sector}`);
+
+      // 1. Crear nueva skill estándar
+      const newSkillRef = db.collection('skills').doc();
+      await newSkillRef.set({
+        name: skillName,
+        sector: sector,
+        description: description || `Skill agregada desde sugerencias`,
+        standardLevel: suggestionData.level || 5,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdBy: adminId,
+        fromSuggestion: true
+      });
+
+      logger.info(`✅ Nueva skill creada: ${skillName}`);
+
+      // 2. Actualizar status de la sugerencia
+      await suggestionRef.update({
+        status: 'approved',
+        approvedAs: newSkillRef.id,
+        reviewedAt: admin.firestore.FieldValue.serverTimestamp(),
+        reviewedBy: adminId
+      });
+
+      logger.info(`✅ Sugerencia actualizada con status 'approved'`);
+
+      // 3. Actualizar professional_skills de usuarios que tienen esta sugerencia
+      // NOTA: Para evitar necesidad de índice en collectionGroup,
+      // actualizamos directamente usando el userId del suggestedBy
+      let usersUpdated = 0;
+
+      try {
+        // Intentar con collectionGroup (requiere índice pero es más completo)
+        const usersWithSkill = await db.collectionGroup('professional_skills')
+          .where('suggestionId', '==', suggestionId)
+          .limit(500)  // Límite de seguridad
+          .get();
+
+        logger.info(`🔍 Encontrados ${usersWithSkill.size} perfiles de usuario con esta skill`);
+
+        if (usersWithSkill.size > 0) {
+          const batch = db.batch();
+          usersWithSkill.docs.forEach(doc => {
+            batch.update(doc.ref, {
+              skillId: newSkillRef.id,
+              skillName: skillName,
+              isStandard: true,
+              isCustom: false,
+              status: 'active',
+              sector: sector,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+          });
+
+          await batch.commit();
+          usersUpdated = usersWithSkill.size;
+          logger.info(`✅ Actualizados ${usersUpdated} perfiles de usuario`);
+        }
+      } catch (error) {
+        // Si falla por falta de índice, actualizar al menos el usuario que sugirió
+        logger.warn(`⚠️ CollectionGroup falló (posiblemente falta índice): ${error.message}`);
+        logger.info(`🔄 Actualizando al menos el perfil del usuario que sugirió...`);
+
+        const suggestedBy = suggestionData.suggestedBy;
+        if (suggestedBy) {
+          const userSkillRef = db.collection('users').doc(suggestedBy)
+            .collection('professional_skills').doc(suggestionId);
+
+          const userSkillDoc = await userSkillRef.get();
+          if (userSkillDoc.exists) {
+            await userSkillRef.update({
+              skillId: newSkillRef.id,
+              skillName: skillName,
+              isStandard: true,
+              isCustom: false,
+              status: 'active',
+              sector: sector,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            usersUpdated = 1;
+            logger.info(`✅ Actualizado perfil del usuario que sugirió (${suggestedBy})`);
+          }
+        }
+      }
+
+      return {
+        success: true,
+        message: `Skill "${skillName}" aprobada exitosamente`,
+        newSkillId: newSkillRef.id,
+        usersUpdated: usersUpdated,
+        note: usersUpdated === 0 ? 'Skill creada pero los perfiles de usuario se actualizarán automáticamente al recargar' : null
+      };
+
+    } else if (action === 'merge') {
+      // ========================================
+      // FUSIONAR CON SKILL EXISTENTE
+      // ========================================
+
+      if (!mergeWithSkillId) {
+        return { error: "❌ ID de skill existente requerido para fusionar" };
+      }
+
+      // Verificar que la skill existe
+      const targetSkillDoc = await db.collection('skills').doc(mergeWithSkillId).get();
+      if (!targetSkillDoc.exists) {
+        return { error: "❌ Skill destino no encontrada" };
+      }
+
+      const targetSkillData = targetSkillDoc.data();
+
+      // Actualizar status de la sugerencia
+      await suggestionRef.update({
+        status: 'merged',
+        approvedAs: mergeWithSkillId,
+        reviewedAt: admin.firestore.FieldValue.serverTimestamp(),
+        reviewedBy: adminId
+      });
+
+      // Actualizar professional_skills de usuarios
+      let usersUpdated = 0;
+
+      try {
+        const usersWithSkill = await db.collectionGroup('professional_skills')
+          .where('suggestionId', '==', suggestionId)
+          .limit(500)
+          .get();
+
+        logger.info(`🔍 Encontrados ${usersWithSkill.size} usuarios con esta sugerencia`);
+
+        if (usersWithSkill.size > 0) {
+          const batch = db.batch();
+
+          for (const doc of usersWithSkill.docs) {
+            const userId = doc.ref.parent.parent.id;
+
+            // Verificar si el usuario ya tiene la skill estándar
+            const existingSkillRef = db.collection('users').doc(userId)
+              .collection('professional_skills').doc(mergeWithSkillId);
+
+            const existingSkillDoc = await existingSkillRef.get();
+
+            if (existingSkillDoc.exists) {
+              // Ya tiene la skill, solo eliminar la custom
+              batch.delete(doc.ref);
+            } else {
+              // No tiene la skill, convertir la custom en estándar
+              batch.set(existingSkillRef, {
+                skillId: mergeWithSkillId,
+                skillName: targetSkillData.name,
+                originalName: targetSkillData.name,
+                isStandard: true,
+                isCustom: false,
+                status: 'active',
+                sector: targetSkillData.sector || 'General',
+                level: doc.data().level,
+                notes: doc.data().notes || '',
+                suggestionId: null,
+                acquiredAt: doc.data().acquiredAt,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+
+              // Eliminar el documento antiguo
+              batch.delete(doc.ref);
+            }
+          }
+
+          await batch.commit();
+          usersUpdated = usersWithSkill.size;
+          logger.info(`✅ Fusionados ${usersUpdated} perfiles con skill "${targetSkillData.name}"`);
+        }
+      } catch (error) {
+        // Si falla por falta de índice, actualizar al menos el usuario que sugirió
+        logger.warn(`⚠️ CollectionGroup falló: ${error.message}`);
+        logger.info(`🔄 Fusionando al menos el perfil del usuario que sugirió...`);
+
+        const suggestedBy = suggestionData.suggestedBy;
+        if (suggestedBy) {
+          const userSkillRef = db.collection('users').doc(suggestedBy)
+            .collection('professional_skills').doc(suggestionId);
+
+          const userSkillDoc = await userSkillRef.get();
+          if (userSkillDoc.exists) {
+            const newSkillRef = db.collection('users').doc(suggestedBy)
+              .collection('professional_skills').doc(mergeWithSkillId);
+
+            const existingSkill = await newSkillRef.get();
+
+            if (!existingSkill.exists) {
+              await newSkillRef.set({
+                skillId: mergeWithSkillId,
+                skillName: targetSkillData.name,
+                originalName: targetSkillData.name,
+                isStandard: true,
+                isCustom: false,
+                status: 'active',
+                sector: targetSkillData.sector || 'General',
+                level: userSkillDoc.data().level,
+                notes: userSkillDoc.data().notes || '',
+                suggestionId: null,
+                acquiredAt: userSkillDoc.data().acquiredAt,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+            }
+
+            await userSkillRef.delete();
+            usersUpdated = 1;
+            logger.info(`✅ Fusionado perfil del usuario que sugirió (${suggestedBy})`);
+          }
+        }
+      }
+
+      return {
+        success: true,
+        message: `Sugerencia fusionada con "${targetSkillData.name}"`,
+        mergedWithSkillId: mergeWithSkillId,
+        usersUpdated: usersUpdated
+      };
+
+    } else if (action === 'reject') {
+      // ========================================
+      // RECHAZAR SUGERENCIA
+      // ========================================
+
+      await suggestionRef.update({
+        status: 'rejected',
+        reviewedAt: admin.firestore.FieldValue.serverTimestamp(),
+        reviewedBy: adminId
+      });
+
+      // NO eliminamos las professional_skills de los usuarios
+      // Solo marcamos la sugerencia como rechazada para análisis
+
+      logger.info(`❌ Sugerencia rechazada: ${suggestionData.normalizedName}`);
+
+      return {
+        success: true,
+        message: `Sugerencia "${suggestionData.normalizedName}" rechazada`
+      };
+
+    } else {
+      return { error: "❌ Acción no válida" };
+    }
+
+  } catch (error) {
+    logger.error("❌ Error gestionando sugerencia:", error);
+    return {
+      error: "Error procesando sugerencia",
       message: error.message
     };
   }

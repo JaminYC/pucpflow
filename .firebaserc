@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "pucp-flow"
-  }
+    "default": "pucp-flow",
+    "ceo": "pucp-flow"
+  },
+  "targets": {},
+  "etags": {}
 }

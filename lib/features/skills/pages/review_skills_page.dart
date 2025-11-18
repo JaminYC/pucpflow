@@ -27,12 +27,16 @@ class _ReviewSkillsPageState extends State<ReviewSkillsPage> {
   @override
   void initState() {
     super.initState();
-    // Por defecto, todas las skills encontradas están seleccionadas
-    _selectedSkills = widget.mappedSkills.where((s) => s.isFound).toList();
+    // Por defecto, todas las skills (encontradas y no encontradas) están seleccionadas
+    _selectedSkills = List.from(widget.mappedSkills);
     _skillLevels = {};
     for (var skill in _selectedSkills) {
+      // Para skills encontradas, usar dbSkillId como clave
       if (skill.dbSkillId != null) {
         _skillLevels[skill.dbSkillId!] = skill.level;
+      } else {
+        // Para skills personalizadas, usar el nombre como clave
+        _skillLevels['custom_${skill.aiSkill}'] = skill.level;
       }
     }
   }
@@ -176,13 +180,13 @@ class _ReviewSkillsPageState extends State<ReviewSkillsPage> {
                     ...foundSkills.map((skill) => _buildSkillCard(skill)),
                   ],
 
-                  // Skills no encontradas
+                  // Skills personalizadas (no encontradas)
                   if (notFoundSkills.isNotEmpty) ...[
                     const SizedBox(height: 24),
                     Text(
-                      'Habilidades No Encontradas en BD',
+                      'Habilidades Personalizadas',
                       style: TextStyle(
-                        color: Colors.orange.shade400,
+                        color: Colors.purple.shade400,
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
@@ -191,10 +195,10 @@ class _ReviewSkillsPageState extends State<ReviewSkillsPage> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.orange.shade900.withValues(alpha: 0.2),
+                        color: Colors.purple.shade900.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Colors.orange.shade400.withValues(alpha: 0.3),
+                          color: Colors.purple.shade400.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Column(
@@ -202,31 +206,22 @@ class _ReviewSkillsPageState extends State<ReviewSkillsPage> {
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.info_outline, color: Colors.orange.shade400),
+                              Icon(Icons.auto_awesome, color: Colors.purple.shade400),
                               const SizedBox(width: 8),
-                              const Text(
-                                'Estas habilidades no están en nuestra base de datos',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
+                              const Expanded(
+                                child: Text(
+                                  'Estas habilidades serán agregadas como personalizadas y revisadas posteriormente',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: notFoundSkills.map((skill) {
-                              return Chip(
-                                label: Text(skill.aiSkill),
-                                backgroundColor: Colors.orange.shade800.withValues(alpha: 0.3),
-                                labelStyle: TextStyle(color: Colors.orange.shade200),
-                                side: BorderSide(color: Colors.orange.shade400.withValues(alpha: 0.5)),
-                              );
-                            }).toList(),
-                          ),
+                          const SizedBox(height: 16),
+                          ...notFoundSkills.map((skill) => _buildCustomSkillCard(skill)),
                         ],
                       ),
                     ),
@@ -259,6 +254,161 @@ class _ReviewSkillsPageState extends State<ReviewSkillsPage> {
                 style: const TextStyle(fontSize: 16),
               ),
             ),
+    );
+  }
+
+  Widget _buildCustomSkillCard(MappedSkill skill) {
+    final skillKey = 'custom_${skill.aiSkill}';
+    final isSelected = _selectedSkills.any((s) => s.aiSkill == skill.aiSkill && !s.isFound);
+    final currentLevel = _skillLevels[skillKey] ?? skill.level;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? Colors.purple.shade900.withValues(alpha: 0.4)
+            : Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isSelected
+              ? Colors.purple.shade400.withValues(alpha: 0.6)
+              : Colors.grey.shade800,
+          width: 2,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _toggleSkill(skill),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    // Checkbox
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.purple.shade400 : Colors.transparent,
+                        border: Border.all(
+                          color: isSelected ? Colors.purple.shade400 : Colors.grey.shade600,
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: isSelected
+                          ? const Icon(Icons.check, color: Colors.white, size: 16)
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Nombre de la skill
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  skill.aiSkill,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Icon(Icons.auto_awesome, color: Colors.purple.shade300, size: 16),
+                            ],
+                          ),
+                          if (skill.suggestedSector != null)
+                            Text(
+                              skill.suggestedSector!,
+                              style: TextStyle(
+                                color: Colors.grey.shade400,
+                                fontSize: 12,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+
+                    // Badge de nivel
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _getLevelColor(currentLevel),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'Nivel $currentLevel',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Slider de nivel (solo si está seleccionada)
+                if (isSelected) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Text(
+                        'Nivel de competencia:',
+                        style: TextStyle(
+                          color: Colors.grey.shade400,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _getLevelLabel(currentLevel),
+                        style: TextStyle(
+                          color: _getLevelColor(currentLevel),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SliderTheme(
+                    data: SliderThemeData(
+                      activeTrackColor: _getLevelColor(currentLevel),
+                      inactiveTrackColor: Colors.grey.shade800,
+                      thumbColor: _getLevelColor(currentLevel),
+                      overlayColor: _getLevelColor(currentLevel).withValues(alpha: 0.3),
+                      valueIndicatorColor: _getLevelColor(currentLevel),
+                      valueIndicatorTextStyle: const TextStyle(color: Colors.white),
+                    ),
+                    child: Slider(
+                      value: currentLevel.toDouble(),
+                      min: 1,
+                      max: 10,
+                      divisions: 9,
+                      label: currentLevel.toString(),
+                      onChanged: (value) {
+                        setState(() {
+                          _skillLevels[skillKey] = value.toInt();
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -413,13 +563,28 @@ class _ReviewSkillsPageState extends State<ReviewSkillsPage> {
 
   void _toggleSkill(MappedSkill skill) {
     setState(() {
-      final index = _selectedSkills.indexWhere((s) => s.dbSkillId == skill.dbSkillId);
+      int index;
+
+      if (skill.isFound) {
+        // Skill estándar
+        index = _selectedSkills.indexWhere((s) => s.dbSkillId == skill.dbSkillId);
+      } else {
+        // Skill personalizada
+        index = _selectedSkills.indexWhere((s) => s.aiSkill == skill.aiSkill && !s.isFound);
+      }
+
       if (index >= 0) {
         _selectedSkills.removeAt(index);
       } else {
         _selectedSkills.add(skill);
-        if (skill.dbSkillId != null && !_skillLevels.containsKey(skill.dbSkillId)) {
+
+        if (skill.isFound && skill.dbSkillId != null && !_skillLevels.containsKey(skill.dbSkillId)) {
           _skillLevels[skill.dbSkillId!] = skill.level;
+        } else if (!skill.isFound) {
+          final skillKey = 'custom_${skill.aiSkill}';
+          if (!_skillLevels.containsKey(skillKey)) {
+            _skillLevels[skillKey] = skill.level;
+          }
         }
       }
     });
@@ -443,13 +608,28 @@ class _ReviewSkillsPageState extends State<ReviewSkillsPage> {
     setState(() => _isSaving = true);
 
     try {
-      // Preparar lista de skills confirmadas
+      // Preparar lista de skills confirmadas (estándar y personalizadas)
       final confirmedSkills = _selectedSkills.map((skill) {
-        return {
-          'skillId': skill.dbSkillId,
-          'level': _skillLevels[skill.dbSkillId] ?? skill.level,
-          'notes': '',
-        };
+        if (skill.isFound) {
+          // Skill estándar
+          return {
+            'skillId': skill.dbSkillId,
+            'level': _skillLevels[skill.dbSkillId] ?? skill.level,
+            'notes': '',
+            'isCustom': false,
+          };
+        } else {
+          // Skill personalizada
+          final skillKey = 'custom_${skill.aiSkill}';
+          return {
+            'customName': skill.aiSkill,
+            'level': _skillLevels[skillKey] ?? skill.level,
+            'notes': '',
+            'isCustom': true,
+            'suggestedSector': skill.suggestedSector ?? 'General',
+            'cvContext': skill.cvContext ?? '',
+          };
+        }
       }).toList();
 
       // Guardar en Firestore via Cloud Function

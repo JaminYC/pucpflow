@@ -195,7 +195,7 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
                     tabs: const [
                       Tab(icon: Icon(Icons.dashboard, size: 20), text: "Overview", height: 60),
                       Tab(icon: Icon(Icons.workspace_premium, size: 20), text: "Skills", height: 60),
-                      Tab(icon: Icon(Icons.analytics, size: 20), text: "AnÃ¡lisis", height: 60),
+                      Tab(icon: Icon(Icons.analytics, size: 20), text: "Análisis", height: 60),
                     ],
                   ),
                 ),
@@ -1114,7 +1114,7 @@ Widget _buildActionButtons() {
 
         // Radar chart
         _buildModernCard(
-          title: "AnÃ¡lisis de Competencias",
+          title: "Análisis de Competencias",
           icon: Icons.radar,
           color: Colors.cyan.shade400,
           child: SizedBox(

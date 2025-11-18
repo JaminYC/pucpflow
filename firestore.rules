@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Permite lectura/escritura solo a usuarios autenticados
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      match /professional_skills/{skillId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
+    // Skills suggestions - lectura pública, escritura autenticada
+    match /skill_suggestions/{suggestionId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Skills maestras - lectura pública
+    match /skills/{skillId} {
+      allow read: if true;
+      allow write: if false; // Solo admin por consola
+    }
+  }
+}

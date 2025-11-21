@@ -13,6 +13,7 @@ import 'package:pucpflow/features/user_auth/presentation/pages/login_page.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Login/sign_up_page.dart'; // Página de registro
 import 'package:pucpflow/features/user_auth/presentation/pages/proyectos/ProyectosPage.dart';
 import 'package:pucpflow/LandingPage/VastoriaMainLanding.dart'; // Landing principal del ecosistema con SSO
+import 'package:pucpflow/Cafillari/screens/home/CafillariHomePage.dart'; // Cafillari - IoT para cafetales
 
 import 'package:webview_flutter/webview_flutter.dart' as webview;
 import 'package:webview_flutter_android/webview_flutter_android.dart'; // SurfaceAndroidWebView ✅
@@ -100,6 +101,7 @@ Widget build(BuildContext context) {
       '/signUp': (context) => const SignUpPage(),
       '/proyectos': (context) =>  ProyectosPage(),
       '/ecosystem': (context) => const VastoriaMainLanding(),
+      '/cafillari': (context) => const CafillariHomePage(),
     },
 
   );

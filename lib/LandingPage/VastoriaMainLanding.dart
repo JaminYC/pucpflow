@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:url_launcher/url_launcher.dart';
 
 /// Landing page principal del ecosistema Vastoria
 /// Combina diseño visual con funcionalidad de SSO (Single Sign-On)
@@ -545,38 +544,21 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
                     'Gestión de Proyectos con IA',
                     'Organiza proyectos, tareas y equipos con inteligencia artificial. Sistema de gamificación con 24 habilidades y análisis de rendimiento.',
                     Icons.account_tree,
-                    'https://flow.teamvastoria.com',
+                    '/login',
                     const Color(0xFF133E87),
                     available: true,
+                    requiresLogin: true,
                   ),
-                  _buildAppCard(
-                    'INNOVA',
-                    'Innovación Empresarial',
-                    'Convierte ideas en proyectos ejecutables. Análisis con IA, validación iterativa y generación automática de tareas.',
-                    Icons.lightbulb,
-                    'https://innova.teamvastoria.com',
-                    const Color(0xFF8B4513),
-                    available: true,
-                  ),
-                  /*
                   _buildAppCard(
                     'CAFILLARI',
                     'IoT para Cafetales',
-                    'Monitoreo inteligente de plantaciones de café. Trazabilidad completa, alertas automatizadas y control remoto de dispositivos.',
+                    'Monitoreo inteligente de plantaciones de café. Trazabilidad completa, alertas automatizadas y control remoto de dispositivos IoT.',
                     Icons.coffee,
-                    'https://cafillari.teamvastoria.com',
-                    const Color(0xFF4A5D23),
-                    available: false,
+                    '/cafillari',
+                    const Color(0xFF6B4226),
+                    available: true,
+                    requiresLogin: false,
                   ),
-                  _buildAppCard(
-                    'VITAKUA',
-                    'Gestión Inteligente de Agua',
-                    'Control de consumo y distribución de agua. Panel comunitario, métricas en tiempo real y detección de fugas.',
-                    Icons.water_drop,
-                    'https://vitakua.teamvastoria.com',
-                    const Color(0xFF1A3D7C),
-                    available: false,
-                  ),*/
                 ],
               );
             },
@@ -624,6 +606,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
     String url,
     Color accentColor, {
     bool available = true,
+    bool requiresLogin = true,
   }) {
     return Container(
       width: 300,
@@ -651,10 +634,14 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
           borderRadius: BorderRadius.circular(20),
           onTap: available
               ? () {
-                  if (_currentUser != null) {
-                    _launchUrl(url);
+                  if (!requiresLogin) {
+                    // No requiere login, navegar directamente
+                    Navigator.pushNamed(context, url);
+                  } else if (_currentUser != null) {
+                    // Requiere login y está logueado
+                    Navigator.pushNamed(context, url);
                   } else {
-                    // Mostrar diálogo para iniciar sesión
+                    // Requiere login pero no está logueado
                     _showLoginDialog();
                   }
                 }
@@ -745,7 +732,9 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          _currentUser != null ? 'Abrir' : 'Iniciar para acceder',
+                          !requiresLogin
+                              ? 'Acceder Gratis'
+                              : (_currentUser != null ? 'Abrir' : 'Iniciar para acceder'),
                           style: TextStyle(
                             color: accentColor,
                             fontWeight: FontWeight.bold,
@@ -754,7 +743,9 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
                         ),
                         const SizedBox(width: 8),
                         Icon(
-                          _currentUser != null ? Icons.launch : Icons.lock,
+                          !requiresLogin
+                              ? Icons.arrow_forward
+                              : (_currentUser != null ? Icons.launch : Icons.lock),
                           color: accentColor,
                           size: 18,
                         ),
@@ -979,17 +970,4 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
     );
   }
 
-  Future<void> _launchUrl(String urlString) async {
-    try {
-      final uri = Uri.parse(urlString);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(
-          uri,
-          mode: kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
-        );
-      }
-    } catch (e) {
-      debugPrint('Error al abrir URL: $e');
-    }
-  }
 }

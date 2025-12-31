@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>MBXAccessToken</key>
+	<string>pk.eyJ1IjoiamFtaW55YyIsImEiOiJjbTY2eTBzbGEwNTA4MmtxYm8xMTgyb2R1In0.X6xadgq6AAS3pPKEu7SM6g</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>VASTORIA necesita tu ubicación para mostrarte rutas y lugares cercanos en el mapa</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>VASTORIA necesita acceso a tu ubicación para mejorar tu experiencia de viaje</string>
 </dict>
 </plist>

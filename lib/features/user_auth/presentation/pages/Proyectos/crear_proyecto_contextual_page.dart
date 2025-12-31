@@ -1,11 +1,11 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/project_ai_config.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/project_ai_service.dart';
-import 'ProyectoDetallePage.dart';
+import 'ProyectoDetalleKanbanPage.dart';
 import 'proyecto_model.dart';
 import 'tarea_model.dart';
 
@@ -22,12 +22,14 @@ class _CrearProyectoContextualPageState
   final _formKey = GlobalKey<FormState>();
   final _nombreController = TextEditingController();
   final _descripcionController = TextEditingController();
+  final _visionController = TextEditingController();
   final _focusController = TextEditingController();
   final _softSkillsController = TextEditingController();
   final _driversController = TextEditingController();
   final _customContextController = TextEditingController();
 
   ProjectMethodology _methodology = ProjectMethodology.general;
+  String _categoria = "Laboral";
   bool _generando = false;
   bool _creatingProject = false;
   Map<String, dynamic>? _blueprint;
@@ -39,6 +41,7 @@ class _CrearProyectoContextualPageState
   void dispose() {
     _nombreController.dispose();
     _descripcionController.dispose();
+    _visionController.dispose();
     _focusController.dispose();
     _softSkillsController.dispose();
     _driversController.dispose();
@@ -48,187 +51,193 @@ class _CrearProyectoContextualPageState
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final isMobile = size.width < 600;
+
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: const Text('Blueprint Contextual IA',
-            style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
+      backgroundColor: const Color(0xFF0A0E27),
       body: SafeArea(
         child: Form(
           key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              _buildSectionTitle('Contexto del proyecto'),
-              _buildTextField(
-                controller: _nombreController,
-                label: 'Nombre del proyecto',
-                validator: (value) =>
-                    value == null || value.trim().isEmpty ? 'Obligatorio' : null,
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _descripcionController,
-                label: 'Descripción breve / historia del usuario',
-                maxLines: 4,
-              ),
-              const SizedBox(height: 20),
-              _buildSectionTitle('Metodología base'),
-              Wrap(
-                spacing: 8,
-                children: ProjectMethodology.values.map((method) {
-                  final isSelected = method == _methodology;
-                  return ChoiceChip(
-                    label: Text(method.label),
-                    selected: isSelected,
-                    onSelected: (_) {
-                      setState(() => _methodology = method);
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 20),
-              _buildSectionTitle('Foco estratégico'),
-              _buildTextField(
-                controller: _focusController,
-                label: 'Áreas de enfoque (separadas por coma)',
-                helper:
-                    'Ejemplo: Descubrimiento de cliente, Experiencia móvil, Operaciones',
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _softSkillsController,
-                label: 'Soft skills prioritarias',
-                helper:
-                    'Ejemplo: Comunicación efectiva, Gestión del cambio, Liderazgo',
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                controller: _driversController,
-                label: 'Drivers de negocio',
-                helper:
-                    'Ejemplo: Retención de clientes, Velocidad de entrega, Innovación',
-              ),
-              const SizedBox(height: 20),
-              _buildSectionTitle('Contexto adicional'),
-              _buildTextField(
-                controller: _customContextController,
-                label: 'Notas adicionales (JSON o párrafo libre)',
-                maxLines: 4,
-              ),
-              const SizedBox(height: 24),
-              _buildSectionTitle('Documentos de apoyo (PDF)'),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: _generando ? null : _pickDocuments,
-                    icon: const Icon(Icons.upload_file, size: 18),
-                    label: const Text('Subir documentos'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black87,
+          child: CustomScrollView(
+            slivers: [
+              // Header elegante
+              SliverAppBar(
+                expandedHeight: isMobile ? 120 : 160,
+                floating: false,
+                pinned: true,
+                backgroundColor: const Color(0xFF0A0E27),
+                iconTheme: const IconThemeData(color: Colors.white),
+                flexibleSpace: FlexibleSpaceBar(
+                  title: const Text(
+                    'Crear Proyecto con IA',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
                     ),
                   ),
-                  if (_attachments.isNotEmpty) ...[
-                    const SizedBox(width: 12),
-                    Text(
-                      '${_attachments.length} archivo(s)',
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                  ],
-                ],
-              ),
-              if (_docError != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _docError!,
-                  style: const TextStyle(color: Colors.redAccent, fontSize: 12),
-                ),
-              ],
-              if (_attachments.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _attachments.map((file) {
-                    return Chip(
-                      label: Text(
-                        file.name,
-                        style: const TextStyle(fontSize: 12),
+                  background: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          const Color(0xFF8B5CF6).withOpacity(0.1),
+                          const Color(0xFF3B82F6).withOpacity(0.05),
+                        ],
                       ),
-                      deleteIcon: const Icon(Icons.close, size: 16),
-                      onDeleted: _generando
-                          ? null
-                          : () {
-                              setState(() {
-                                _attachments.remove(file);
-                              });
-                            },
-                    );
-                  }).toList(),
-                ),
-              ],
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: _generando ? null : _generarBlueprint,
-                icon: _generando
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.auto_awesome, size: 18),
-                label: Text(_generando
-                    ? 'Generando blueprint...'
-                    : 'Generar con IA'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade600,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              if (_blueprint != null) ...[
-                _buildBlueprintPreview(_blueprint!),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed:
-                      _creatingProject ? null : _createProjectFromBlueprint,
-                  icon: _creatingProject
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.playlist_add_check),
-                  label: Text(_creatingProject
-                      ? 'Creando proyecto...'
-                      : 'Crear proyecto desde blueprint'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade600,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                 ),
-              ],
-              const SizedBox(height: 80),
+              ),
+
+              // Contenido principal
+              SliverPadding(
+                padding: EdgeInsets.all(isMobile ? 16 : 24),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    // Información del proyecto
+                    _buildGlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeader(
+                            icon: Icons.description_outlined,
+                            title: 'Información del Proyecto',
+                            subtitle: 'Define el contexto y alcance inicial',
+                          ),
+                          const SizedBox(height: 24),
+                          _buildTextField(
+                            controller: _nombreController,
+                            label: 'Nombre del proyecto',
+                            validator: (value) => value == null || value.trim().isEmpty
+                                ? 'Obligatorio'
+                                : null,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildCategoriaDropdown(),
+                          _buildTextField(
+                            controller: _visionController,
+                            label: 'Vision del proyecto',
+                            maxLines: 2,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextField(
+                            controller: _descripcionController,
+                            label: 'Descripción breve / historia del usuario',
+                            maxLines: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Metodología
+                    _buildGlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeader(
+                            icon: Icons.account_tree_outlined,
+                            title: 'Metodología Base',
+                            subtitle: 'Selecciona el framework de trabajo',
+                          ),
+                          const SizedBox(height: 20),
+                          _buildMethodologySelector(),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Foco estratégico
+                    _buildGlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeader(
+                            icon: Icons.track_changes_outlined,
+                            title: 'Foco Estratégico',
+                            subtitle: 'Define prioridades y áreas clave',
+                          ),
+                          const SizedBox(height: 24),
+                          _buildTextField(
+                            controller: _focusController,
+                            label: 'Áreas de enfoque',
+                            helper:
+                                'Ej: Descubrimiento de cliente, Experiencia móvil, Operaciones',
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextField(
+                            controller: _softSkillsController,
+                            label: 'Soft skills prioritarias',
+                            helper:
+                                'Ej: Comunicación efectiva, Gestión del cambio, Liderazgo',
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextField(
+                            controller: _driversController,
+                            label: 'Drivers de negocio',
+                            helper:
+                                'Ej: Retención de clientes, Velocidad de entrega, Innovación',
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Contexto adicional
+                    _buildGlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeader(
+                            icon: Icons.note_add_outlined,
+                            title: 'Contexto Adicional',
+                            subtitle: 'Información complementaria (opcional)',
+                          ),
+                          const SizedBox(height: 24),
+                          _buildTextField(
+                            controller: _customContextController,
+                            label: 'Notas adicionales',
+                            maxLines: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Documentos
+                    _buildGlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeader(
+                            icon: Icons.cloud_upload_outlined,
+                            title: 'Documentos de Apoyo',
+                            subtitle: 'Sube archivos PDF para análisis contextual',
+                          ),
+                          const SizedBox(height: 20),
+                          _buildDocumentUploader(),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Botón generar
+                    _buildGenerateButton(),
+                    const SizedBox(height: 24),
+
+                    // Preview del blueprint
+                    if (_blueprint != null) ...[
+                      _buildBlueprintPreview(_blueprint!),
+                      const SizedBox(height: 20),
+                      _buildCreateProjectButton(),
+                    ],
+                    const SizedBox(height: 80),
+                  ]),
+                ),
+              ),
             ],
           ),
         ),
@@ -236,13 +245,386 @@ class _CrearProyectoContextualPageState
     );
   }
 
-  Widget _buildSectionTitle(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
+  // ===== COMPONENTES UI CON ESTILO FLOW =====
+
+  Widget _buildGlassCard({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1F3A).withOpacity(0.5),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFF2D3347).withOpacity(0.3),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 24,
+            spreadRadius: -8,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildSectionHeader({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF8B5CF6).withOpacity(0.2),
+                const Color(0xFF3B82F6).withOpacity(0.1),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFF8B5CF6).withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Icon(
+            icon,
+            color: const Color(0xFF8B5CF6),
+            size: 24,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Color(0xFFFFFFFF),
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: Color(0xFFB8BCC8),
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMethodologySelector() {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: ProjectMethodology.values.map((method) {
+        final isSelected = method == _methodology;
+        return GestureDetector(
+          onTap: () => setState(() => _methodology = method),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? const Color(0xFF8B5CF6).withOpacity(0.15)
+                  : const Color(0xFF1A1F3A).withOpacity(0.3),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isSelected
+                    ? const Color(0xFF8B5CF6)
+                    : const Color(0xFF2D3347).withOpacity(0.5),
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Text(
+              method.label,
+              style: TextStyle(
+                color: isSelected ? const Color(0xFFFFFFFF) : const Color(0xFFB8BCC8),
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildDocumentUploader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: _generando ? null : _pickDocuments,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1F3A).withOpacity(0.3),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF3B82F6).withOpacity(0.3),
+                width: 2,
+                style: BorderStyle.solid,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.cloud_upload_outlined,
+                  color: _generando ? const Color(0xFFB8BCC8).withOpacity(0.3) : const Color(0xFF3B82F6),
+                  size: 32,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  _attachments.isEmpty ? 'Seleccionar documentos PDF' : '${_attachments.length} archivo(s) seleccionado(s)',
+                  style: TextStyle(
+                    color: _generando ? const Color(0xFFB8BCC8).withOpacity(0.5) : const Color(0xFFFFFFFF),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_docError != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.red.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.redAccent, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _docError!,
+                    style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (_attachments.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _attachments.map((file) {
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B82F6).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFF3B82F6).withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.picture_as_pdf, color: Color(0xFF3B82F6), size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      file.name,
+                      style: const TextStyle(
+                        color: Color(0xFFFFFFFF),
+                        fontSize: 13,
+                      ),
+                    ),
+                    if (!_generando) ...[
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () => setState(() => _attachments.remove(file)),
+                        child: const Icon(Icons.close, color: Color(0xFFB8BCC8), size: 16),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildGenerateButton() {
+    return Container(
+      width: double.infinity,
+      height: 56,
+      decoration: BoxDecoration(
+        gradient: _generando
+            ? null
+            : const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF8B5CF6),
+                  Color(0xFF3B82F6),
+                ],
+              ),
+        color: _generando ? const Color(0xFF2D3347) : null,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: _generando
+            ? null
+            : [
+                BoxShadow(
+                  color: const Color(0xFF8B5CF6).withOpacity(0.4),
+                  blurRadius: 20,
+                  spreadRadius: -5,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _generando ? null : _generarBlueprint,
+          borderRadius: BorderRadius.circular(16),
+          child: Center(
+            child: _generando
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFFB8BCC8),
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Text(
+                        'Generando blueprint con IA...',
+                        style: TextStyle(
+                          color: Color(0xFFB8BCC8),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.auto_awesome, color: Color(0xFFFFFFFF), size: 22),
+                      SizedBox(width: 12),
+                      Text(
+                        'Generar Proyecto con IA',
+                        style: TextStyle(
+                          color: Color(0xFFFFFFFF),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCreateProjectButton() {
+    return Container(
+      width: double.infinity,
+      height: 56,
+      decoration: BoxDecoration(
+        gradient: _creatingProject
+            ? null
+            : const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF10B981),
+                  Color(0xFF059669),
+                ],
+              ),
+        color: _creatingProject ? const Color(0xFF2D3347) : null,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: _creatingProject
+            ? null
+            : [
+                BoxShadow(
+                  color: const Color(0xFF10B981).withOpacity(0.4),
+                  blurRadius: 20,
+                  spreadRadius: -5,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _creatingProject ? null : _createProjectFromBlueprint,
+          borderRadius: BorderRadius.circular(16),
+          child: Center(
+            child: _creatingProject
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFFB8BCC8),
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Text(
+                        'Creando proyecto...',
+                        style: TextStyle(
+                          color: Color(0xFFB8BCC8),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.check_circle_outline, color: Color(0xFFFFFFFF), size: 22),
+                      SizedBox(width: 12),
+                      Text(
+                        'Crear Proyecto desde Blueprint',
+                        style: TextStyle(
+                          color: Color(0xFFFFFFFF),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
       ),
     );
   }
@@ -275,6 +657,36 @@ class _CrearProyectoContextualPageState
           borderSide: const BorderSide(color: Colors.blueAccent),
         ),
       ),
+    );
+  }
+
+  Widget _buildCategoriaDropdown() {
+    return DropdownButtonFormField<String>(
+      value: _categoria,
+      dropdownColor: const Color(0xFF1A1F3A),
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: 'Categoria',
+        labelStyle: TextStyle(color: Colors.grey.shade300),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.05),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.blueAccent),
+        ),
+      ),
+      items: const [
+        DropdownMenuItem(value: 'Laboral', child: Text('Laboral')),
+        DropdownMenuItem(value: 'Personal', child: Text('Personal')),
+      ],
+      onChanged: (value) {
+        if (value == null) return;
+        setState(() => _categoria = value);
+      },
     );
   }
 
@@ -375,25 +787,63 @@ class _CrearProyectoContextualPageState
   }
 
   Widget _buildBlueprintPreview(Map<String, dynamic> data) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-      ),
+    return _buildGlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Blueprint generado',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF10B981),
+                      Color(0xFF059669),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome,
+                  color: Color(0xFFFFFFFF),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Blueprint Generado',
+                      style: TextStyle(
+                        color: Color(0xFFFFFFFF),
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Proyecto listo para crear',
+                      style: TextStyle(
+                        color: Color(0xFFB8BCC8),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
+          Container(
+            height: 1,
+            color: const Color(0xFF2D3347),
+          ),
+          const SizedBox(height: 24),
           if (data['resumenEjecutivo'] != null)
             _buildPreviewBlock('Resumen ejecutivo', data['resumenEjecutivo']),
           if (data['objetivosSMART'] != null)
@@ -418,24 +868,49 @@ class _CrearProyectoContextualPageState
 
   Widget _buildPreviewBlock(String title, String content) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Color(0xFFFFFFFF),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            content,
-            style: TextStyle(
-              color: Colors.grey.shade300,
-              height: 1.5,
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1F3A).withOpacity(0.3),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFF2D3347).withOpacity(0.5),
+                width: 1,
+              ),
+            ),
+            child: Text(
+              content,
+              style: const TextStyle(
+                color: Color(0xFFB8BCC8),
+                height: 1.6,
+                fontSize: 14,
+              ),
             ),
           ),
         ],
@@ -448,30 +923,100 @@ class _CrearProyectoContextualPageState
     if (items.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B82F6),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFFFFFFFF),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3B82F6).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF3B82F6).withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  '${items.length}',
+                  style: const TextStyle(
+                    color: Color(0xFF3B82F6),
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          ...items.map((item) {
+          const SizedBox(height: 12),
+          ...items.asMap().entries.map((entry) {
+            final index = entry.key;
+            final item = entry.value;
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
+                color: const Color(0xFF1A1F3A).withOpacity(0.3),
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFF2D3347).withOpacity(0.5),
+                  width: 1,
+                ),
               ),
-              child: Text(
-                item is String ? item : jsonEncode(item),
-                style: const TextStyle(color: Colors.white70),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3B82F6).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${index + 1}',
+                        style: const TextStyle(
+                          color: Color(0xFF3B82F6),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      item is String ? item : jsonEncode(item),
+                      style: const TextStyle(
+                        color: Color(0xFFB8BCC8),
+                        fontSize: 14,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
           }),
@@ -503,12 +1048,14 @@ class _CrearProyectoContextualPageState
         descripcion: _descripcionController.text.trim().isEmpty
             ? (_blueprint!['resumenEjecutivo'] ?? '')
             : _descripcionController.text.trim(),
+        vision: _visionController.text.trim(),
         fechaInicio: DateTime.now(),
         fechaFin: null,
         fechaCreacion: DateTime.now(),
         fechaActualizacion: DateTime.now(),
         propietario: user.uid,
         participantes: [user.uid],
+        categoria: _categoria,
         tareas: tareas,
         blueprintIA: _blueprint,
         objetivo: _blueprint!['resumenEjecutivo'],
@@ -529,7 +1076,7 @@ class _CrearProyectoContextualPageState
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => ProyectoDetallePage(proyectoId: proyectoRef.id),
+          builder: (_) => ProyectoDetalleKanbanPage(proyectoId: proyectoRef.id),
         ),
       );
     } catch (e) {

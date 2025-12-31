@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'pmi_fase_model.dart';
 import 'pmi_documento_model.dart';
@@ -53,6 +53,8 @@ class PMIService {
     String? alcance,
     double? presupuesto,
     List<String>? documentosIniciales,
+    String categoria = "Laboral",
+    String vision = "",
   }) async {
     try {
       final user = _auth.currentUser;
@@ -70,6 +72,8 @@ class PMIService {
         fechaCreacion: DateTime.now(),
         propietario: user.uid,
         participantes: [user.uid],
+        categoria: categoria,
+        vision: vision,
         esPMI: true,
         fasePMIActual: 'Iniciación',
         objetivo: objetivo,

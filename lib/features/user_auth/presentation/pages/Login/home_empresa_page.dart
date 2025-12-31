@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectosPageInnova.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/categoria_migration.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Innova/ProponerIdeaPage.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Innova/ProponerIdeaPageNuevo.dart';
@@ -129,8 +130,16 @@ late Timer _timer;
 @override
 void initState() {
   super.initState();
+  _runCategoriaMigration();
   _cargarTareas();
   _cambiarFondo();
+}
+
+Future<void> _runCategoriaMigration() async {
+  final prefs = await SharedPreferences.getInstance();
+  final uid = prefs.getString("uid_empresarial");
+  if (uid == null) return;
+  await CategoriaMigration.runIfNeeded(uid: uid);
 }
 
 

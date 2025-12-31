@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+﻿import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,7 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
 import 'proyecto_model.dart';
-import 'ProyectoDetallePage.dart';
+import 'ProyectoDetalleKanbanPage.dart';
+import 'tarea_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart'; // ⬅️ Esto permite formatear fechas
 import 'package:flutter_dropzone/flutter_dropzone.dart';
@@ -33,6 +34,7 @@ class _ProyectosPageState extends State<ProyectosPage>  with AutomaticKeepAliveC
   Uint8List? imagenPreviewBytes;
   
   String filtroVisibilidad = "Todos";
+  String filtroCategoria = "Todas";
   late VideoPlayerController _videoController;
   Map<String, String> nombresPropietarios = {};
   @override
@@ -81,7 +83,11 @@ Stream<List<Proyecto>> obtenerProyectos() async* {
             .map((doc) => Proyecto.fromJson(doc.data()))
             .where((proyecto) {
               print("🔎 Proyecto ${proyecto.nombre} → visibilidad: ${proyecto.visibilidad}");
-              return filtroVisibilidad == "Todos" || proyecto.visibilidad == filtroVisibilidad;
+              final coincideVisibilidad =
+                filtroVisibilidad == "Todos" || proyecto.visibilidad == filtroVisibilidad;
+              final coincideCategoria =
+                filtroCategoria == "Todas" || proyecto.categoria == filtroCategoria;
+              return coincideVisibilidad && coincideCategoria;
             })
             .toList();
       });
@@ -170,6 +176,8 @@ Future<String?> _subirImagenPlataforma(XFile archivo) async {
 Future<void> _crearProyecto(
   String nombre,
   String visibilidad,
+  String categoria,
+  String vision,
   XFile? imagenFile,
   Uint8List? imagenBytes,
   DateTime fechaInicio,
@@ -201,6 +209,8 @@ Future<void> _crearProyecto(
     propietario: uid,
     participantes: [uid],
     visibilidad: visibilidad,
+    categoria: categoria,
+    vision: vision,
     imagenUrl: urlImagen,
   );
 
@@ -232,7 +242,9 @@ String _imagenPorDefecto() {
 
 void _mostrarDialogoNuevoProyecto() {
   String nombreProyecto = "";
+  String visionProyecto = "";
   String visibilidad = "Privado";
+  String categoria = "Laboral";
   XFile? imagenSeleccionada;
   Uint8List? imagenPreviewBytes;
   DateTime? fechaInicio;
@@ -254,6 +266,11 @@ void _mostrarDialogoNuevoProyecto() {
                   TextField(
                     decoration: const InputDecoration(hintText: "Nombre del proyecto"),
                     onChanged: (value) => nombreProyecto = value,
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: const InputDecoration(hintText: "Vision del proyecto (opcional)"),
+                    onChanged: (value) => visionProyecto = value,
                   ),
                   const SizedBox(height: 10),
 
@@ -310,6 +327,17 @@ void _mostrarDialogoNuevoProyecto() {
                     value: visibilidad,
                     onChanged: (value) => setStateDialog(() => visibilidad = value!),
                     items: ["Privado", "Publico"]
+                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  /// Categoria
+                  DropdownButton<String>(
+                    value: categoria,
+                    onChanged: (value) => setStateDialog(() => categoria = value!),
+                    items: ["Laboral", "Personal"]
                         .map((v) => DropdownMenuItem(value: v, child: Text(v)))
                         .toList(),
                   ),
@@ -380,7 +408,7 @@ void _mostrarDialogoNuevoProyecto() {
               ElevatedButton(
                 onPressed: () async {
                   if (nombreProyecto.isNotEmpty && fechaInicio != null) {
-                    _crearProyecto(nombreProyecto, visibilidad, imagenSeleccionada, imagenPreviewBytes, fechaInicio!, fechaFin);
+                    _crearProyecto(nombreProyecto, visibilidad, categoria, visionProyecto, imagenSeleccionada, imagenPreviewBytes, fechaInicio!, fechaFin);
                     Navigator.pop(context);
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -406,7 +434,9 @@ void _mostrarDialogoNuevoProyecto() {
 void _editarProyecto(Proyecto proyecto) {
   final nombreController = TextEditingController(text: proyecto.nombre);
   final descripcionController = TextEditingController(text: proyecto.descripcion);
+  final visionController = TextEditingController(text: proyecto.vision);
   String visibilidad = proyecto.visibilidad;
+  String categoria = proyecto.categoria;
   XFile? imagenSeleccionada;
   Uint8List? imagenPreviewBytes;
   DropzoneViewController? dropzoneController;
@@ -432,10 +462,21 @@ void _editarProyecto(Proyecto proyecto) {
                     decoration: const InputDecoration(labelText: "Descripción"),
                     controller: descripcionController,
                   ),
+                  TextField(
+                    decoration: const InputDecoration(labelText: "Vision"),
+                    controller: visionController,
+                  ),
                   DropdownButton<String>(
                     value: visibilidad,
                     onChanged: (value) => setStateDialog(() => visibilidad = value!),
                     items: ["Privado", "Publico"]
+                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
+                  ),
+                  DropdownButton<String>(
+                    value: categoria,
+                    onChanged: (value) => setStateDialog(() => categoria = value!),
+                    items: ["Laboral", "Personal"]
                         .map((v) => DropdownMenuItem(value: v, child: Text(v)))
                         .toList(),
                   ),
@@ -568,7 +609,9 @@ void _editarProyecto(Proyecto proyecto) {
                   await FirebaseFirestore.instance.collection("proyectos").doc(proyecto.id).update({
                     "nombre": nombreController.text,
                     "descripcion": descripcionController.text,
+                    "vision": visionController.text,
                     "visibilidad": visibilidad,
+                    "categoria": categoria,
                     "imagenUrl": imagenUrl,
                     "fechaInicio": fechaInicio,
                     "fechaFin": fechaFin,
@@ -601,16 +644,30 @@ ImageProvider _obtenerImagenProyecto(String? url) {
   }
 }
 
+double _calcularProgreso(List<Tarea> tareas) {
+  if (tareas.isEmpty) return 0.0;
+  final completadas = tareas.where((t) => t.completado).length;
+  return completadas / tareas.length;
+}
+
 @override
 Widget build(BuildContext context) {
   super.build(context);
-  final isMobile = MediaQuery.of(context).size.width < 600;
-  final aspectRatio = isMobile ? 3 / 4 : 16 / 9;
+  final screenWidth = MediaQuery.of(context).size.width;
+  final isMobile = screenWidth < 600;
+  final isTablet = screenWidth >= 600 && screenWidth < 1024;
+  final aspectRatio = isMobile ? 0.7 : (isTablet ? 0.8 : 1.3);
 
   return Scaffold(
     appBar: AppBar(
       iconTheme: const IconThemeData(color: Colors.white),
-      title: const Text("Mis Proyectos", style: TextStyle(color: Colors.white)),
+      title: Text(
+        "Mis Proyectos",
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: isMobile ? 16 : 20,
+        ),
+      ),
       backgroundColor: Colors.black,
       actions: [
         DropdownButton<String>(
@@ -619,74 +676,119 @@ Widget build(BuildContext context) {
           onChanged: (value) => setState(() => filtroVisibilidad = value!),
           items: ["Todos", "Publico", "Privado"]
               .map((f) => DropdownMenuItem(
-                  value: f, child: Text(f, style: const TextStyle(color: Colors.white))))
+                  value: f,
+                  child: Text(
+                    f,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: isMobile ? 12 : 14,
+                    ),
+                  )))
               .toList(),
         ),
+        DropdownButton<String>(
+          dropdownColor: Colors.black,
+          value: filtroCategoria,
+          onChanged: (value) => setState(() => filtroCategoria = value!),
+          items: ["Todas", "Laboral", "Personal"]
+              .map((f) => DropdownMenuItem(
+                  value: f,
+                  child: Text(
+                    f,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: isMobile ? 12 : 14,
+                    ),
+                  )))
+              .toList(),
+        ),
+        SizedBox(width: isMobile ? 8 : 16),
       ],
     ),
-    body: Stack(
-      children: [
-        Positioned.fill(
-          child: _videoController.value.isInitialized
-              ? FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: _videoController.value.size.width,
-                    height: _videoController.value.size.height,
-                    child: VideoPlayer(_videoController),
-                  ),
-                )
-              : Container(color: Colors.black),
-        ),
-        Container(color: Colors.black.withOpacity(0.3)),
-        FutureBuilder<SharedPreferences>(
-          future: SharedPreferences.getInstance(),
-          builder: (context, prefsSnapshot) {
-            if (!prefsSnapshot.hasData) return const Center(child: CircularProgressIndicator());
-            final uidEmpresarial = prefsSnapshot.data!.getString("uid_empresarial");
-            return StreamBuilder<List<Proyecto>>(
-stream: obtenerProyectos(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text("Error al cargar proyectos: ${snapshot.error}"),
-                  );
-                }
+    body: SafeArea(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: _videoController.value.isInitialized
+                ? FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: _videoController.value.size.width,
+                      height: _videoController.value.size.height,
+                      child: VideoPlayer(_videoController),
+                    ),
+                  )
+                : Container(color: Colors.black),
+          ),
+          Container(color: Colors.black.withOpacity(0.3)),
+          FutureBuilder<SharedPreferences>(
+            future: SharedPreferences.getInstance(),
+            builder: (context, prefsSnapshot) {
+              if (!prefsSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+              final uidEmpresarial = prefsSnapshot.data!.getString("uid_empresarial");
+              return StreamBuilder<List<Proyecto>>(
+                stream: obtenerProyectos(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          "Error al cargar proyectos: ${snapshot.error}",
+                          style: TextStyle(fontSize: isMobile ? 12 : 14),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    );
+                  }
 
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                final proyectos = snapshot.data!;
-                if (proyectos.isEmpty) {
-                  return const Center(child: Text("No hay proyectos disponibles."));
-                }             
+                  final proyectos = snapshot.data!;
+                  if (proyectos.isEmpty) {
+                    return Center(
+                      child: Text(
+                        "No hay proyectos disponibles.",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: isMobile ? 14 : 16,
+                        ),
+                      ),
+                    );
+                  }
 
-                final nuevosUids = proyectos
-                    .map((p) => p.propietario)
-                    .where((uid) => !nombresPropietarios.containsKey(uid))
-                    .toSet();
-                if (nuevosUids.isNotEmpty) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    cargarNombresPropietarios(proyectos);
-                  });
-                }
-                return GridView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 300,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: aspectRatio,
-                  ),
-                  itemCount: proyectos.length,
-                  itemBuilder: (context, index) {
+                  final nuevosUids = proyectos
+                      .map((p) => p.propietario)
+                      .where((uid) => !nombresPropietarios.containsKey(uid))
+                      .toSet();
+                  if (nuevosUids.isNotEmpty) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      cargarNombresPropietarios(proyectos);
+                    });
+                  }
+                  return GridView.builder(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isMobile ? 12 : 16,
+                      vertical: isMobile ? 12 : 16,
+                    ),
+                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: isMobile ? 180 : (isTablet ? 220 : 280),
+                      mainAxisSpacing: isMobile ? 12 : 16,
+                      crossAxisSpacing: isMobile ? 12 : 16,
+                      childAspectRatio: aspectRatio,
+                    ),
+                    itemCount: proyectos.length,
+                    itemBuilder: (context, index) {
                     final proyecto = proyectos[index];
                     final isOwner = proyecto.propietario == FirebaseAuth.instance.currentUser?.uid || proyecto.propietario == uidEmpresarial;
 
                     final imagenUrl = (proyecto.imagenUrl != null && proyecto.imagenUrl!.isNotEmpty)
                         ? proyecto.imagenUrl!
                         : _imagenPorDefecto();
+                    final progreso = _calcularProgreso(proyecto.tareas);
+                    final porcentaje = (progreso * 100).round();
 
                     return Material(
                       color: Colors.transparent,
@@ -699,7 +801,7 @@ stream: obtenerProyectos(),
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => ProyectoDetallePage(proyectoId: proyecto.id),
+                              builder: (_) => ProyectoDetalleKanbanPage(proyectoId: proyecto.id),
                             ),
                           );
                           _videoController.play();
@@ -716,103 +818,142 @@ stream: obtenerProyectos(),
                                 fit: BoxFit.cover,
                               ),
                             ),
-                            Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                gradient: LinearGradient(
-                                  colors: [Colors.black.withOpacity(0.7), Colors.transparent],
-                                  begin: Alignment.bottomCenter,
-                                  end: Alignment.topCenter,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.4),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 4),
+                            Positioned.fill(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  gradient: LinearGradient(
+                                    colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                                    begin: Alignment.bottomCenter,
+                                    end: Alignment.topCenter,
                                   ),
-                                ],
-                              ),
-                              padding: const EdgeInsets.all(12),
-                              alignment: Alignment.bottomLeft,
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  return SingleChildScrollView(
-                                    child: ConstrainedBox(
-                                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.end,
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            proyecto.nombre,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          Text(
-                                            "${proyecto.visibilidad} · ${nombresPropietarios[proyecto.propietario] ?? 'Usuario'}",
-                                            style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 11,
-                                              fontStyle: FontStyle.italic,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            proyecto.descripcion,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                          Text(
-                                          "📅 Inicio: ${DateFormat('dd/MM/yyyy').format(proyecto.fechaInicio)}",
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 11,
-                                          ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.4),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                padding: EdgeInsets.all(isMobile ? 8 : 12),
+                                alignment: Alignment.bottomLeft,
+                                child: SingleChildScrollView(
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                    Text(
+                                      proyecto.nombre,
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: isMobile ? 12 : 14,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      softWrap: false,
+                                    ),
+                                    Text(
+                                      "${proyecto.categoria} - ${proyecto.visibilidad} - ${nombresPropietarios[proyecto.propietario] ?? 'Usuario'}",
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: isMobile ? 9 : 11,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      softWrap: false,
+                                    ),
+                                    SizedBox(height: isMobile ? 2 : 4),
+                                    if (!isMobile)
+                                      Text(
+                                        proyecto.descripcion,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        softWrap: true,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12,
                                         ),
-                                        if (proyecto.fechaFin != null)
-                                          Text(
-                                            "⏳ Fin: ${DateFormat('dd/MM/yyyy').format(proyecto.fechaFin!)}",
-                                            style: TextStyle(
-                                              color: proyecto.fechaFin!.isBefore(DateTime.now()) ? Colors.redAccent : Colors.white70,
-                                              fontSize: 11,
-                                              fontWeight: proyecto.fechaFin!.isBefore(DateTime.now()) ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    if (!isMobile) const SizedBox(height: 4),
+                                    Text(
+                                      "Avance: $porcentaje%",
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: isMobile ? 9 : 11,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      softWrap: false,
+                                    ),
+                                    if (!isMobile)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2, bottom: 4),
+                                        child: LinearProgressIndicator(
+                                          value: progreso,
+                                          backgroundColor: Colors.white24,
+                                          valueColor: const AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+                                          minHeight: 4,
+                                        ),
+                                      ),
+                                    Text(
+                                      "📅 ${DateFormat('dd/MM/yy').format(proyecto.fechaInicio)}",
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: isMobile ? 9 : 11,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      softWrap: false,
+                                    ),
+                                    if (proyecto.fechaFin != null && !isMobile)
+                                      Text(
+                                        "⏳ ${DateFormat('dd/MM/yy').format(proyecto.fechaFin!)}",
+                                        style: TextStyle(
+                                          color: proyecto.fechaFin!.isBefore(DateTime.now()) ? Colors.redAccent : Colors.white70,
+                                          fontSize: 11,
+                                          fontWeight: proyecto.fechaFin!.isBefore(DateTime.now()) ? FontWeight.bold : FontWeight.normal,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        softWrap: false,
+                                      ),
+
+                                    if (isOwner)
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        children: [
+                                          IconButton(
+                                            icon: Icon(
+                                              Icons.edit,
+                                              color: Colors.white,
+                                              size: isMobile ? 16 : 22,
                                             ),
+                                            onPressed: () => _editarProyecto(proyecto),
+                                            tooltip: "Editar",
+                                            padding: EdgeInsets.all(isMobile ? 2 : 6),
+                                            constraints: const BoxConstraints(),
                                           ),
-
-
-                                          if (isOwner)
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.end,
-                                              children: [
-                                                IconButton(
-                                                  icon: const Icon(Icons.edit, color: Colors.white),
-                                                  onPressed: () => _editarProyecto(proyecto),
-                                                  tooltip: "Editar",
-                                                ),
-                                                IconButton(
-                                                  icon: const Icon(Icons.delete, color: Colors.redAccent),
-                                                  onPressed: () => _eliminarProyecto(proyecto),
-                                                  tooltip: "Eliminar",
-                                                ),
-                                              ],
+                                          IconButton(
+                                            icon: Icon(
+                                              Icons.delete,
+                                              color: Colors.redAccent,
+                                              size: isMobile ? 16 : 22,
                                             ),
+                                            onPressed: () => _eliminarProyecto(proyecto),
+                                            tooltip: "Eliminar",
+                                            padding: EdgeInsets.all(isMobile ? 2 : 6),
+                                            constraints: const BoxConstraints(),
+                                          ),
                                         ],
                                       ),
-                                    ),
-                                  );
-                                },
+                                  ],
+                                ),
                               ),
+                            ),
                             ),
                           ],
                         ),
@@ -825,6 +966,7 @@ stream: obtenerProyectos(),
           },
         ),
       ],
+      ),
     ),
     floatingActionButton: Column(
       mainAxisAlignment: MainAxisAlignment.end,

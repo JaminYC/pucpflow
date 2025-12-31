@@ -14,6 +14,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   geolocator_windows
   permission_handler_windows
   printing
+  rive_native
   url_launcher_windows
 )
 

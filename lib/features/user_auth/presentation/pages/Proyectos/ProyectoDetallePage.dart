@@ -14,6 +14,7 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/Reunion
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/grafo_tareas_page.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/grafo_tareas_pmi_page.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/asignacion_inteligente_service.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/redistribucion_tareas_service.dart';
 
 Color _colorDesdeUID(String uid) {
   final int hash = uid.hashCode;
@@ -36,6 +37,7 @@ class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TareaService _tareaService = TareaService();
   final AsignacionInteligenteService _asignacionService = AsignacionInteligenteService();
+  final RedistribucionTareasService _redistribucionService = RedistribucionTareasService();
 
   List<Tarea> tareas = [];
   Map<String, String> nombreResponsables = {};
@@ -151,23 +153,70 @@ class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
     final userId = _auth.currentUser!.uid;
     if (!tarea.responsables.contains(userId)) return;
 
-    final querySnapshot = await _firestore.collection("proyectos").get();
+    try {
+      // Obtener solo el proyecto actual
+      final proyectoDoc = await _firestore.collection("proyectos").doc(widget.proyectoId).get();
 
-    for (var doc in querySnapshot.docs) {
-      final data = doc.data();
-      List<dynamic> tareas = data["tareas"] ?? [];
+      if (!proyectoDoc.exists) {
+        print('❌ Proyecto no encontrado');
+        return;
+      }
 
+      final data = proyectoDoc.data()!;
+      List<dynamic> tareas = List.from(data["tareas"] ?? []);
+
+      // Actualizar solo la tarea específica
+      bool tareaEncontrada = false;
       for (int i = 0; i < tareas.length; i++) {
         if (tareas[i]["titulo"] == tarea.titulo) {
-          tareas[i]["completado"] = true;
+          tareas[i]["completado"] = completado;
+          tareaEncontrada = true;
+          break;
         }
       }
-      await _firestore.collection("proyectos").doc(doc.id).update({"tareas": tareas});
+
+      if (!tareaEncontrada) {
+        print('❌ Tarea no encontrada en el proyecto');
+        return;
+      }
+
+      // Actualizar el proyecto con las tareas modificadas
+      await _firestore.collection("proyectos").doc(widget.proyectoId).update({
+        "tareas": tareas,
+        "fechaActualizacion": FieldValue.serverTimestamp(),
+      });
+
+      print('✅ Tarea "${tarea.titulo}" marcada como ${completado ? "completada" : "pendiente"}');
+
+      // Actualizar puntos solo si se completó la tarea
+      if (completado) {
+        await _actualizarPuntosUsuario(userId, tarea);
+      }
+
+      // Recargar tareas para actualizar la UI
+      await _cargarTareas();
+
+      // Mostrar feedback al usuario
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(completado ? '✓ Tarea completada' : '○ Tarea marcada como pendiente'),
+            backgroundColor: completado ? Colors.green : Colors.orange,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error al marcar tarea: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al actualizar la tarea'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
-
-    await _actualizarPuntosUsuario(userId, tarea);
-    await _cargarTareas();
-
   }
 
   Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
@@ -312,35 +361,38 @@ Widget _buildFiltroAreas() {
   final List<String> nombresAreas = _obtenerAreasDisponibles();
   return Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-    child: Row(
-      children: [
-        const Text("Filtrar por Area:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        const SizedBox(width: 12),
-        DropdownButton<String>(
-          dropdownColor: Colors.black,
-          value: areaSeleccionada ?? "Todas",  // a si es null, usa "Todas"
-          style: const TextStyle(color: Colors.white),
-          iconEnabledColor: Colors.white,
-          items: [
-            const DropdownMenuItem<String>(
-              value: "Todas",
-              child: Text("Todas las Areas", style: TextStyle(color: Colors.white)),
-            ),
-            ...nombresAreas.map(
-              (area) => DropdownMenuItem<String>(
-                value: area,
-                child: Text(area, style: const TextStyle(color: Colors.white)),
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          const Text("Filtrar por Area:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          const SizedBox(width: 12),
+          DropdownButton<String>(
+            dropdownColor: Colors.black,
+            value: areaSeleccionada ?? "Todas",
+            style: const TextStyle(color: Colors.white),
+            iconEnabledColor: Colors.white,
+            items: [
+              const DropdownMenuItem<String>(
+                value: "Todas",
+                child: Text("Todas las Areas", style: TextStyle(color: Colors.white)),
               ),
-            ),
-          ],
-          onChanged: (value) {
-            setState(() {
-              areaSeleccionada = value == "Todas" ? null : value;
-              debugPrint("  Area seleccionada: $areaSeleccionada");
-            });
-          },
-        ),
-      ],
+              ...nombresAreas.map(
+                (area) => DropdownMenuItem<String>(
+                  value: area,
+                  child: Text(area, style: const TextStyle(color: Colors.white), overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ],
+            onChanged: (value) {
+              setState(() {
+                areaSeleccionada = value == "Todas" ? null : value;
+                debugPrint("  Area seleccionada: $areaSeleccionada");
+              });
+            },
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -357,17 +409,23 @@ Widget _buildParticipantesSection() {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            GestureDetector(
-              onTap: () => setState(() => participantesExpandido = !participantesExpandido),
-              child: Row(
-                children: [
-                  const Icon(Icons.people, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Text(
-                    participantesExpandido ? "Ocultar participantes" : "Mostrar participantes",
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  )
-                ],
+            Flexible(
+              child: GestureDetector(
+                onTap: () => setState(() => participantesExpandido = !participantesExpandido),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.people, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        participantesExpandido ? "Ocultar participantes" : "Mostrar participantes",
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    )
+                  ],
+                ),
               ),
             ),
             IconButton(
@@ -422,6 +480,7 @@ Widget _buildParticipantesSection() {
                     label: Text(
                       nombre,
                       style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
                     ),
                     backgroundColor: Colors.white,
                     deleteIcon: const Icon(Icons.close, color: Colors.red),
@@ -452,15 +511,18 @@ Widget _buildParticipantesSection() {
         .toList();
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.04),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
-        ),
-        child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 200),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
@@ -472,6 +534,8 @@ Widget _buildParticipantesSection() {
               Text(
                 resumen,
                 style: TextStyle(color: Colors.white70, height: 1.4),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
             const SizedBox(height: 12),
@@ -488,8 +552,13 @@ Widget _buildParticipantesSection() {
               const SizedBox(height: 12),
               Text('Objetivos SMART', style: TextStyle(color: Colors.white.withOpacity(0.8))),
               const SizedBox(height: 4),
-              ...objetivos.take(3).map(
-                (o) => Text('a $o', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              ...objetivos.take(2).map(
+                (o) => Text(
+                  '• $o',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
             if (previewTareas.isNotEmpty) ...[
@@ -498,9 +567,13 @@ Widget _buildParticipantesSection() {
               const SizedBox(height: 4),
               Wrap(
                 spacing: 8,
+                runSpacing: 4,
                 children: previewTareas
                     .map((t) => Chip(
-                          label: Text(t),
+                          label: Text(
+                            t,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                           labelStyle: const TextStyle(fontSize: 12),
                           backgroundColor: Colors.blueGrey.shade700,
                         ))
@@ -508,6 +581,8 @@ Widget _buildParticipantesSection() {
               ),
             ],
           ],
+        ),
+          ),
         ),
       ),
     );
@@ -742,11 +817,14 @@ Widget _buildFasesPMISection() {
               label: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    fase,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : color,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  Flexible(
+                    child: Text(
+                      fase,
+                      style: TextStyle(
+                        color: isSelected ? Colors.white : color,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (totalTareas > 0) ...[
@@ -931,12 +1009,14 @@ Widget _buildEntregableSectionPMI(
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                ' $nombreEntregable',
+                '$nombreEntregable',
                 style: TextStyle(
                   color: colorFase,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -982,6 +1062,8 @@ Widget _buildPaqueteTrabajoSectionPMI(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             Container(
@@ -1070,6 +1152,8 @@ Widget _buildTareaItemPMI(Tarea tarea, Color colorFase) {
                             ? TextDecoration.lineThrough
                             : TextDecoration.none,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Wrap(
@@ -1410,10 +1494,14 @@ Widget _buildRecursosSection() {
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
-                        ' $completadas/$tareasRecurso tareas completadas',
+                        '$completadas/$tareasRecurso tareas completadas',
                         style: const TextStyle(color: Colors.white70),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       trailing: CircularProgressIndicator(
                         value: tareasRecurso > 0 ? completadas / tareasRecurso : 0,
@@ -1460,10 +1548,17 @@ Widget _buildAreasSection() {
               color: Colors.blueGrey.shade800,
               margin: const EdgeInsets.symmetric(vertical: 6),
               child: ListTile(
-                title: Text(area, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                title: Text(
+                  area,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 subtitle: Text(
-                  miembros.isEmpty ? "Sin integrantes asignados" : "Participantes: " + miembros,
+                  miembros.isEmpty ? "Sin integrantes asignados" : "Participantes: $miembros",
                   style: const TextStyle(color: Colors.white70),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1682,6 +1777,8 @@ Widget _buildTareaCardContextual(Tarea tarea) {
                             ? TextDecoration.lineThrough
                             : TextDecoration.none,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Wrap(
@@ -2777,6 +2874,421 @@ Future<void> _asignarTodasAutomaticamente() async {
   }
 }
 
+// ========================================
+//  REDISTRIBUCIÓN INTELIGENTE DE TAREAS
+// ========================================
+Future<void> _redistribuirTareasPendientes(Proyecto proyecto) async {
+  final tareasPendientes = tareas.where((t) => !t.completado).toList();
+
+  if (tareasPendientes.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('✓ No hay tareas pendientes para redistribuir'),
+        backgroundColor: Colors.green,
+      ),
+    );
+    return;
+  }
+
+  // Mostrar diálogo de confirmación con vista previa
+  final confirmar = await showDialog<bool>(
+    context: context,
+    builder: (context) => _buildDialogoConfirmacionRedistribucion(
+      proyecto: proyecto,
+      tareasPendientes: tareasPendientes,
+    ),
+  );
+
+  if (confirmar != true) return;
+
+  // Mostrar loading
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Image.asset(
+            'assets/animation.gif',
+            width: 120,
+            height: 120,
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Redistribuyendo tareas...',
+            style: TextStyle(color: Colors.white, fontSize: 16),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  try {
+    // Ejecutar redistribución
+    final resultado = _redistribucionService.redistribuirTareas(
+      proyecto: proyecto,
+      tareas: tareas,
+    );
+
+    // Guardar tareas actualizadas en Firestore
+    final tareasJson = resultado.tareasActualizadas.map((t) => t.toJson()).toList();
+    await _firestore.collection('proyectos').doc(widget.proyectoId).update({
+      'tareas': tareasJson,
+      'fechaActualizacion': FieldValue.serverTimestamp(),
+    });
+
+    // Recargar tareas
+    await _cargarTareas();
+
+    // Cerrar loading
+    if (mounted) Navigator.pop(context);
+
+    // Mostrar resultado
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => _buildDialogoResultadoRedistribucion(resultado),
+      );
+    }
+  } catch (e) {
+    // Cerrar loading
+    if (mounted) Navigator.pop(context);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error en redistribución: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
+Widget _buildDialogoConfirmacionRedistribucion({
+  required Proyecto proyecto,
+  required List<Tarea> tareasPendientes,
+}) {
+  final fechaInicio = DateTime.now();
+  final fechaFin = proyecto.fechaFin ?? fechaInicio.add(const Duration(days: 30));
+  final dias = fechaFin.difference(fechaInicio).inDays + 1;
+
+  // Calcular estadísticas previas
+  final totalMinutos = tareasPendientes.fold<int>(0, (sum, t) => sum + t.duracion);
+  final totalHoras = (totalMinutos / 60).toStringAsFixed(1);
+
+  final distribucionDificultad = <String, int>{};
+  for (var t in tareasPendientes) {
+    final dif = t.dificultad ?? 'media';
+    distribucionDificultad[dif] = (distribucionDificultad[dif] ?? 0) + 1;
+  }
+
+  return AlertDialog(
+    backgroundColor: Colors.grey.shade900,
+    title: const Row(
+      children: [
+        Icon(Icons.calendar_today, color: Colors.blue),
+        SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            'Redistribuir Tareas Pendientes',
+            style: TextStyle(color: Colors.white, fontSize: 18),
+          ),
+        ),
+      ],
+    ),
+    content: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Se redistribuirán ${tareasPendientes.length} tareas pendientes en el rango de fechas del proyecto.',
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.withOpacity(0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Rango de fechas',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.play_arrow, color: Colors.green, size: 16),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Inicio: ${DateFormat('dd/MM/yyyy').format(fechaInicio)}',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.stop, color: Colors.red, size: 16),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Fin: ${DateFormat('dd/MM/yyyy').format(fechaFin)}',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Días disponibles: $dias',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Resumen de tareas',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total pendientes:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    Text(
+                      '${tareasPendientes.length}',
+                      style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Duración total:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    Text(
+                      '$totalHoras hrs',
+                      style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text('Por dificultad:', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    if (distribucionDificultad['alta'] != null)
+                      Chip(
+                        label: Text('Alta: ${distribucionDificultad['alta']}'),
+                        backgroundColor: Colors.red.shade700,
+                        labelStyle: const TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                    if (distribucionDificultad['media'] != null)
+                      Chip(
+                        label: Text('Media: ${distribucionDificultad['media']}'),
+                        backgroundColor: Colors.orange.shade700,
+                        labelStyle: const TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                    if (distribucionDificultad['baja'] != null)
+                      Chip(
+                        label: Text('Baja: ${distribucionDificultad['baja']}'),
+                        backgroundColor: Colors.green.shade700,
+                        labelStyle: const TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Las tareas se distribuirán considerando prioridad, dificultad y carga de trabajo.',
+                    style: TextStyle(color: Colors.blue, fontSize: 11),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context, false),
+        child: const Text('Cancelar', style: TextStyle(color: Colors.white70)),
+      ),
+      ElevatedButton(
+        onPressed: () => Navigator.pop(context, true),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+        ),
+        child: const Text('Redistribuir'),
+      ),
+    ],
+  );
+}
+
+Widget _buildDialogoResultadoRedistribucion(ResultadoRedistribucion resultado) {
+  final stats = resultado.estadisticas;
+
+  return AlertDialog(
+    backgroundColor: Colors.grey.shade900,
+    title: const Row(
+      children: [
+        Icon(Icons.check_circle, color: Colors.green),
+        SizedBox(width: 8),
+        Text(
+          'Redistribución Completada',
+          style: TextStyle(color: Colors.white),
+        ),
+      ],
+    ),
+    content: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '✓ Se redistribuyeron ${resultado.tareasRedistribuidas} tareas pendientes',
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Estadísticas',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                _buildStatRow('Tareas completadas', '${resultado.tareasCompletadas}', Colors.green),
+                _buildStatRow('Tareas redistribuidas', '${resultado.tareasRedistribuidas}', Colors.blue),
+                _buildStatRow('Duración total', '${stats['duracionTotalHoras']} hrs', Colors.orange),
+                _buildStatRow('Días disponibles', '${stats['diasDisponibles']}', Colors.purple),
+                _buildStatRow('Promedio tareas/día', stats['promedioTareasPorDia'], Colors.cyan),
+                const SizedBox(height: 12),
+                const Text(
+                  'Por dificultad',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    if (stats['tareasAlta'] > 0)
+                      Chip(
+                        label: Text('Alta: ${stats['tareasAlta']}'),
+                        backgroundColor: Colors.red.shade700,
+                        labelStyle: const TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                    if (stats['tareasMedia'] > 0)
+                      Chip(
+                        label: Text('Media: ${stats['tareasMedia']}'),
+                        backgroundColor: Colors.orange.shade700,
+                        labelStyle: const TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                    if (stats['tareasBaja'] > 0)
+                      Chip(
+                        label: Text('Baja: ${stats['tareasBaja']}'),
+                        backgroundColor: Colors.green.shade700,
+                        labelStyle: const TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.check, color: Colors.green, size: 16),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Las fechas de las tareas han sido actualizadas exitosamente.',
+                    style: TextStyle(color: Colors.green, fontSize: 11),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      ElevatedButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cerrar'),
+      ),
+    ],
+  );
+}
+
+Widget _buildStatRow(String label, String value, Color color) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 @override
 Widget build(BuildContext context) {
   return FutureBuilder<DocumentSnapshot>(
@@ -2799,14 +3311,19 @@ Widget build(BuildContext context) {
           elevation: 0,
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 proyecto.nombre,
                 style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               Text(
                 "Inicio: ${DateFormat('dd/MM/yyyy').format(proyecto.fechaInicio)}",
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               if (proyecto.fechaFin != null)
                 Text(
@@ -2817,6 +3334,8 @@ Widget build(BuildContext context) {
                         : Colors.white70,
                     fontSize: 12,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
             ],
           ),
@@ -2846,46 +3365,56 @@ Widget build(BuildContext context) {
             ),
           ],
         ),
-        body: Stack(
-          children: [
-            Container(color: Colors.black),
-            loading
-                ? Center(child: Image.asset('assets/animation.gif', width: 150))
-                : Column(
-                    children: [
-                      const SizedBox(height: 80),
-                      _buildParticipantesSection(),
-                      if (!proyecto.esPMI) _buildBlueprintSummary(proyecto),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Container(color: Colors.black),
+              loading
+                  ? Center(child: Image.asset('assets/animation.gif', width: 150))
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isMobile = constraints.maxWidth < 600;
+                        return Column(
+                          children: [
+                            SizedBox(height: isMobile ? 8 : 16),
+                            _buildParticipantesSection(),
+                            if (!proyecto.esPMI) _buildBlueprintSummary(proyecto),
 
-                      // ========================================
-                      //  CONDICIONAL: PMI vs Normal
-                      // ========================================
-                      if (proyecto.esPMI) ...[
-                        // Vista PMI
-                        _buildFasesPMISection(),
-                        _buildRecursosSection(),
-                        Expanded(child: _buildContenidoPMI()),
-                      ] else ...[
-                        // Vista Normal
-                        _buildAreasSection(),
-                        _buildFiltroAreas(),
-                        Expanded(
-                          child: ListView(
-                            padding: const EdgeInsets.only(bottom: 100),
-                            children: [
-                              for (final area in (areas.keys.toList()..sort()))
-                                if (areaSeleccionada == null || areaSeleccionada == area)
-                                  _buildGrupoHorizontal(area),
-                              if ((areaSeleccionada == null || areaSeleccionada == "General") &&
-                                  !areas.keys.contains("General"))
-                                _buildGrupoHorizontal("General"),
+                            // ========================================
+                            //  CONDICIONAL: PMI vs Normal
+                            // ========================================
+                            if (proyecto.esPMI) ...[
+                              // Vista PMI - secciones superiores
+                              _buildFasesPMISection(),
+                              _buildRecursosSection(),
+                            ] else ...[
+                              // Vista Normal - secciones superiores
+                              _buildAreasSection(),
+                              _buildFiltroAreas(),
                             ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-          ],
+
+                            // Lista de tareas (común para ambos)
+                            Expanded(
+                              child: proyecto.esPMI
+                                  ? _buildContenidoPMI()
+                                  : ListView(
+                                      padding: EdgeInsets.only(bottom: isMobile ? 80 : 100),
+                                      children: [
+                                        for (final area in (areas.keys.toList()..sort()))
+                                          if (areaSeleccionada == null || areaSeleccionada == area)
+                                            _buildGrupoHorizontal(area),
+                                        if ((areaSeleccionada == null || areaSeleccionada == "General") &&
+                                            !areas.keys.contains("General"))
+                                          _buildGrupoHorizontal("General"),
+                                      ],
+                                    ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+            ],
+          ),
         ),
         floatingActionButton: _buildFloatingButtons(proyecto),
       );
@@ -2897,19 +3426,30 @@ Widget _buildFloatingButtons(Proyecto proyecto) {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
+      // Botón de redistribución de tareas
+      FloatingActionButton.extended(
+        heroTag: "redistribuirBtn",
+        backgroundColor: Colors.blue,
+        icon: const Icon(Icons.calendar_today, color: Colors.white, size: 18),
+        label: const Text("Redistribuir", style: TextStyle(color: Colors.white, fontSize: 12)),
+        onPressed: () => _redistribuirTareasPendientes(proyecto),
+        elevation: 4,
+      ),
+      const SizedBox(height: 8),
       FloatingActionButton.extended(
         heroTag: "autoAsignarBtn",
         backgroundColor: Colors.orange,
-        icon: const Icon(Icons.auto_awesome, color: Colors.white),
-        label: const Text("Auto-asignar", style: TextStyle(color: Colors.white)),
+        icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 18),
+        label: const Text("Auto-asignar", style: TextStyle(color: Colors.white, fontSize: 12)),
         onPressed: _asignarTodasAutomaticamente,
+        elevation: 4,
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 8),
       FloatingActionButton.extended(
         heroTag: "reunionBtn",
         backgroundColor: Colors.black,
-        icon: const Icon(Icons.mic, color: Colors.white),
-        label: const Text("ReuniA3n", style: TextStyle(color: Colors.white)),
+        icon: const Icon(Icons.mic, color: Colors.white, size: 18),
+        label: const Text("Reunión", style: TextStyle(color: Colors.white, fontSize: 12)),
         onPressed: () {
           Navigator.push(
             context,
@@ -2918,14 +3458,16 @@ Widget _buildFloatingButtons(Proyecto proyecto) {
             ),
           );
         },
+        elevation: 4,
       ),
-      const SizedBox(height: 10),
+      const SizedBox(height: 8),
       FloatingActionButton.extended(
         heroTag: "tareaBtn",
         backgroundColor: Colors.white,
-        label: const Text("Nueva tarea", style: TextStyle(color: Colors.black)),
-        icon: const Icon(Icons.add, color: Colors.black),
+        label: const Text("Nueva tarea", style: TextStyle(color: Colors.black, fontSize: 12)),
+        icon: const Icon(Icons.add, color: Colors.black, size: 18),
         onPressed: _mostrarDialogoNuevaTarea,
+        elevation: 4,
       ),
     ],
   );

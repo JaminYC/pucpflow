@@ -3,15 +3,43 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Innova/CrearProyectoDesdeIdeaPage.dart';
 
-class VerIdeasPage extends StatelessWidget {
+class VerIdeasPage extends StatefulWidget {
   const VerIdeasPage({super.key});
+
+  @override
+  State<VerIdeasPage> createState() => _VerIdeasPageState();
+}
+
+class _VerIdeasPageState extends State<VerIdeasPage> {
+  @override
+  void initState() {
+    super.initState();
+    _cleanUntitledIdeas();
+  }
+
+  Future<void> _cleanUntitledIdeas() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('ideas').get();
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final titulo = (data['resultadoIA']?['titulo'] ?? '').toString().trim();
+        if (titulo.isEmpty) {
+          batch.delete(doc.reference);
+        }
+      }
+      await batch.commit();
+    } catch (_) {
+      // Silenciar errores de limpieza para no interrumpir la vista.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text("📚 Ideas Guardadas", style: TextStyle(color: Colors.white)),
+        title: const Text("Ideas Guardadas", style: TextStyle(color: Colors.white)),
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -23,19 +51,21 @@ class VerIdeasPage extends StatelessWidget {
             child: Image.asset('assets/FondoCoheteNegro2.jpg', fit: BoxFit.cover),
           ),
           Container(color: Colors.black.withOpacity(0.5)),
-
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('ideas')
-                .orderBy('timestamp', descending: true)
-                .snapshots(),
+            stream: FirebaseFirestore.instance.collection('ideas').orderBy('timestamp', descending: true).snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
 
               final docs = snapshot.data?.docs ?? [];
-              if (docs.isEmpty) {
+              final validDocs = docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final titulo = (data['resultadoIA']?['titulo'] ?? '').toString().trim();
+                return titulo.isNotEmpty;
+              }).toList();
+
+              if (validDocs.isEmpty) {
                 return const Center(
                   child: Text("No hay ideas registradas.", style: TextStyle(color: Colors.white)),
                 );
@@ -53,22 +83,20 @@ class VerIdeasPage extends StatelessWidget {
                           children: const [
                             Expanded(
                               flex: 4,
-                              child: Text("📝 Título de la Idea",
+                              child: Text("Título de la Idea",
                                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                             ),
                             Expanded(
                               flex: 1,
-                              child: Text("🚀 Acción",
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              child: Text("Acción", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                             ),
                           ],
                         ),
                         const Divider(color: Colors.white54, thickness: 1.5),
                         const SizedBox(height: 8),
-
-                        ...docs.map((doc) {
+                        ...validDocs.map((doc) {
                           final data = doc.data() as Map<String, dynamic>;
-                          final titulo = data['resultadoIA']?['titulo'] ?? "(Sin título)";
+                          final titulo = (data['resultadoIA']?['titulo'] ?? '(Sin título)').toString();
                           final resumenProblema = data['resultadoIA']?['resumenProblema'] ?? '';
                           final resumenSolucion = data['resultadoIA']?['resumenSolucion'] ?? '';
                           final comentarioFinal = data['resultadoIA']?['evaluacion'] ?? '';

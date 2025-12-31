@@ -14,10 +14,20 @@ class VastoriaMainLanding extends StatefulWidget {
   State<VastoriaMainLanding> createState() => _VastoriaMainLandingState();
 }
 
-class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
-  late VideoPlayerController _backgroundVideo;
+class _VastoriaMainLandingState extends State<VastoriaMainLanding>
+    with TickerProviderStateMixin {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  late AnimationController _animationController;
+  late AnimationController _backgroundAnimationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _pulseAnimation;
+
+  // Keys para navegación suave entre secciones
+  final GlobalKey _heroKey = GlobalKey();
+  final GlobalKey _appsKey = GlobalKey();
+  final GlobalKey _featuresKey = GlobalKey();
 
   User? _currentUser;
   Map<String, dynamic>? _userData;
@@ -26,18 +36,46 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
   @override
   void initState() {
     super.initState();
-    _initializeVideo();
+    _initializeAnimations();
     _loadUserData();
   }
 
-  void _initializeVideo() {
-    _backgroundVideo = VideoPlayerController.asset("assets/background.mp4")
-      ..initialize().then((_) {
-        _backgroundVideo.setLooping(true);
-        _backgroundVideo.setVolume(0);
-        _backgroundVideo.play();
-        if (mounted) setState(() {});
-      });
+  void _initializeAnimations() {
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+
+    _backgroundAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 3000),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
+    _pulseAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _backgroundAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    _animationController.forward();
   }
 
   Future<void> _loadUserData() async {
@@ -54,14 +92,26 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
       } catch (e) {
         debugPrint('Error loading user data: $e');
       }
-    }
 
-    if (mounted) setState(() => _isLoadingUser = false);
+      // Si el usuario está autenticado, scroll automático a la bóveda de aplicaciones
+      if (mounted) {
+        setState(() => _isLoadingUser = false);
+        // Esperar un poco para que la UI se construya completamente
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _scrollToSection(2); // Scroll a la sección de aplicaciones
+          }
+        });
+      }
+    } else {
+      if (mounted) setState(() => _isLoadingUser = false);
+    }
   }
 
   @override
   void dispose() {
-    _backgroundVideo.dispose();
+    _animationController.dispose();
+    _backgroundAnimationController.dispose();
     super.dispose();
   }
 
@@ -72,22 +122,49 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
       appBar: _buildAppBar(),
       body: Stack(
         children: [
-          // Video de fondo
-          if (_backgroundVideo.value.isInitialized)
-            SizedBox.expand(
-              child: FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: _backgroundVideo.value.size.width,
-                  height: _backgroundVideo.value.size.height,
-                  child: VideoPlayer(_backgroundVideo),
-                ),
+          // Fondo elegante blanco y negro con gradiente y patrón
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFFF5F5F5), // Blanco casi puro
+                  const Color(0xFFE8E8E8), // Gris muy claro
+                  const Color(0xFFD0D0D0), // Gris claro
+                  const Color(0xFFB8B8B8), // Gris medio claro
+                ],
+                stops: const [0.0, 0.3, 0.7, 1.0],
               ),
             ),
+          ),
 
-          // Overlay oscuro
+          // Patrón de puntos elegante con animación
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _backgroundAnimationController,
+              builder: (context, child) {
+                return CustomPaint(
+                  painter: DotPatternPainter(
+                    animationValue: _pulseAnimation.value,
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // Overlay sutil para profundidad
           Container(
-            color: Colors.black.withValues(alpha: 0.5),
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.topRight,
+                radius: 1.5,
+                colors: [
+                  Colors.white.withValues(alpha: 0.3),
+                  Colors.transparent,
+                ],
+              ),
+            ),
           ),
 
           // Contenido principal
@@ -97,18 +174,27 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
                 children: [
                   const SizedBox(height: 60),
 
-                  // Hero Section
-                  _buildHeroSection(),
+                  // Hero Section / Inicio
+                  Container(
+                    key: _heroKey,
+                    child: _buildHeroSection(),
+                  ),
 
                   const SizedBox(height: 80),
 
                   // Apps del Ecosistema
-                  _buildAppsSection(),
+                  Container(
+                    key: _appsKey,
+                    child: _buildAppsSection(),
+                  ),
 
                   const SizedBox(height: 80),
 
-                  // Features
-                  _buildFeaturesSection(),
+                  // Features / Por qué Vastoria
+                  Container(
+                    key: _featuresKey,
+                    child: _buildFeaturesSection(),
+                  ),
 
                   const SizedBox(height: 60),
 
@@ -125,22 +211,66 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: Colors.black.withValues(alpha: 0.7),
+      backgroundColor: Colors.white.withValues(alpha: 0.95),
       elevation: 0,
+      flexibleSpace: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white.withValues(alpha: 0.98),
+              Colors.white.withValues(alpha: 0.90),
+            ],
+          ),
+          border: Border(
+            bottom: BorderSide(
+              color: Colors.black.withValues(alpha: 0.08),
+              width: 1,
+            ),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+      ),
       title: Row(
         children: [
-          // Logo
+          // Logo con efecto elegante
           Container(
-            width: 40,
-            height: 40,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white24, width: 2),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF133E87),
+                  Color(0xFF0A2351),
+                ],
+              ),
+              border: Border.all(
+                color: const Color(0xFF133E87).withValues(alpha: 0.3),
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF133E87).withValues(alpha: 0.2),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                ),
+              ],
             ),
-            child: ClipOval(
+            child: Padding(
+              padding: const EdgeInsets.all(4.0),
               child: Image.asset(
                 'assets/logovastoria.png',
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => const Icon(
                   Icons.apps,
                   color: Colors.white,
@@ -149,27 +279,34 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 16),
           const Text(
             'VASTORIA',
             style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              letterSpacing: 2.0,
+              color: Color(0xFF1A1A1A),
+              fontWeight: FontWeight.w800,
+              fontSize: 20,
+              letterSpacing: 3.0,
+              shadows: [
+                Shadow(
+                  color: Color(0xFF133E87),
+                  blurRadius: 15,
+                ),
+              ],
             ),
           ),
         ],
       ),
       actions: [
         // Navegación
-        if (MediaQuery.of(context).size.width > 800) ...[
+        if (MediaQuery.of(context).size.width > 900) ...[
           _buildHeaderButton('Inicio', () => _scrollToSection(0)),
-          _buildHeaderButton('Ecosistema', () => _scrollToSection(1)),
           _buildHeaderButton('Aplicaciones', () => _scrollToSection(2)),
+          _buildHeaderButton('Características', () => _scrollToSection(3)),
+          const SizedBox(width: 8),
         ],
 
-        const SizedBox(width: 16),
+        const SizedBox(width: 8),
 
         // Usuario o Login
         if (_isLoadingUser)
@@ -180,7 +317,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
               height: 20,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Colors.white,
+                color: Color(0xFF133E87),
               ),
             ),
           )
@@ -197,12 +334,20 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
   Widget _buildHeaderButton(String label, VoidCallback onTap) {
     return TextButton(
       onPressed: onTap,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        foregroundColor: const Color(0xFF133E87),
+      ),
       child: Text(
         label,
         style: const TextStyle(
-          color: Colors.white,
+          color: Color(0xFF2A2A2A),
           fontWeight: FontWeight.w600,
           fontSize: 14,
+          letterSpacing: 0.3,
         ),
       ),
     );
@@ -214,29 +359,55 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
       children: [
         TextButton(
           onPressed: () => Navigator.pushNamed(context, '/login'),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            foregroundColor: const Color(0xFF133E87),
+          ),
           child: const Text(
             'Iniciar Sesión',
             style: TextStyle(
-              color: Colors.white,
+              color: Color(0xFF2A2A2A),
               fontWeight: FontWeight.w600,
+              fontSize: 14,
             ),
           ),
         ),
-        const SizedBox(width: 8),
-        ElevatedButton(
-          onPressed: () => Navigator.pushNamed(context, '/login'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF133E87),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+        const SizedBox(width: 12),
+        Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF133E87),
+                Color(0xFF0A2351),
+              ],
             ),
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF133E87).withValues(alpha: 0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-          child: const Text(
-            'Registrarse',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
+          child: ElevatedButton(
+            onPressed: () => Navigator.pushNamed(context, '/login'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              'Registrarse',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                letterSpacing: 0.5,
+              ),
             ),
           ),
         ),
@@ -380,148 +551,303 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
   }
 
   Widget _buildHeroSection() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
-      child: Column(
-        children: [
-          // Logo grande
-          Container(
-            width: 140,
-            height: 140,
-            decoration: BoxDecoration(
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 80),
+          child: Column(
+            children: [
+              // Logo grande con efectos elegantes
+              Container(
+                width: 160,
+                height: 160,
+                decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white24, width: 3),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF133E87).withValues(alpha: 0.3),
+                  const Color(0xFF0A2351).withValues(alpha: 0.2),
+                ],
+              ),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.2),
+                width: 3,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  blurRadius: 40,
-                  spreadRadius: 10,
+                  color: const Color(0xFF133E87).withValues(alpha: 0.4),
+                  blurRadius: 50,
+                  spreadRadius: 15,
+                ),
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  blurRadius: 30,
+                  spreadRadius: 5,
                 ),
               ],
             ),
-            child: ClipOval(
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
               child: Image.asset(
                 'assets/logovastoria.png',
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => const Icon(
                   Icons.apps,
                   color: Colors.white,
-                  size: 70,
+                  size: 80,
                 ),
               ),
             ),
           ),
 
-          const SizedBox(height: 40),
+          const SizedBox(height: 50),
 
-          const Text(
-            'VASTORIA',
-            style: TextStyle(
-              fontSize: 56,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 6.0,
-              shadows: [
-                Shadow(
-                  color: Colors.black54,
-                  blurRadius: 20,
-                ),
+          // Título principal con gradiente oscuro
+          ShaderMask(
+            shaderCallback: (bounds) => const LinearGradient(
+              colors: [
+                Color(0xFF1A1A1A),
+                Color(0xFF3A3A3A),
               ],
+            ).createShader(bounds),
+            child: const Text(
+              'VASTORIA',
+              style: TextStyle(
+                fontSize: 64,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: 8.0,
+                shadows: [
+                  Shadow(
+                    color: Color(0xFF133E87),
+                    blurRadius: 30,
+                  ),
+                  Shadow(
+                    color: Colors.black12,
+                    blurRadius: 15,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
+          ),
+
+          const SizedBox(height: 24),
+
+          // Subtítulo con estilo elegante
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: const Text(
+              'En el vasto mundo de talentos, solo algunos hacemos historia.',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w300,
+                color: Color(0xFF3A3A3A),
+                letterSpacing: 1.2,
+                height: 1.6,
+                shadows: [
+                  Shadow(
+                    color: Colors.black12,
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            ),
           ),
 
           const SizedBox(height: 20),
 
-          const Text(
-            'En el vasto mundo de talentos, solo algunos hacemos historia.',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w300,
-              color: Colors.white,
-              letterSpacing: 1.0,
-              height: 1.5,
-            ),
-            textAlign: TextAlign.center,
-          ),
-
-          const SizedBox(height: 16),
-
-          const Text(
-            'Ecosistema de Talento y Proyectos Colaborativos',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w400,
-              color: Colors.white70,
-              letterSpacing: 0.5,
-            ),
-            textAlign: TextAlign.center,
-          ),
-
-          const SizedBox(height: 40),
-
-          // CTA Button
-          ElevatedButton(
-            onPressed: () {
-              if (_currentUser != null) {
-                // Ya está logueado, ir a apps
-                _scrollToSection(2);
-              } else {
-                Navigator.pushNamed(context, '/login');
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF133E87),
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
+          // Badge con descripción
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF133E87).withValues(alpha: 0.08),
+                  const Color(0xFF133E87).withValues(alpha: 0.03),
+                ],
               ),
-              elevation: 8,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(
+                color: const Color(0xFF133E87).withValues(alpha: 0.2),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
-            child: Text(
-              _currentUser != null ? 'Explorar Aplicaciones' : 'Comienza Gratis',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.0,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4CAF50),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF4CAF50).withValues(alpha: 0.5),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Ecosistema de Talento y Proyectos Colaborativos',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1A1A1A),
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 50),
+
+          // CTA Button elegante con gradiente
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF133E87),
+                  Color(0xFF0A2351),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(35),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF133E87).withValues(alpha: 0.5),
+                  blurRadius: 25,
+                  spreadRadius: 3,
+                  offset: const Offset(0, 10),
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: ElevatedButton(
+              onPressed: () {
+                if (_currentUser != null) {
+                  _scrollToSection(2);
+                } else {
+                  Navigator.pushNamed(context, '/login');
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 20),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(35),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _currentUser != null ? 'Explorar Aplicaciones' : 'Comienza Gratis',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildAppsSection() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       child: Column(
         children: [
-          const Text(
-            'NUESTRAS APLICACIONES',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 3.0,
+          // Título elegante con gradiente oscuro
+          ShaderMask(
+            shaderCallback: (bounds) => const LinearGradient(
+              colors: [
+                Color(0xFF1A1A1A),
+                Color(0xFF4A4A4A),
+              ],
+            ).createShader(bounds),
+            child: const Text(
+              'NUESTRO ECOSISTEMA',
+              style: TextStyle(
+                fontSize: 40,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: 4.0,
+                shadows: [
+                  Shadow(
+                    color: Color(0xFF133E87),
+                    blurRadius: 25,
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
-          const Text(
-            'Un solo inicio de sesión para acceder a todo el ecosistema',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.white70,
-              letterSpacing: 0.5,
+          // Subtítulo elegante
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: const Text(
+              'Un solo inicio de sesión para acceder a todo el ecosistema',
+              style: TextStyle(
+                fontSize: 17,
+                color: Color(0xFF4A4A4A),
+                letterSpacing: 0.8,
+                fontWeight: FontWeight.w400,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
           ),
 
-          const SizedBox(height: 48),
+          const SizedBox(height: 60),
 
           // Grid de apps
           LayoutBuilder(
@@ -571,20 +897,35 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white24, width: 1),
+                border: Border.all(
+                  color: const Color(0xFF4CAF50).withValues(alpha: 0.3),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF4CAF50).withValues(alpha: 0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.check_circle, color: Colors.greenAccent, size: 28),
+                  const Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 28),
                   const SizedBox(width: 16),
                   Flexible(
                     child: Text(
                       'Estás conectado como ${_currentUser!.email}. Puedes acceder a todas las aplicaciones disponibles sin volver a iniciar sesión.',
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: Color(0xFF2A2A2A),
                         fontSize: 14,
                       ),
                       textAlign: TextAlign.center,
@@ -608,148 +949,212 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
     bool available = true,
     bool requiresLogin = true,
   }) {
-    return Container(
-      width: 300,
-      height: 360,
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: available ? accentColor.withValues(alpha: 0.4) : Colors.white12,
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: available
-                ? accentColor.withValues(alpha: 0.2)
-                : Colors.black.withValues(alpha: 0.3),
-            blurRadius: 30,
-            spreadRadius: 5,
+    return MouseRegion(
+      onEnter: (_) => setState(() {}),
+      onExit: (_) => setState(() {}),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        width: 340,
+        height: 420,
+        transform: Matrix4.identity()..translate(0.0, 0.0, 0.0),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: available ? accentColor.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.1),
+            width: 2,
           ),
-        ],
-      ),
+          boxShadow: [
+            // Sombra principal fuerte
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 30,
+              spreadRadius: 0,
+              offset: const Offset(0, 15),
+            ),
+            // Sombra secundaria para profundidad
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              spreadRadius: -5,
+              offset: const Offset(0, 10),
+            ),
+            // Sombra de color sutil
+            if (available)
+              BoxShadow(
+                color: accentColor.withValues(alpha: 0.1),
+                blurRadius: 40,
+                spreadRadius: -10,
+                offset: const Offset(0, 20),
+              ),
+          ],
+        ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
           onTap: available
               ? () {
                   if (!requiresLogin) {
-                    // No requiere login, navegar directamente
                     Navigator.pushNamed(context, url);
                   } else if (_currentUser != null) {
-                    // Requiere login y está logueado
                     Navigator.pushNamed(context, url);
                   } else {
-                    // Requiere login pero no está logueado
                     _showLoginDialog();
                   }
                 }
               : null,
           child: Padding(
-            padding: const EdgeInsets.all(28),
+            padding: const EdgeInsets.all(32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Icono
+                // Icono con efecto glassmorphism
                 Container(
-                  width: 70,
-                  height: 70,
+                  width: 80,
+                  height: 80,
                   decoration: BoxDecoration(
-                    color: accentColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(18),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        accentColor.withValues(alpha: 0.25),
+                        accentColor.withValues(alpha: 0.1),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: accentColor.withValues(alpha: 0.4),
                       width: 2,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accentColor.withValues(alpha: 0.3),
+                        blurRadius: 15,
+                        spreadRadius: 2,
+                      ),
+                    ],
                   ),
                   child: Icon(
                     icon,
                     color: accentColor,
-                    size: 36,
+                    size: 40,
                   ),
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 28),
 
-                // Título
+                // Título con sombra
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 2.0,
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                // Subtítulo
-                Text(
-                  subtitle,
                   style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: accentColor,
-                    letterSpacing: 0.5,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF1A1A1A),
+                    letterSpacing: 2.5,
+                    shadows: [
+                      Shadow(
+                        color: accentColor.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                      ),
+                    ],
                   ),
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
 
-                // Descripción
-                Expanded(
+                // Subtítulo elegante
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 0),
                   child: Text(
-                    description,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Colors.white70,
-                      height: 1.6,
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: accentColor,
+                      letterSpacing: 0.8,
                     ),
                   ),
                 ),
 
                 const SizedBox(height: 20),
 
-                // Botón
+                // Descripción
+                Expanded(
+                  child: Text(
+                    description,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF4A4A4A),
+                      height: 1.7,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Botón elegante con gradiente
                 if (available)
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
                     decoration: BoxDecoration(
-                      color: accentColor.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: accentColor.withValues(alpha: 0.4),
-                        width: 1,
+                      gradient: LinearGradient(
+                        colors: [
+                          accentColor.withValues(alpha: 0.25),
+                          accentColor.withValues(alpha: 0.15),
+                        ],
                       ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          !requiresLogin
-                              ? 'Acceder Gratis'
-                              : (_currentUser != null ? 'Abrir' : 'Iniciar para acceder'),
-                          style: TextStyle(
-                            color: accentColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          !requiresLogin
-                              ? Icons.arrow_forward
-                              : (_currentUser != null ? Icons.launch : Icons.lock),
-                          color: accentColor,
-                          size: 18,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: accentColor.withValues(alpha: 0.5),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: accentColor.withValues(alpha: 0.2),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
                         ),
                       ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            !requiresLogin
+                                ? 'Acceder Gratis'
+                                : (_currentUser != null ? 'Abrir Aplicación' : 'Iniciar Sesión'),
+                            style: TextStyle(
+                              color: accentColor,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: accentColor.withValues(alpha: 0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              !requiresLogin
+                                  ? Icons.arrow_forward_rounded
+                                  : (_currentUser != null ? Icons.launch_rounded : Icons.lock_rounded),
+                              color: accentColor,
+                              size: 18,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   )
                 else
@@ -757,14 +1162,14 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
-                      vertical: 12,
+                      vertical: 14,
                     ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: Colors.white12,
-                        width: 1,
+                        color: Colors.white.withValues(alpha: 0.1),
+                        width: 1.5,
                       ),
                     ),
                     child: const Text(
@@ -772,8 +1177,9 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white38,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        letterSpacing: 0.5,
                       ),
                     ),
                   ),
@@ -782,6 +1188,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
           ),
         ),
       ),
+        ),
     );
   }
 
@@ -790,15 +1197,23 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
       child: Column(
         children: [
-          const Text(
-            'POR QUÉ VASTORIA',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 3.0,
+          ShaderMask(
+            shaderCallback: (bounds) => const LinearGradient(
+              colors: [
+                Color(0xFF1A1A1A),
+                Color(0xFF3A3A3A),
+              ],
+            ).createShader(bounds),
+            child: const Text(
+              'POR QUÉ VASTORIA',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                letterSpacing: 3.0,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
           ),
 
           const SizedBox(height: 48),
@@ -846,24 +1261,52 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
   }
 
   Widget _buildFeatureItem(IconData icon, String title, String description) {
-    return SizedBox(
+    return Container(
       width: 220,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF133E87).withValues(alpha: 0.15),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 20,
+            spreadRadius: 0,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            spreadRadius: -4,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         children: [
           Container(
             width: 70,
             height: 70,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.05),
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF133E87).withValues(alpha: 0.12),
+                  const Color(0xFF133E87).withValues(alpha: 0.05),
+                ],
+              ),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: Colors.white24,
+                color: const Color(0xFF133E87).withValues(alpha: 0.2),
                 width: 2,
               ),
             ),
             child: Icon(
               icon,
-              color: Colors.white70,
+              color: const Color(0xFF133E87),
               size: 32,
             ),
           ),
@@ -873,7 +1316,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: Colors.white,
+              color: Color(0xFF1A1A1A),
             ),
             textAlign: TextAlign.center,
           ),
@@ -882,7 +1325,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
             description,
             style: const TextStyle(
               fontSize: 14,
-              color: Colors.white60,
+              color: Color(0xFF4A4A4A),
               height: 1.5,
             ),
             textAlign: TextAlign.center,
@@ -896,7 +1339,15 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
-      color: Colors.black.withValues(alpha: 0.7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F8F8),
+        border: Border(
+          top: BorderSide(
+            color: Colors.black.withValues(alpha: 0.08),
+            width: 1,
+          ),
+        ),
+      ),
       child: Column(
         children: [
           const Text(
@@ -904,7 +1355,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: Colors.white,
+              color: Color(0xFF1A1A1A),
               letterSpacing: 3.0,
             ),
           ),
@@ -913,17 +1364,17 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
             'Transformando ideas en realidad',
             style: TextStyle(
               fontSize: 13,
-              color: Colors.white60,
+              color: Color(0xFF4A4A4A),
             ),
           ),
           const SizedBox(height: 24),
-          const Divider(color: Colors.white12),
+          Divider(color: Colors.black.withValues(alpha: 0.1)),
           const SizedBox(height: 24),
           const Text(
             '© 2025 Vastoria. Todos los derechos reservados.',
             style: TextStyle(
               fontSize: 12,
-              color: Colors.white38,
+              color: Color(0xFF6A6A6A),
             ),
           ),
         ],
@@ -932,8 +1383,28 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
   }
 
   void _scrollToSection(int section) {
-    // Implementar scroll suave a sección
-    // Por ahora solo scroll básico
+    GlobalKey? targetKey;
+
+    switch (section) {
+      case 0:
+        targetKey = _heroKey; // Inicio
+        break;
+      case 2:
+        targetKey = _appsKey; // Aplicaciones
+        break;
+      case 3:
+        targetKey = _featuresKey; // Características
+        break;
+    }
+
+    if (targetKey?.currentContext != null) {
+      Scrollable.ensureVisible(
+        targetKey!.currentContext!,
+        duration: const Duration(milliseconds: 800),
+        curve: Curves.easeInOut,
+        alignment: 0.1, // Posición en la pantalla (0.0 = top, 1.0 = bottom)
+      );
+    }
   }
 
   void _showLoginDialog() {
@@ -970,4 +1441,196 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding> {
     );
   }
 
+}
+
+/// CustomPainter para crear patrones geométricos modernos con animación de pulsos
+class DotPatternPainter extends CustomPainter {
+  final double animationValue;
+
+  DotPatternPainter({required this.animationValue});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Patrón de puntos base más visibles
+    final dotPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.08)
+      ..style = PaintingStyle.fill;
+
+    const double dotRadius = 2.0;
+    const double spacing = 35.0;
+
+    for (double x = 0; x < size.width; x += spacing) {
+      for (double y = 0; y < size.height; y += spacing) {
+        canvas.drawCircle(Offset(x, y), dotRadius, dotPaint);
+      }
+    }
+
+    // Efecto de pulso: oscila entre 0.9 y 1.1
+    final pulseScale = 0.9 + (animationValue * 0.2);
+
+    // Opacidad que pulsa
+    final pulseAlpha = 0.08 + (animationValue * 0.08);
+
+    // Círculos decorativos grandes más visibles con pulso
+    final circlePaint = Paint()
+      ..color = Color(0xFF133E87).withValues(alpha: pulseAlpha)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0;
+
+    // Círculo superior derecho - múltiples anillos con pulso
+    canvas.drawCircle(
+      Offset(size.width * 0.85, size.height * 0.15),
+      150 * pulseScale,
+      circlePaint,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.85, size.height * 0.15),
+      200 * pulseScale,
+      circlePaint..strokeWidth = 2.0,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.85, size.height * 0.15),
+      250 * pulseScale,
+      circlePaint..strokeWidth = 1.5,
+    );
+
+    // Círculo inferior izquierdo con pulso inverso
+    final inversePulseScale = 1.1 - (animationValue * 0.2);
+    canvas.drawCircle(
+      Offset(size.width * 0.15, size.height * 0.85),
+      180 * inversePulseScale,
+      circlePaint..strokeWidth = 3.0,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.15, size.height * 0.85),
+      230 * inversePulseScale,
+      circlePaint..strokeWidth = 2.0,
+    );
+
+    // Círculo central con pulso
+    canvas.drawCircle(
+      Offset(size.width * 0.5, size.height * 0.5),
+      120 * pulseScale,
+      circlePaint..strokeWidth = 2.5,
+    );
+
+    // Líneas diagonales más visibles y abundantes con opacidad pulsante
+    final lineAlpha = 0.05 + (animationValue * 0.06);
+    final linePaint = Paint()
+      ..color = Color(0xFF133E87).withValues(alpha: lineAlpha)
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke;
+
+    // Red de líneas diagonales
+    final path1 = Path();
+    path1.moveTo(size.width * 0.2, 0);
+    path1.lineTo(size.width, size.height * 0.8);
+    canvas.drawPath(path1, linePaint);
+
+    final path2 = Path();
+    path2.moveTo(0, size.height * 0.2);
+    path2.lineTo(size.width * 0.8, size.height);
+    canvas.drawPath(path2, linePaint);
+
+    final path3 = Path();
+    path3.moveTo(size.width * 0.6, 0);
+    path3.lineTo(size.width, size.height * 0.4);
+    canvas.drawPath(path3, linePaint..strokeWidth = 2.0);
+
+    final path4 = Path();
+    path4.moveTo(0, size.height * 0.6);
+    path4.lineTo(size.width * 0.4, size.height);
+    canvas.drawPath(path4, linePaint..strokeWidth = 2.0);
+
+    // Líneas horizontales y verticales sutiles
+    final gridPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.05)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    // Líneas horizontales
+    for (double y = 100; y < size.height; y += 200) {
+      canvas.drawLine(
+        Offset(0, y),
+        Offset(size.width, y),
+        gridPaint,
+      );
+    }
+
+    // Líneas verticales
+    for (double x = 100; x < size.width; x += 200) {
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
+        gridPaint,
+      );
+    }
+
+    // Cuadrados decorativos más visibles y variados con opacidad pulsante
+    final squareAlpha = 0.06 + (animationValue * 0.08);
+    final squareStrokeAlpha = 0.1 + (animationValue * 0.1);
+
+    final squarePaint = Paint()
+      ..color = Color(0xFF133E87).withValues(alpha: squareAlpha)
+      ..style = PaintingStyle.fill;
+
+    final squareStrokePaint = Paint()
+      ..color = Color(0xFF133E87).withValues(alpha: squareStrokeAlpha)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    // Cuadrados rellenos
+    canvas.drawRect(
+      Rect.fromLTWH(size.width * 0.1, size.height * 0.2, 20, 20),
+      squarePaint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(size.width * 0.75, size.height * 0.6, 25, 25),
+      squarePaint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(size.width * 0.4, size.height * 0.1, 18, 18),
+      squarePaint,
+    );
+
+    // Cuadrados con solo borde
+    canvas.drawRect(
+      Rect.fromLTWH(size.width * 0.3, size.height * 0.7, 30, 30),
+      squareStrokePaint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(size.width * 0.8, size.height * 0.3, 35, 35),
+      squareStrokePaint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(size.width * 0.6, size.height * 0.8, 28, 28),
+      squareStrokePaint,
+    );
+
+    // Triángulos decorativos con pulso
+    final triangleAlpha = 0.05 + (animationValue * 0.08);
+    final trianglePaint = Paint()
+      ..color = Color(0xFF133E87).withValues(alpha: triangleAlpha)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
+
+    final triangle1 = Path();
+    triangle1.moveTo(size.width * 0.9, size.height * 0.5);
+    triangle1.lineTo(size.width * 0.95, size.height * 0.6);
+    triangle1.lineTo(size.width * 0.85, size.height * 0.6);
+    triangle1.close();
+    canvas.drawPath(triangle1, trianglePaint);
+
+    final triangle2 = Path();
+    triangle2.moveTo(size.width * 0.05, size.height * 0.4);
+    triangle2.lineTo(size.width * 0.1, size.height * 0.5);
+    triangle2.lineTo(size.width * 0.0, size.height * 0.5);
+    triangle2.close();
+    canvas.drawPath(triangle2, trianglePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant DotPatternPainter oldDelegate) {
+    return oldDelegate.animationValue != animationValue;
+  }
 }

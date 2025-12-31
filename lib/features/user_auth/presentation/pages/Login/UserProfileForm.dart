@@ -5,6 +5,7 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Formularios/Physi
 import 'package:pucpflow/features/user_auth/presentation/pages/Formularios/SocialForm.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Formularios/FinancialForm.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_page.dart';
+import 'package:pucpflow/LandingPage/VastoriaMainLanding.dart';
 
 class UserProfileForm extends StatelessWidget {
   final String userId;
@@ -123,7 +124,7 @@ class UserProfileForm extends StatelessWidget {
                 onPressed: () {
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => HomePage()),
+                    MaterialPageRoute(builder: (context) => const VastoriaMainLanding()),
                   );
                 },
                 icon: const Icon(Icons.home),

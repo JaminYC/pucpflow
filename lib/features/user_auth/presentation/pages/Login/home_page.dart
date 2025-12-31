@@ -1,4 +1,4 @@
-// ignore_for_file: use_build_context_synchronously, prefer_const_constructors_in_immutables 
+﻿// ignore_for_file: use_build_context_synchronously, prefer_const_constructors_in_immutables
 
 import 'package:pucpflow/features/user_auth/presentation/pages/Login/VastoriaHomePage.dart' show VastoriaHomePage;
 
@@ -6,7 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pucpflow/features/app/splash_screen/splash_screen.dart'; // Importa la pantalla de Splash
 
-
+import 'package:provider/provider.dart';
+import 'package:pucpflow/demo/animations_demo_page.dart'; // Demo de animaciones
+import 'package:pucpflow/demo/bubble_button_demo.dart'; // Demo del botón de burbujas
+import 'package:pucpflow/demo/gamification_quick_access.dart'; // Demo de gamification
+import 'package:pucpflow/providers/theme_provider.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -23,8 +27,10 @@ import 'package:pucpflow/features/user_auth/Usuario/PerfilUsuarioPage.dart' show
 import 'package:pucpflow/features/user_auth/Usuario/UserModel.dart';
 
 import 'package:pucpflow/features/user_auth/firebase_auth_implementation/firebase_auth_services.dart';
+import 'package:pucpflow/services/global_overlay_service.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/pomodoro/PomodoroCompactWidget.dart';
 
-import 'package:pucpflow/features/user_auth/presentation/pages/AsistenteIA/AsistentePage.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/AsistenteIA/AsistentePageNew.dart';
 
 import 'package:pucpflow/features/user_auth/presentation/pages/Comunidad/SearchIntegrantesPage.dart' show SearchIntegrantesPage;
 
@@ -70,13 +76,11 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Ranking/RankingPa
 
 import 'package:pucpflow/features/user_auth/presentation/pages/Alerta/AlertPage.dart'; 
 
-import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectoDetallePage.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectoDetalleKanbanPage.dart';
+
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/categoria_migration.dart';
 
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectosPage.dart';
-
-
-
-import 'package:video_player/video_player.dart';
 
 
 
@@ -100,9 +104,12 @@ class HomePage extends StatefulWidget {
 
 
 
-class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
+class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
 
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
 
   final ImagePicker _picker = ImagePicker();
 
@@ -111,8 +118,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   final GoogleCalendarService _calendarService = GoogleCalendarService();
-
-  late VideoPlayerController _videoController;
 
   final ScrollController _scrollControllerAsignadas = ScrollController();
 
@@ -123,8 +128,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
   String? userId;
 
   bool _isLoading = true;
-
-  bool isDarkMode = false;
 
   int _selectedIndex = 0;
 
@@ -154,6 +157,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
 
   int tareasPendientes = 0;
 
+  String _filtroCategoriaTareas = "Todas";
+
   bool _accesoPermitido = false;
 
 
@@ -168,7 +173,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
 
     super.initState();
 
+    // Inicializar animación de fondo
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 3000),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
   _determinarUserId().then((_) {
+    if (userId != null) {
+      CategoriaMigration.runIfNeeded(uid: userId!);
+    }
 
     _verificarAcceso();
 
@@ -184,63 +205,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver{
 
 
 
-     WidgetsBinding.instance.addObserver(this);
-
-
-
-    _videoController = VideoPlayerController.asset('assets/videopilar.mp4')
-
-      ..setLooping(true)
-
-      ..setVolume(0)
-
-      ..addListener(() {
-
-        if (_videoController.value.isInitialized && _selectedIndex == 0 && !_videoController.value.isPlaying) {
-
-          _videoController.play();
-
-        }
-
-      })
-
-      ..initialize().then((_) => setState(() {}));
-
-
-
   }
 
   @override
 
   void dispose() {
 
-     WidgetsBinding.instance.removeObserver(this);
-
-    _videoController.dispose();
+    _animationController.dispose();
 
     super.dispose();
 
   }
-
-@override
-
-void didChangeAppLifecycleState(AppLifecycleState state) {
-
-  if (_videoController.value.isInitialized && !_videoController.value.hasError) {
-
-    if (state == AppLifecycleState.resumed && _selectedIndex == 0) {
-
-      _videoController.play();
-
-    } else if (state == AppLifecycleState.paused) {
-
-      _videoController.pause();
-
-    }
-
-  }
-
-}
 
 Future<void> _determinarUserId() async {
 
@@ -674,20 +649,6 @@ Future<void> cerrarSesion(BuildContext context) async {
 
   void _onItemTapped(int index) async {
 
-    final wasIndexZero = _selectedIndex == 0;
-
-    final isIndexZero = index == 0;
-
-
-
-    if (wasIndexZero && _videoController.value.isInitialized) {
-
-      _videoController.pause();
-
-    }
-
-
-
     // 🔁 Pequeño retraso para suavizar el cambio
 
     await Future.delayed(const Duration(milliseconds: 300));
@@ -702,15 +663,10 @@ Future<void> cerrarSesion(BuildContext context) async {
 
     });
 
-
-
-    if (_videoController.value.isInitialized && isIndexZero) {
-
-      _videoController.play();
-
-    }
-
   }
+
+  // Los colores ahora se obtienen del ThemeProvider
+  // No se necesitan getters locales - usar Provider.of<ThemeProvider>(context)
 
 
 
@@ -726,163 +682,291 @@ Widget _buildMainScaffold(BuildContext context){
 
   }
 
-  return Scaffold(
+  return Consumer<ThemeProvider>(
+    builder: (context, themeProvider, _) {
+      return Scaffold(
 
-    appBar: AppBar(
+        backgroundColor: themeProvider.backgroundColor,
 
-      iconTheme: const IconThemeData(color: Colors.white),
+        appBar: AppBar(
 
-      title: const Text(
+          iconTheme: IconThemeData(color: themeProvider.textPrimaryColor),
 
-        "FLOW",
+          title: Text(
 
-        style: TextStyle(
+            "FLOW",
 
-          fontWeight: FontWeight.bold,
+            style: TextStyle(
 
-          fontSize: 22,
+              fontWeight: FontWeight.w800,
 
-          color: Color.fromARGB(255, 255, 255, 255),
+              fontSize: 22,
 
-        ),
-
-      ),
-
-      centerTitle: true,
-
-      backgroundColor: const Color.fromARGB(255, 0, 0, 0),
-
-      elevation: 0,
-
-      actions: [
-
-        // Botón de Calendario
-
-        IconButton(
-
-          icon: const Icon(Icons.calendar_today, color: Colors.white),
-
-          tooltip: 'Calendario',
-
-          onPressed: () {
-
-            Navigator.push(
-
-              context,
-
-              MaterialPageRoute(builder: (context) => const CalendarEventsPage()),
-
-            );
-
-          },
-
-        ),
-
-        // Botón de Menú (Ranking y Noticias)
-
-        PopupMenuButton<String>(
-
-          icon: const Icon(Icons.more_vert, color: Colors.white),
-
-          tooltip: 'Más opciones',
-
-          color: Colors.grey.shade900,
-
-          onSelected: (value) {
-
-            if (value == 'ranking') {
-
-              Navigator.push(
-
-                context,
-
-                MaterialPageRoute(builder: (context) => const RankingPage()),
-
-              );
-
-            } else if (value == 'noticias') {
-
-              Navigator.push(
-
-                context,
-
-                MaterialPageRoute(builder: (context) => const AlertPage()),
-
-              );
-
-            } else if (value == 'buscar') {
-
-              Navigator.push(
-
-                context,
-
-                MaterialPageRoute(builder: (context) => const SearchIntegrantesPage()),
-
-              );
-
-            }
-
-          },
-
-          itemBuilder: (BuildContext context) => [
-
-            const PopupMenuItem(
-
-              value: 'ranking',
-
-              child: Row(
-
-                children: [
-
-                  Icon(Icons.emoji_events, color: Colors.amber),
-
-                  SizedBox(width: 12),
-
-                  Text('Ranking', style: TextStyle(color: Colors.white)),
-
-                ],
-
-              ),
+              color: themeProvider.textPrimaryColor,
+              letterSpacing: 2.0,
 
             ),
 
-            const PopupMenuItem(
+          ),
 
-              value: 'noticias',
+          centerTitle: true,
 
-              child: Row(
+          backgroundColor: themeProvider.isDarkMode
+              ? ThemeProvider.darkCard
+              : Colors.white.withOpacity(0.95),
 
-                children: [
+          elevation: 0,
 
-                  Icon(Icons.article, color: Colors.blue),
-
-                  SizedBox(width: 12),
-
-                  Text('Noticias', style: TextStyle(color: Colors.white)),
-
-                ],
-
+          flexibleSpace: Container(
+            decoration: BoxDecoration(
+              color: themeProvider.isDarkMode
+                  ? ThemeProvider.darkCard
+                  : Colors.white.withOpacity(0.95),
+              border: Border(
+                bottom: BorderSide(
+                  color: themeProvider.borderColor.withOpacity(0.3),
+                  width: 1,
+                ),
               ),
+            ),
+          ),
+
+          actions: [
+            // 🎨 Botón para ver DEMO de animaciones
+            IconButton(
+              icon: const Icon(Icons.animation),
+              tooltip: '🎨 Ver Demo Animaciones',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AnimationsDemoPage()),
+                );
+              },
+            ),
+
+            // Botón para ver tu Bubble Button
+            IconButton(
+              icon: const Icon(Icons.bubble_chart),
+              tooltip: '🎈 Ver Bubble Button',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const BubbleButtonDemo()),
+                );
+              },
+            ),
+
+            // 🎮 Botón para Gamification Test
+            const GamificationQuickAccessButton(),
+
+            // Toggle de tema elegante (tipo switch)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Center(
+                child: GestureDetector(
+                  onTap: () => themeProvider.toggleTheme(),
+                  child: Container(
+                    width: 60,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      gradient: LinearGradient(
+                        colors: themeProvider.isDarkMode
+                            ? [ThemeProvider.accentPurple, ThemeProvider.accentBlue]
+                            : [Colors.grey.shade300, Colors.grey.shade400],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: themeProvider.isDarkMode
+                              ? ThemeProvider.accentPurple.withOpacity(0.4)
+                              : Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          spreadRadius: -2,
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        AnimatedAlign(
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeInOut,
+                          alignment: themeProvider.isDarkMode
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            margin: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 4,
+                                  spreadRadius: -1,
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              themeProvider.isDarkMode
+                                  ? Icons.dark_mode
+                                  : Icons.light_mode,
+                              size: 16,
+                              color: themeProvider.isDarkMode
+                                  ? ThemeProvider.accentPurple
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Botón de Calendario
+
+            IconButton(
+
+              icon: Icon(
+                Icons.calendar_today,
+                color: themeProvider.isDarkMode
+                    ? Colors.white
+                    : ThemeProvider.accentBlue,
+              ),
+
+              tooltip: 'Calendario',
+
+              onPressed: () {
+
+                Navigator.push(
+
+                  context,
+
+                  MaterialPageRoute(builder: (context) => const CalendarEventsPage()),
+
+                );
+
+              },
 
             ),
 
-            const PopupMenuItem(
+            // Botón de Menú (Ranking y Noticias)
 
-              value: 'buscar',
+            PopupMenuButton<String>(
 
-              child: Row(
-
-                children: [
-
-                  Icon(Icons.search, color: Colors.green),
-
-                  SizedBox(width: 12),
-
-                  Text('Buscar Usuarios', style: TextStyle(color: Colors.white)),
-
-                ],
-
+              icon: Icon(
+                Icons.more_vert,
+                color: themeProvider.isDarkMode
+                    ? Colors.white
+                    : ThemeProvider.accentBlue,
               ),
+
+              tooltip: 'Más opciones',
+
+              color: themeProvider.cardColor,
+
+              onSelected: (value) {
+
+                if (value == 'ranking') {
+
+                  Navigator.push(
+
+                    context,
+
+                    MaterialPageRoute(builder: (context) => const RankingPage()),
+
+                  );
+
+                } else if (value == 'noticias') {
+
+                  Navigator.push(
+
+                    context,
+
+                    MaterialPageRoute(builder: (context) => const AlertPage()),
+
+                  );
+
+                } else if (value == 'buscar') {
+
+                  Navigator.push(
+
+                    context,
+
+                    MaterialPageRoute(builder: (context) => const SearchIntegrantesPage()),
+
+                  );
+
+                }
+
+              },
+
+              itemBuilder: (BuildContext context) => [
+
+                PopupMenuItem(
+
+                  value: 'ranking',
+
+                  child: Row(
+
+                    children: [
+
+                      Icon(Icons.emoji_events, color: Colors.amber),
+
+                      SizedBox(width: 12),
+
+                      Text('Ranking', style: TextStyle(color: themeProvider.textPrimaryColor)),
+
+                    ],
+
+                  ),
+
+                ),
+
+                PopupMenuItem(
+
+                  value: 'noticias',
+
+                  child: Row(
+
+                    children: [
+
+                      Icon(Icons.article, color: ThemeProvider.accentBlue),
+
+                      SizedBox(width: 12),
+
+                      Text('Noticias', style: TextStyle(color: themeProvider.textPrimaryColor)),
+
+                    ],
+
+                  ),
+
+                ),
+
+                PopupMenuItem(
+
+                  value: 'buscar',
+
+                  child: Row(
+
+                    children: [
+
+                      Icon(Icons.search, color: ThemeProvider.accentGreen),
+
+                      SizedBox(width: 12),
+
+                      Text('Buscar Usuarios', style: TextStyle(color: themeProvider.textPrimaryColor)),
+
+                    ],
+
+                  ),
+
+                ),
+
+              ],
 
             ),
 
@@ -890,53 +974,34 @@ Widget _buildMainScaffold(BuildContext context){
 
         ),
 
-      ],
-
-    ),
-
     drawer: _buildDrawer(context),
 
     body: Stack(
 
       children: [
 
-        Container(color: Colors.black), // Fondo negro sólido (base)
-
-        if (_videoController.value.isInitialized)
-
-          ValueListenableBuilder(
-
-            valueListenable: _videoController,
-
-            builder: (context, VideoPlayerValue value, _) {
-
-              return SizedBox.expand(
-
-                child: FittedBox(
-
-                  fit: BoxFit.cover,
-
-                  child: SizedBox(
-
-                    width: _videoController.value.size.width,
-
-                    height: _videoController.value.size.height,
-
-                    child: VideoPlayer(_videoController),
-
-                  ),
-
-                ),
-
-              );
-
-            },
-
+        // Fondo minimalista elegante
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFFF5F5F7), // Gris muy claro (estilo Apple)
+                Color(0xFFFFFFFF), // Blanco puro
+                Color(0xFFF5F5F7), // Gris muy claro
+              ],
+              stops: [0.0, 0.5, 1.0],
+            ),
           ),
+        ),
 
-
-
-        Container(color: Colors.black.withOpacity(0.3)),
+        // Patrón sutil de puntos minimalista
+        Positioned.fill(
+          child: CustomPaint(
+            painter: MinimalDotPattern(),
+          ),
+        ),
 
 
 
@@ -984,32 +1049,42 @@ Widget _buildMainScaffold(BuildContext context){
 
           bottom: 20,
 
-          child: FloatingActionButton(
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [Color(0xFF133E87), Color(0xFF0A2351)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0xFF133E87).withValues(alpha: 0.3),
+                  blurRadius: 15,
+                  offset: Offset(0, 5),
+                ),
+              ],
+            ),
+            child: FloatingActionButton(
 
-            heroTag: "asistente",
+              heroTag: "asistente",
 
-            onPressed: () {
+              onPressed: () {
 
-              _videoController.pause();
+                Navigator.push(
 
-              Navigator.push(
+                  context,
 
-                context,
+                  MaterialPageRoute(builder: (context) => AsistentePageNew()),
 
-                MaterialPageRoute(builder: (context) => AsistentePage()),
+                );
 
-              ).then((_) {
+              },
 
-                if (_selectedIndex == 0) _videoController.play();
+              backgroundColor: Colors.transparent,
+              elevation: 0,
 
-              });
+              child: const Icon(Icons.mic, color: Colors.white),
 
-            },
-
-            backgroundColor: Colors.black,
-
-            child: const Icon(Icons.mic, color: Colors.white),
-
+            ),
           ),
 
         ),
@@ -1022,32 +1097,40 @@ Widget _buildMainScaffold(BuildContext context){
 
           bottom: 20,
 
-          child: FloatingActionButton(
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [Color(0xFFE74C3C), Color(0xFFC0392B)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0xFFE74C3C).withValues(alpha: 0.3),
+                  blurRadius: 15,
+                  offset: Offset(0, 5),
+                ),
+              ],
+            ),
+            child: FloatingActionButton(
 
-            heroTag: "pomodoro",
+              heroTag: "pomodoro",
 
-            onPressed: () {
+              onPressed: () {
+                // Navegar a la página de Pomodoro (comportamiento original)
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PomodoroPage(),
+                  ),
+                );
+              },
 
-              _videoController.pause();
+              backgroundColor: Colors.transparent,
+              elevation: 0,
 
-              Navigator.push(
+              child: const Icon(Icons.timer, color: Colors.white),
 
-                context,
-
-                MaterialPageRoute(builder: (context) => const PomodoroPage()),
-
-              ).then((_) {
-
-                if (_selectedIndex == 0) _videoController.play();
-
-              });
-
-            },
-
-            backgroundColor: Colors.red,
-
-            child: const Icon(Icons.timer, color: Colors.white),
-
+            ),
           ),
 
         ),
@@ -1056,30 +1139,51 @@ Widget _buildMainScaffold(BuildContext context){
 
     ),
 
-    bottomNavigationBar: BottomNavigationBar(
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            color: themeProvider.isDarkMode
+                ? ThemeProvider.darkCard
+                : Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: themeProvider.isDarkMode
+                    ? Colors.black.withOpacity(0.3)
+                    : Colors.black.withOpacity(0.05),
+                blurRadius: 20,
+                offset: const Offset(0, -5),
+              ),
+            ],
+          ),
+          child: BottomNavigationBar(
 
-      backgroundColor: Colors.black,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
 
-      currentIndex: _selectedIndex,
+            currentIndex: _selectedIndex,
 
-      onTap: _onItemTapped,
+            onTap: _onItemTapped,
 
-      selectedItemColor: Colors.white,
+            selectedItemColor: ThemeProvider.accentPurple,
 
-      unselectedItemColor: Colors.white70,
+            unselectedItemColor: themeProvider.isDarkMode
+                ? Colors.white70
+                : const Color(0xFF8E8E93),
 
-      type: BottomNavigationBarType.fixed,
+            type: BottomNavigationBarType.fixed,
 
-      items: const [
+            items: const [
 
-        BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Inicio'),
+              BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Inicio'),
 
-        BottomNavigationBarItem(icon: Icon(Icons.folder), label: 'Proyectos'),
+              BottomNavigationBarItem(icon: Icon(Icons.folder), label: 'Proyectos'),
 
-      ],
+            ],
 
-    ),
+          ),
+        ),
 
+      );
+    },
   );
 
 }
@@ -1197,10 +1301,10 @@ Widget build(BuildContext context) {
 /// ✅ Dashboard con tareas en columnas divididas
 
 Widget _buildDashboard() {
-
+  final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
   final isMobile = MediaQuery.of(context).size.width < 600;
-
-
+  final textColor = themeProvider.isDarkMode ? Colors.white : Colors.black87;
+  final secondaryTextColor = themeProvider.isDarkMode ? Colors.white70 : Colors.black54;
 
   return ConstrainedBox(
 
@@ -1214,11 +1318,37 @@ Widget _buildDashboard() {
 
       decoration: BoxDecoration(
 
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
 
-        border: Border.all(color: Colors.white, width: 2),
+        border: Border.all(
+          color: themeProvider.isDarkMode
+            ? Colors.white.withValues(alpha: 0.15)
+            : Colors.black.withValues(alpha: 0.15),
+          width: 2
+        ),
 
-        color: Colors.black.withAlpha(153),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: themeProvider.isDarkMode
+            ? [
+                ThemeProvider.darkCard,
+                ThemeProvider.darkCard.withValues(alpha: 0.9),
+              ]
+            : [
+                const Color(0xFFFAFAFA), // Gris muy claro en vez de blanco puro
+                const Color(0xFFF0F0F0), // Gris más oscuro
+              ],
+        ),
+
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: themeProvider.isDarkMode ? 0.4 : 0.15),
+            blurRadius: 25,
+            spreadRadius: 2,
+            offset: const Offset(0, 10),
+          ),
+        ],
 
       ),
 
@@ -1236,11 +1366,11 @@ Widget _buildDashboard() {
 
                 children: [
 
-                  const Text(
+                  Text(
 
                     "Resumen de Tareas",
 
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textColor),
 
                   ),
 
@@ -1248,7 +1378,7 @@ Widget _buildDashboard() {
 
                     style: ElevatedButton.styleFrom(
 
-                      backgroundColor: Colors.blueAccent,
+                      backgroundColor: ThemeProvider.accentBlue,
 
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
 
@@ -1256,7 +1386,12 @@ Widget _buildDashboard() {
 
                         borderRadius: BorderRadius.circular(12),
 
-                        side: const BorderSide(color: Colors.white, width: 1.5),
+                        side: BorderSide(
+                          color: themeProvider.isDarkMode
+                            ? Colors.white.withValues(alpha: 0.3)
+                            : ThemeProvider.accentBlue.withValues(alpha: 0.5),
+                          width: 1.5
+                        ),
 
                       ),
 
@@ -1287,6 +1422,48 @@ Widget _buildDashboard() {
               ),
 
               const SizedBox(height: 10),
+              Row(
+                children: [
+                  Text(
+                    "Categoria:",
+                    style: TextStyle(color: secondaryTextColor, fontSize: 12),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: themeProvider.isDarkMode
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.black.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: themeProvider.isDarkMode
+                          ? Colors.white.withValues(alpha: 0.2)
+                          : Colors.black.withValues(alpha: 0.2)
+                      ),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _filtroCategoriaTareas,
+                        dropdownColor: themeProvider.isDarkMode ? ThemeProvider.darkCard : Colors.white,
+                        iconEnabledColor: textColor,
+                        style: TextStyle(color: textColor, fontSize: 12),
+                        onChanged: (value) {
+                          setState(() => _filtroCategoriaTareas = value ?? "Todas");
+                        },
+                        items: ["Todas", "Laboral", "Personal"]
+                            .map((value) => DropdownMenuItem(
+                                  value: value,
+                                  child: Text(value),
+                                ))
+                            .toList(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 10),
 
 
 
@@ -1313,37 +1490,21 @@ Widget _buildDashboard() {
           // 👇 Esta parte se adapta dinámicamente a la pantalla
 
           Flexible(
-
             child: isMobile
-
                 ? Column(
-
                     children: [
-
-                      _buildTareaSection("Tareas Asignadas", _mostrarTareasAsignadas(), 200),
-
+                      Expanded(child: _buildTareaSection("Tareas Asignadas", _mostrarTareasAsignadas())),
                       const SizedBox(height: 16),
-
-                      _buildTareaSection("Tareas Libres", _mostrarTareasLibres(), 200),
-
+                      Expanded(child: _buildTareaSection("Tareas Libres", _mostrarTareasLibres())),
                     ],
-
                   )
-
                 : Row(
-
                     children: [
-
-                      Expanded(child: _buildTareaSection("Tareas Asignadas", _mostrarTareasAsignadas(), 400)),
-
+                      Expanded(child: _buildTareaSection("Tareas Asignadas", _mostrarTareasAsignadas())),
                       const SizedBox(width: 10),
-
-                      Expanded(child: _buildTareaSection("Tareas Libres", _mostrarTareasLibres(), 400)),
-
+                      Expanded(child: _buildTareaSection("Tareas Libres", _mostrarTareasLibres())),
                     ],
-
                   ),
-
           ),
 
         ],
@@ -1358,30 +1519,44 @@ Widget _buildDashboard() {
 
 
 
-Widget _buildTareaSection(String titulo, Widget contenido, double altura) {
+Widget _buildTareaSection(String titulo, Widget contenido) {
+  final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+  final textColor = themeProvider.isDarkMode ? Colors.white : Colors.black87;
 
   return Column(
-
     crossAxisAlignment: CrossAxisAlignment.start,
-
     children: [
-
-      Text(titulo, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-
+      Text(titulo, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
       const SizedBox(height: 8),
-
-      SizedBox(
-
-        height: altura,
-
-        child: contenido,
-
-      ),
-
+      Expanded(child: contenido),
     ],
-
   );
+}
 
+Color _colorPorCategoria(String? categoria) {
+  switch (categoria?.toLowerCase()) {
+    case 'personal':
+      return const Color(0xFFEC4899);
+    case 'laboral':
+      return const Color(0xFF2D9BF0);
+    default:
+      return const Color(0xFF9CA3AF);
+  }
+}
+
+String _normalizarCategoria(String? categoria) {
+  final value = (categoria ?? 'Laboral').toString().trim();
+  if (value.isEmpty) return 'Laboral';
+  final lower = value.toLowerCase();
+  if (lower == 'vida') return 'Personal';
+  if (lower == 'laboral') return 'Laboral';
+  if (lower == 'personal') return 'Personal';
+  return value;
+}
+
+bool _pasaFiltroCategoria(String? categoria) {
+  if (_filtroCategoriaTareas == "Todas") return true;
+  return _normalizarCategoria(categoria) == _normalizarCategoria(_filtroCategoriaTareas);
 }
 
 
@@ -1415,12 +1590,18 @@ Widget _mostrarTareasLibres() {
         final data = doc.data() as Map<String, dynamic>;
 
         final nombreProyecto = data['nombre'] ?? 'Proyecto sin nombre';
+        final rawCategoria = data['categoria'] ?? data['categoriaProyecto'] ?? data['tipo'];
+        final categoriaProyecto = _normalizarCategoria(rawCategoria?.toString());
+        final imagenProyecto = data['imagenUrl'] ?? data['imagen'] ?? '';
 
 
 
-        final List<dynamic> participantes = data['participantes'] ?? [];
+        final participantes = data['participantes'];
 
-        if (!participantes.contains(userId)) continue; // ✅ solo si participa
+        if (participantes is List && participantes.isNotEmpty && !participantes.contains(userId)) {
+          continue; // ✅ solo si participa
+        }
+        if (!_pasaFiltroCategoria(categoriaProyecto)) continue;
 
 
 
@@ -1441,6 +1622,8 @@ Widget _mostrarTareasLibres() {
               'proyecto': nombreProyecto,
 
               'docId': doc.id,
+              'categoria': categoriaProyecto,
+              'imagen': imagenProyecto,
 
             });
 
@@ -1453,10 +1636,12 @@ Widget _mostrarTareasLibres() {
 
 
       if (tareasLibres.isEmpty) {
+        final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+        final textColor = themeProvider.isDarkMode ? Colors.white : Colors.black87;
 
-        return const Center(
+        return Center(
 
-          child: Text("🆓 No hay tareas libres disponibles.", style: TextStyle(color: Colors.white)),
+          child: Text("🆓 No hay tareas libres disponibles.", style: TextStyle(color: textColor)),
 
         );
 
@@ -1487,10 +1672,12 @@ Widget _mostrarTareasLibres() {
 
 
             return _buildTareaCard(
+              context,
               tarea: tarea,
               proyecto: proyecto,
               userId: userId,
               imagenProyecto: tareasLibres[index]['imagen'] as String?,
+              categoria: tareasLibres[index]['categoria'] as String?,
               esLibre: true,
               onPrimaryAction: () => _asignarTareaUsuario(tarea),
             );
@@ -1682,8 +1869,12 @@ Widget _buildStreamTareasAsignadas(String userId) {
         final data = doc.data() as Map<String, dynamic>;
 
         final nombreProyecto = data['nombre'] ?? 'Proyecto sin nombre';
+        final rawCategoria = data['categoria'] ?? data['categoriaProyecto'] ?? data['tipo'];
+        final categoriaProyecto = _normalizarCategoria(rawCategoria?.toString());
+        final imagenProyecto = data['imagenUrl'] ?? data['imagen'] ?? '';
 
         List<dynamic> tareas = data["tareas"] ?? [];
+        if (!_pasaFiltroCategoria(categoriaProyecto)) continue;
 
 
 
@@ -1701,7 +1892,8 @@ Widget _buildStreamTareasAsignadas(String userId) {
 
               'proyecto': nombreProyecto,
 
-              'imagen': data['imagenUrl'] ?? data['imagen'] ?? '',
+              'imagen': imagenProyecto,
+              'categoria': categoriaProyecto,
 
             });
 
@@ -1714,12 +1906,14 @@ Widget _buildStreamTareasAsignadas(String userId) {
 
 
       if (tareasAsignadas.isEmpty) {
+        final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+        final textColor = themeProvider.isDarkMode ? Colors.white : Colors.black87;
 
-        return const Center(
+        return Center(
 
           child: Text("🎉 No tienes tareas pendientes.",
 
-              style: TextStyle(color: Colors.white)),
+              style: TextStyle(color: textColor)),
 
         );
 
@@ -1743,6 +1937,8 @@ Widget _buildStreamTareasAsignadas(String userId) {
 
           return _buildTareaCard(
 
+            context,
+
             tarea: tarea,
 
             proyecto: proyecto,
@@ -1750,6 +1946,7 @@ Widget _buildStreamTareasAsignadas(String userId) {
             userId: userId,
 
             imagenProyecto: imagen,
+            categoria: tareasAsignadas[index]['categoria'] as String?,
 
             onPrimaryAction: () => marcarTareaComoCompletada(tarea, proyecto),
 
@@ -1767,212 +1964,260 @@ Widget _buildStreamTareasAsignadas(String userId) {
 
 
 
-Widget _buildTareaCard({
-  required Tarea tarea,
-  required String proyecto,
-  required String userId,
-  String? imagenProyecto,
-  bool esLibre = false,
-  VoidCallback? onPrimaryAction,
-}) {
-  final bool completada = tarea.completado;
-  final Color statusColor = completada ? const Color(0xFF34C759) : const Color(0xFF2D9BF0);
-  final Color accent = esLibre ? const Color(0xFF5D5FEF) : statusColor;
-  final Color badgeColor = (tarea.dificultad?.toLowerCase() == 'alta')
-      ? const Color(0xFFE74C3C)
-      : (tarea.dificultad?.toLowerCase() == 'media')
-          ? const Color(0xFFFFA351)
-          : const Color(0xFF5BE4A8);
-  final bool disableAction = esLibre ? false : completada;
-  final String actionLabel = esLibre ? "Tomar tarea" : (completada ? "Completada" : "Marcar completada");
-
-  return Container(
-    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(22),
-      gradient: const LinearGradient(
-        colors: [Color(0xFF101524), Color(0xFF111C32)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.35),
-          blurRadius: 20,
-          offset: const Offset(0, 10),
-        ),
-      ],
-      border: Border.all(color: Colors.white.withOpacity(0.05)),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildProjectImage(imagenProyecto, proyecto),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              tarea.titulo,
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              proyecto,
-                              style: const TextStyle(color: Colors.white54, fontSize: 13, letterSpacing: 0.2),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: badgeColor.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: badgeColor.withOpacity(0.6)),
-                        ),
-                        child: Text(
-                          tarea.dificultad?.toUpperCase() ?? 'NORMAL',
-                          style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (tarea.descripcion != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      tarea.descripcion!,
-                      style: const TextStyle(color: Colors.white70, height: 1.4),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            _buildInfoChip(Icons.schedule, "${tarea.duracion} min"),
-            const SizedBox(width: 10),
-            if (tarea.fecha != null)
-              _buildInfoChip(
-                Icons.event,
-                "${tarea.fecha!.day}/${tarea.fecha!.month} ${tarea.fecha!.hour}:${tarea.fecha!.minute.toString().padLeft(2, '0')}",
-              ),
-            const Spacer(),
-            _buildInfoChip(Icons.label, tarea.tipoTarea),
-          ],
-        ),
-        if (!esLibre) ...[
-          const SizedBox(height: 18),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: LinearProgressIndicator(
-              value: completada ? 1 : 0.35,
-              minHeight: 10,
-              backgroundColor: Colors.white12,
-              valueColor: AlwaysStoppedAnimation(accent),
-            ),
-          ),
-        ],
-        const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.bottomRight,
-          child: ElevatedButton.icon(
-            icon: Icon(
-              esLibre ? Icons.playlist_add : (completada ? Icons.check_circle : Icons.check),
-              color: Colors.white,
-              size: 18,
-            ),
-            label: Text(actionLabel),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: accent,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              elevation: disableAction ? 0 : 4,
-            ),
-            onPressed: disableAction ? null : onPrimaryAction,
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-Widget _buildInfoChip(IconData icon, String label) {
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: BoxDecoration(
-      color: Colors.white.withOpacity(0.08),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: Colors.white.withOpacity(0.08)),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: Colors.white70, size: 14),
-        const SizedBox(width: 6),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-      ],
-    ),
-  );
-}
-
-Widget _buildProjectImage(String? url, String proyecto) {
-  final placeholder = Container(
-    width: 70,
-    height: 70,
-    decoration: BoxDecoration(
-      color: Colors.white.withOpacity(0.05),
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: Colors.white12),
-    ),
-    child: Center(
-      child: Text(
-        proyecto.isNotEmpty ? proyecto[0].toUpperCase() : '?',
-        style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 22),
-      ),
-    ),
-  );
-
-  if (url == null || url.isEmpty) return placeholder;
-
-  return Container(
-    width: 70,
-    height: 70,
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: Colors.white12),
-    ),
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: Image.network(
-        url,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => placeholder,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return placeholder;
-        },
-      ),
-    ),
-  );
-}
-
+Widget _buildTareaCard(
+  BuildContext context, {
+  required Tarea tarea,
+  required String proyecto,
+  required String userId,
+  String? categoria,
+  String? imagenProyecto,
+  bool esLibre = false,
+  VoidCallback? onPrimaryAction,
+}) {
+  final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+  final bool completada = tarea.completado;
+  final Color statusColor = completada ? const Color(0xFF34C759) : const Color(0xFF2D9BF0);
+  final Color accent = esLibre ? const Color(0xFF5D5FEF) : statusColor;
+  final String categoriaLabel = _normalizarCategoria(categoria);
+  final Color categoriaColor = _colorPorCategoria(categoriaLabel);
+  final Color baseBorderColor = themeProvider.isDarkMode
+      ? Colors.white.withValues(alpha: 0.05)
+      : Colors.black.withValues(alpha: 0.08);
+  final Color badgeColor = (tarea.dificultad?.toLowerCase() == 'alta')
+      ? const Color(0xFFE74C3C)
+      : (tarea.dificultad?.toLowerCase() == 'media')
+          ? const Color(0xFFFFA351)
+          : const Color(0xFF5BE4A8);
+  final bool disableAction = esLibre ? false : completada;
+  final String actionLabel = esLibre ? "Tomar tarea" : (completada ? "Completada" : "Marcar completada");
+
+  return Container(
+    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(22),
+      gradient: LinearGradient(
+        colors: themeProvider.isDarkMode
+          ? [const Color(0xFF101524), const Color(0xFF111C32)]
+          : [Colors.white, Colors.white],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: themeProvider.isDarkMode ? 0.35 : 0.12),
+          blurRadius: 15,
+          spreadRadius: 1,
+          offset: const Offset(0, 5),
+        ),
+      ],
+      border: Border.all(
+        color: themeProvider.isDarkMode
+          ? Colors.white.withValues(alpha: 0.1)
+          : Colors.black.withValues(alpha: 0.1),
+        width: 1,
+      ),
+    ),
+    child: Container(
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(color: categoriaColor, width: 4),
+        ),
+      ),
+      padding: const EdgeInsets.only(left: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildProjectImage(context, imagenProyecto, proyecto),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              tarea.titulo,
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: themeProvider.isDarkMode ? Colors.white : Color(0xFF1A1A1A)),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: categoriaColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  categoriaLabel,
+                                  style: TextStyle(
+                                    color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              proyecto,
+                              style: TextStyle(color: themeProvider.isDarkMode ? Colors.white54 : Color(0xFF4A4A4A), fontSize: 13, letterSpacing: 0.2),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: badgeColor.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: badgeColor.withValues(alpha: 0.6)),
+                        ),
+                        child: Text(
+                          tarea.dificultad?.toUpperCase() ?? 'NORMAL',
+                          style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (tarea.descripcion != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      tarea.descripcion!,
+                      style: TextStyle(color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A), height: 1.4),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          children: [
+            _buildInfoChip(context, Icons.schedule, "${tarea.duracion} min"),
+            if (tarea.fecha != null)
+              _buildInfoChip(
+                context,
+                Icons.event,
+                "${tarea.fecha!.day}/${tarea.fecha!.month} ${tarea.fecha!.hour}:${tarea.fecha!.minute.toString().padLeft(2, '0')}",
+              ),
+            _buildInfoChip(context, Icons.label, tarea.tipoTarea),
+          ],
+        ),
+        if (!esLibre) ...[
+          const SizedBox(height: 18),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: LinearProgressIndicator(
+              value: completada ? 1 : 0.35,
+              minHeight: 10,
+              backgroundColor: Colors.white12,
+              valueColor: AlwaysStoppedAnimation(accent),
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        Align(
+          alignment: Alignment.bottomRight,
+          child: ElevatedButton.icon(
+            icon: Icon(
+              esLibre ? Icons.playlist_add : (completada ? Icons.check_circle : Icons.check),
+              color: Colors.white,
+              size: 18,
+            ),
+            label: Text(actionLabel),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: accent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              elevation: disableAction ? 0 : 4,
+            ),
+            onPressed: disableAction ? null : onPrimaryAction,
+          ),
+        ),
+      ],
+    ),
+    ),
+  );
+}
+
+Widget _buildInfoChip(BuildContext context, IconData icon, String label) {
+  final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: themeProvider.isDarkMode ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: themeProvider.isDarkMode ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.1)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A), size: 14),
+        const SizedBox(width: 6),
+        Text(label, style: TextStyle(color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A), fontSize: 12)),
+      ],
+    ),
+  );
+}
+
+Widget _buildProjectImage(BuildContext context, String? url, String proyecto) {
+  final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+  final placeholder = Container(
+    width: 70,
+    height: 70,
+    decoration: BoxDecoration(
+      color: themeProvider.isDarkMode ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: themeProvider.isDarkMode ? Colors.white12 : Colors.black.withValues(alpha: 0.1)),
+    ),
+    child: Center(
+      child: Text(
+        proyecto.isNotEmpty ? proyecto[0].toUpperCase() : '?',
+        style: TextStyle(color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A), fontWeight: FontWeight.bold, fontSize: 22),
+      ),
+    ),
+  );
+
+  if (url == null || url.isEmpty) return placeholder;
+
+  return Container(
+    width: 70,
+    height: 70,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: themeProvider.isDarkMode ? Colors.white12 : Colors.black.withValues(alpha: 0.1)),
+    ),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => placeholder,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return placeholder;
+        },
+      ),
+    ),
+  );
+}
+
 Future<void> marcarTareaComoCompletada(Tarea tarea, String nombreProyecto) async {
 
   final prefs = await SharedPreferences.getInstance();
@@ -2104,6 +2349,8 @@ Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
 
 
   Widget _buildDashboardItem(IconData icon, String title, int count, Color iconColor) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final textColor = themeProvider.isDarkMode ? Colors.white : Colors.black87;
 
     return Column(
 
@@ -2113,9 +2360,9 @@ Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
 
         const SizedBox(height: 5),
 
-        Text(title, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+        Text(title, style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold)),
 
-        Text("$count", style: const TextStyle(color: Colors.white, fontSize: 20)),
+        Text("$count", style: TextStyle(color: textColor, fontSize: 20)),
 
       ],
 
@@ -2346,45 +2593,50 @@ Widget _buildBody() {
 
   final bool isMobile = screenWidth < 600; // Umbral para considerar móvil
 
+  return Consumer<ThemeProvider>(
+    builder: (context, themeProvider, _) {
+      final primaryTextColor = themeProvider.isDarkMode ? Colors.white : Colors.black87;
+      final secondaryTextColor = themeProvider.isDarkMode ? Colors.white70 : Colors.black54;
+      return Stack(
 
+        children: [
 
-  return Stack(
-
-    children: [
-
-      // Fondo degradado
-
-      ValueListenableBuilder<VideoPlayerValue>(
-
-        valueListenable: _videoController,
-
-        builder: (context, value, child) {
-
-          if (!value.isInitialized) return const SizedBox.shrink();
-
-          return SizedBox.expand(
-
-            child: FittedBox(
-
-              fit: BoxFit.cover,
-
-              child: SizedBox(
-
-                width: value.size.width,
-
-                height: value.size.height,
-
-                child: VideoPlayer(_videoController),
-
+          // Fondo dinámico según tema
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: themeProvider.isDarkMode
+                    ? [
+                        const Color(0xFF0A0E27), // FLOW dark
+                        const Color(0xFF1A1F3A), // FLOW dark card
+                        const Color(0xFF0A0E27), // FLOW dark
+                      ]
+                    : [
+                        const Color(0xFFF5F5F7), // Gris muy claro
+                        const Color(0xFFFFFFFF), // Blanco puro
+                        const Color(0xFFF5F5F7), // Gris muy claro
+                      ],
+                stops: const [0.0, 0.5, 1.0],
               ),
-
             ),
+          ),
 
-          );
-
-        },
-
-      ),
+          // Patrón sutil de puntos con animación
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _animationController,
+              builder: (context, child) {
+                return CustomPaint(
+                  painter: AnimatedMinimalPattern(
+                    animationValue: _fadeAnimation.value,
+                    isDarkMode: themeProvider.isDarkMode,
+                  ),
+                );
+              },
+            ),
+          ),
 
 
 
@@ -2474,13 +2726,13 @@ Widget _buildBody() {
 
                           children: [
 
-                            const Text("Hola 👋", style: TextStyle(color: Colors.white70, fontSize: 14)),
+                            Text("Hola 👋", style: TextStyle(color: secondaryTextColor, fontSize: 14)),
 
                             Text(
 
                               userName ?? "Usuario",
 
-                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                              style: TextStyle(color: primaryTextColor, fontSize: 18, fontWeight: FontWeight.bold),
 
                             ),
 
@@ -2522,7 +2774,7 @@ Widget _buildBody() {
 
               /// Área de botones circulares adaptativos
 
-            
+
 
             ],
 
@@ -2532,8 +2784,10 @@ Widget _buildBody() {
 
       ),
 
-    ],
+        ],
 
+      );
+    },
   );
 
 }
@@ -2664,3 +2918,116 @@ Widget _buildCircleButton(
 
 
 
+
+
+/// CustomPainter para patrón minimalista de puntos
+class MinimalDotPattern extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final dotPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.02)
+      ..style = PaintingStyle.fill;
+
+    const double dotRadius = 1.0;
+    const double spacing = 40.0;
+
+    // Patrón de puntos muy sutil
+    for (double x = 0; x < size.width; x += spacing) {
+      for (double y = 0; y < size.height; y += spacing) {
+        canvas.drawCircle(Offset(x, y), dotRadius, dotPaint);
+      }
+    }
+
+    // Líneas horizontales sutiles
+    final linePaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.01)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    for (double y = 100; y < size.height; y += 150) {
+      canvas.drawLine(
+        Offset(0, y),
+        Offset(size.width, y),
+        linePaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+
+
+/// CustomPainter para patrón minimalista con animación de pulsos
+class AnimatedMinimalPattern extends CustomPainter {
+  final double animationValue;
+  final bool isDarkMode;
+
+  AnimatedMinimalPattern({
+    required this.animationValue,
+    required this.isDarkMode,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Opacidad pulsante
+    final pulseAlpha = 0.02 + (animationValue * 0.03);
+
+    // Patrón de puntos sutiles - blanco en modo oscuro, negro en modo claro
+    final dotPaint = Paint()
+      ..color = (isDarkMode ? Colors.white : Colors.black).withValues(alpha: pulseAlpha)
+      ..style = PaintingStyle.fill;
+
+    const double dotRadius = 1.5;
+    const double spacing = 50.0;
+
+    for (double x = 0; x < size.width; x += spacing) {
+      for (double y = 0; y < size.height; y += spacing) {
+        canvas.drawCircle(Offset(x, y), dotRadius, dotPaint);
+      }
+    }
+
+    // Líneas de conexión sutiles que pulsan
+    final linePaint = Paint()
+      ..color = Color(0xFF133E87).withValues(alpha: 0.01 + (animationValue * 0.02))
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    // Líneas diagonales minimalistas
+    final path1 = Path();
+    path1.moveTo(size.width * 0.2, 0);
+    path1.lineTo(size.width, size.height * 0.8);
+    canvas.drawPath(path1, linePaint);
+
+    final path2 = Path();
+    path2.moveTo(0, size.height * 0.3);
+    path2.lineTo(size.width * 0.7, size.height);
+    canvas.drawPath(path2, linePaint);
+
+    // Círculos sutiles con escala pulsante
+    final pulseScale = 0.95 + (animationValue * 0.1);
+    final circlePaint = Paint()
+      ..color = Color(0xFF133E87).withValues(alpha: 0.02 + (animationValue * 0.02))
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+
+    canvas.drawCircle(
+      Offset(size.width * 0.15, size.height * 0.2),
+      100 * pulseScale,
+      circlePaint,
+    );
+
+    canvas.drawCircle(
+      Offset(size.width * 0.85, size.height * 0.7),
+      120 * pulseScale,
+      circlePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant AnimatedMinimalPattern oldDelegate) {
+    return oldDelegate.animationValue != animationValue ||
+           oldDelegate.isDarkMode != isDarkMode;
+  }
+}

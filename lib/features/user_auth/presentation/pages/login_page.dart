@@ -6,6 +6,7 @@ import 'Login/home_page.dart';
 import 'Login/sign_up_page.dart';
 import 'Login/UserProfileForm.dart';
 import 'package:pucpflow/global/common/toast.dart';
+import 'package:pucpflow/LandingPage/VastoriaMainLanding.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -90,10 +91,10 @@ class _LoginPageState extends State<LoginPage> {
           ),
         );
       } else {
-        // Usuario ya existe, redirigir al HomePage
+        // Usuario ya existe, redirigir a la landing de Vastoria
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => HomePage()),
+          MaterialPageRoute(builder: (context) => const VastoriaMainLanding()),
         );
       }
     }
@@ -122,10 +123,10 @@ class _LoginPageState extends State<LoginPage> {
       await prefs.setString("userId", userId);
       await prefs.setString("nombreUsuario", user["full_name"] ?? usuario);
 
-      // 🔁 Redirige a la página principal
+      // 🔁 Redirige a la landing de Vastoria
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => HomePage()),
+        MaterialPageRoute(builder: (_) => const VastoriaMainLanding()),
       );
     } else {
       showToast(message: "❌ Usuario o contraseña incorrectos");
@@ -162,16 +163,16 @@ class _LoginPageState extends State<LoginPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
-                    "PUCP FLOW",
+                    "VASTORIA",
                     style: TextStyle(
                       fontSize: 36,
                       fontWeight: FontWeight.w900,
                       color: Colors.white,
-                      letterSpacing: 2.0,
+                      letterSpacing: 3.0,
                       shadows: [
                         Shadow(
-                          blurRadius: 8.0,
-                          color: Color.fromARGB(66, 187, 132, 183),
+                          blurRadius: 12.0,
+                          color: Color(0xFF133E87),
                           offset: Offset(2, 2),
                         ),
                       ],

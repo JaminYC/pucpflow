@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:pucpflow/Cafillari/screens/home/Cafillarihomepage.dart' show CafillariHomePage;
+import 'package:pucpflow/Cafillari/screens/home/CafillariHomePage.dart' show CafillariHomePage;
 import 'package:video_player/video_player.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Login/home_page.dart'; // HomePage de FLOW
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pucpflow/FlowVitakua/presentationVitakua/pagesVitakua/vitakua_home_page.dart';
+import 'package:pucpflow/VastoriaRutasPeru/presentation/screens/peru_dashboard_screen.dart';
 
 
 class VastoriaHomePage extends StatefulWidget {
@@ -90,19 +91,17 @@ class _VastoriaHomePageState extends State<VastoriaHomePage> {
                     context: context,
                     icon: Icons.auto_graph,
                     title: "FLOW",
-                    description: "Plataforma de gestión de proyectos, ideas y reuniones inteligentes.",
+                    description: "Plataforma de gestion de proyectos, ideas y reuniones inteligentes.",
                     onTap: () {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => HomePage()));
                     },
                   ),
-                  // 🚀 Aquí en el futuro agregaríamos CAFILLARI como otro programa
-                  // debajo del botón de FLOW
                   const SizedBox(height: 30),
                   _buildProgramButton(
                     context: context,
                     icon: Icons.local_cafe,
                     title: "CAFILLARI",
-                    description: "La nueva generación del café peruano: frescura, tecnología y raíces andinas.",
+                    description: "La nueva generacion del cafe peruano: frescura, tecnologia y raices andinas.",
                     onTap: () {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const CafillariHomePage()));
                     },
@@ -112,9 +111,22 @@ class _VastoriaHomePageState extends State<VastoriaHomePage> {
                     context: context,
                     icon: Icons.water_drop,
                     title: "FLOW VITAKUA",
-                    description: "Tecnología inteligente para acceso justo y sostenible al agua.",
+                    description: "Tecnologia inteligente para acceso justo y sostenible al agua.",
                     onTap: () {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const VitakuaHomePage()));
+                    },
+                  ),
+                  const SizedBox(height: 30),
+                  _buildProgramButton(
+                    context: context,
+                    icon: Icons.map_outlined,
+                    title: "VASTORIA RUTAS PERU",
+                    description: "Mapa interactivo por departamentos y rutas destacadas.",
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const PeruDashboardScreen()),
+                      );
                     },
                   ),
 
@@ -217,3 +229,4 @@ class _VastoriaHomePageState extends State<VastoriaHomePage> {
     );
   }
 }
+

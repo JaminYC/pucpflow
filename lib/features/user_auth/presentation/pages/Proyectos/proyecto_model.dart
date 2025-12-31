@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'tarea_model.dart';
@@ -13,6 +13,7 @@ class Proyecto {
   final String id;
   final String nombre;
   final String descripcion;
+  final String vision;
   final DateTime fechaInicio;
   final DateTime? fechaFin;           // 🔹 Nuevo
   final DateTime? fechaCreacion;      // 🔹 Nuevo
@@ -20,6 +21,7 @@ class Proyecto {
   final String propietario;
   final List<String> participantes;
   final String visibilidad;
+  final String categoria;
   final String? imagenUrl;
   final Map<String, List<String>> areas;
   final String estado;                // 🔹 Nuevo: "Activo", "Finalizado", etc.
@@ -42,6 +44,7 @@ class Proyecto {
     required this.id,
     required this.nombre,
     required this.descripcion,
+    this.vision = "",
     required this.fechaInicio,
     this.fechaFin,
     this.fechaCreacion,
@@ -49,6 +52,7 @@ class Proyecto {
     required this.propietario,
     required this.participantes,
     this.visibilidad = "Privado",
+    this.categoria = "Laboral",
     this.imagenUrl,
     this.tareas = const [],
     this.areas = const {},
@@ -69,6 +73,7 @@ class Proyecto {
     String? id,
     String? nombre,
     String? descripcion,
+    String? vision,
     DateTime? fechaInicio,
     DateTime? fechaFin,
     DateTime? fechaCreacion,
@@ -76,6 +81,7 @@ class Proyecto {
     String? propietario,
     List<String>? participantes,
     String? visibilidad,
+    String? categoria,
     String? imagenUrl,
     List<Tarea>? tareas,
     Map<String, List<String>>? areas,
@@ -94,6 +100,7 @@ class Proyecto {
       id: id ?? this.id,
       nombre: nombre ?? this.nombre,
       descripcion: descripcion ?? this.descripcion,
+      vision: vision ?? this.vision,
       fechaInicio: fechaInicio ?? this.fechaInicio,
       fechaFin: fechaFin ?? this.fechaFin,
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
@@ -101,6 +108,7 @@ class Proyecto {
       propietario: propietario ?? this.propietario,
       participantes: participantes ?? this.participantes,
       visibilidad: visibilidad ?? this.visibilidad,
+      categoria: categoria ?? this.categoria,
       imagenUrl: imagenUrl ?? this.imagenUrl,
       tareas: tareas ?? this.tareas,
       areas: areas ?? this.areas,
@@ -122,6 +130,7 @@ Map<String, dynamic> toJson() {
     'id': id,
     'nombre': nombre,
     'descripcion': descripcion,
+    'vision': vision,
     'fechaInicio': fechaInicio,  // ⬅️ sin .toIso8601String()
     'fechaFin': fechaFin,
     'fechaCreacion': fechaCreacion,
@@ -129,6 +138,7 @@ Map<String, dynamic> toJson() {
     'propietario': propietario,
     'participantes': participantes,
     'visibilidad': visibilidad,
+    'categoria': categoria,
     'imagenUrl': imagenUrl,
     'tareas': tareas.map((t) => t.toJson()).toList(),
     'areas': areas,
@@ -152,6 +162,7 @@ factory Proyecto.fromJson(Map<String, dynamic> json) {
     id: json['id'],
     nombre: json['nombre'],
     descripcion: json['descripcion'],
+    vision: json['vision'] ?? "",
     fechaInicio: _parseFecha(json['fechaInicio'])!,
     fechaFin: _parseFecha(json['fechaFin']),
     fechaCreacion: _parseFecha(json['fechaCreacion']),
@@ -159,6 +170,7 @@ factory Proyecto.fromJson(Map<String, dynamic> json) {
     propietario: json['propietario'],
     participantes: List<String>.from(json['participantes'] ?? []),
     visibilidad: json['visibilidad'] ?? "Privado",
+    categoria: json['categoria'] ?? "Laboral",
     imagenUrl: json['imagenUrl'],
     tareas: (json['tareas'] as List<dynamic>?)?.map((t) => Tarea.fromJson(t)).toList() ?? [],
     areas: (json['areas'] as Map<String, dynamic>?)?.map(

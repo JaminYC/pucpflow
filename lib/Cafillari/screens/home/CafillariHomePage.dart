@@ -476,18 +476,33 @@ class _CafillariHomePageState extends State<CafillariHomePage>
     final percentage = ((value - minVal) / (maxVal - minVal)).clamp(0.0, 1.0);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: CafillariTheme.cardGradient,
-        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            CafillariTheme.backgroundCard,
+            CafillariTheme.backgroundCard.withValues(alpha: 0.8),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isAlert ? CafillariTheme.danger : color.withOpacity(0.3),
-          width: isAlert ? 2 : 1,
+          color: isAlert
+            ? CafillariTheme.danger.withValues(alpha: 0.5)
+            : color.withValues(alpha: 0.3),
+          width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: (isAlert ? CafillariTheme.danger : color).withOpacity(0.2),
-            blurRadius: 12,
+            color: (isAlert ? CafillariTheme.danger : color).withValues(alpha: 0.15),
+            blurRadius: 20,
+            spreadRadius: 2,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 15,
             offset: const Offset(0, 4),
           ),
         ],
@@ -499,31 +514,49 @@ class _CafillariHomePageState extends State<CafillariHomePage>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
+                  gradient: LinearGradient(
+                    colors: [
+                      color.withValues(alpha: 0.3),
+                      color.withValues(alpha: 0.1),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: color.withValues(alpha: 0.4),
+                    width: 1,
+                  ),
                 ),
-                child: Icon(icon, color: color, size: 20),
+                child: Icon(icon, color: color, size: 24),
               ),
               if (isAlert)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: CafillariTheme.danger.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
+                    gradient: LinearGradient(
+                      colors: [
+                        CafillariTheme.danger.withValues(alpha: 0.3),
+                        CafillariTheme.danger.withValues(alpha: 0.2),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: CafillariTheme.danger.withValues(alpha: 0.5),
+                    ),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.warning, color: CafillariTheme.danger, size: 14),
+                      Icon(Icons.warning_rounded, color: CafillariTheme.danger, size: 16),
                       SizedBox(width: 4),
                       Text(
                         'ALERTA',
                         style: TextStyle(
                           color: CafillariTheme.danger,
-                          fontSize: 10,
+                          fontSize: 11,
                           fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
                         ),
                       ),
                     ],
@@ -531,63 +564,115 @@ class _CafillariHomePageState extends State<CafillariHomePage>
                 ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Text(
-            label,
+            label.toUpperCase(),
             style: TextStyle(
-              fontSize: 12,
-              color: Colors.white.withOpacity(0.7),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.6),
+              letterSpacing: 1.2,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
                 value.toStringAsFixed(1),
                 style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 40,
+                  fontWeight: FontWeight.w700,
                   color: isAlert ? CafillariTheme.danger : Colors.white,
+                  height: 1.0,
+                  letterSpacing: -1,
                 ),
               ),
-              const SizedBox(width: 4),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Text(
-                  unit,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.6),
-                  ),
+              const SizedBox(width: 6),
+              Text(
+                unit,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: color.withValues(alpha: 0.8),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          // Barra de progreso
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: percentage,
-              backgroundColor: Colors.white.withOpacity(0.1),
-              valueColor: AlwaysStoppedAnimation(
-                isAlert ? CafillariTheme.danger : color,
-              ),
-              minHeight: 6,
+          const SizedBox(height: 16),
+          // Barra de progreso elegante
+          Container(
+            height: 8,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Stack(
+              children: [
+                FractionallySizedBox(
+                  widthFactor: percentage,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: isAlert
+                          ? [
+                              CafillariTheme.danger,
+                              CafillariTheme.danger.withValues(alpha: 0.7),
+                            ]
+                          : [
+                              color,
+                              color.withValues(alpha: 0.7),
+                            ],
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (isAlert ? CafillariTheme.danger : color).withValues(alpha: 0.5),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 '${minVal.toInt()}$unit',
-                style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.5)),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${(percentage * 100).toInt()}%',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
               Text(
                 '${maxVal.toInt()}$unit',
-                style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.5)),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
@@ -597,111 +682,291 @@ class _CafillariHomePageState extends State<CafillariHomePage>
   }
 
   Widget _buildTemperatureChart() {
+    const double tempOptima = 35.0; // Temperatura óptima de secado
+    final double valorActual = _tempHistory.isNotEmpty ? _tempHistory.last.y : 0;
+
     return Container(
-      height: 200,
+      height: 220,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: CafillariTheme.cardGradient,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: LineChart(
-        LineChartData(
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            horizontalInterval: 5,
-            getDrawingHorizontalLine: (value) => FlLine(
-              color: Colors.white.withOpacity(0.1),
-              strokeWidth: 1,
-            ),
-          ),
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 35,
-                getTitlesWidget: (value, meta) => Text(
-                  '${value.toInt()}°',
-                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10),
+      child: Column(
+        children: [
+          // Valor actual prominente
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: CafillariTheme.temperature,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Actual: ${valorActual.toStringAsFixed(1)}°C',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: CafillariTheme.success.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: CafillariTheme.success.withValues(alpha: 0.5)),
+                ),
+                child: Text(
+                  'Óptimo: ${tempOptima.toStringAsFixed(0)}°C',
+                  style: TextStyle(
+                    color: CafillariTheme.success,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
                 ),
               ),
-            ),
-            bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            ],
           ),
-          borderData: FlBorderData(show: false),
-          lineBarsData: [
-            LineChartBarData(
-              spots: _tempHistory,
-              isCurved: true,
-              color: CafillariTheme.temperature,
-              barWidth: 3,
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(
-                show: true,
-                color: CafillariTheme.temperature.withOpacity(0.2),
+          const SizedBox(height: 12),
+          // Gráfico
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: 5,
+                  getDrawingHorizontalLine: (value) => FlLine(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    strokeWidth: 1,
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 40,
+                      interval: 5,
+                      getTitlesWidget: (value, meta) => Text(
+                        '${value.toInt()}°C',
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 10),
+                      ),
+                    ),
+                  ),
+                  bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+                borderData: FlBorderData(show: false),
+                extraLinesData: ExtraLinesData(
+                  horizontalLines: [
+                    // Línea de valor óptimo
+                    HorizontalLine(
+                      y: tempOptima,
+                      color: CafillariTheme.success,
+                      strokeWidth: 2,
+                      dashArray: [8, 4],
+                      label: HorizontalLineLabel(
+                        show: true,
+                        alignment: Alignment.topRight,
+                        style: TextStyle(
+                          color: CafillariTheme.success,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        labelResolver: (line) => 'ÓPTIMO',
+                      ),
+                    ),
+                  ],
+                ),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: _tempHistory,
+                    isCurved: true,
+                    color: CafillariTheme.temperature,
+                    barWidth: 3,
+                    dotData: FlDotData(
+                      show: true,
+                      getDotPainter: (spot, percent, barData, index) {
+                        // Solo mostrar punto en el último valor
+                        if (index == _tempHistory.length - 1) {
+                          return FlDotCirclePainter(
+                            radius: 6,
+                            color: CafillariTheme.temperature,
+                            strokeWidth: 2,
+                            strokeColor: Colors.white,
+                          );
+                        }
+                        return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+                      },
+                    ),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: CafillariTheme.temperature.withValues(alpha: 0.15),
+                    ),
+                  ),
+                ],
+                minY: 20,
+                maxY: 50,
               ),
             ),
-          ],
-          minY: 20,
-          maxY: 45,
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildHumidityChart() {
+    const double humedadOptima = 60.0; // Humedad óptima para secado
+    final double valorActual = _humHistory.isNotEmpty ? _humHistory.last.y : 0;
+
     return Container(
-      height: 200,
+      height: 220,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: CafillariTheme.cardGradient,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: LineChart(
-        LineChartData(
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            horizontalInterval: 10,
-            getDrawingHorizontalLine: (value) => FlLine(
-              color: Colors.white.withOpacity(0.1),
-              strokeWidth: 1,
-            ),
-          ),
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 35,
-                getTitlesWidget: (value, meta) => Text(
-                  '${value.toInt()}%',
-                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10),
+      child: Column(
+        children: [
+          // Valor actual prominente
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: CafillariTheme.humidity,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Actual: ${valorActual.toStringAsFixed(1)}%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: CafillariTheme.success.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: CafillariTheme.success.withValues(alpha: 0.5)),
+                ),
+                child: Text(
+                  'Óptimo: ${humedadOptima.toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    color: CafillariTheme.success,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
                 ),
               ),
-            ),
-            bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            ],
           ),
-          borderData: FlBorderData(show: false),
-          lineBarsData: [
-            LineChartBarData(
-              spots: _humHistory,
-              isCurved: true,
-              color: CafillariTheme.humidity,
-              barWidth: 3,
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(
-                show: true,
-                color: CafillariTheme.humidity.withOpacity(0.2),
+          const SizedBox(height: 12),
+          // Gráfico
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: 10,
+                  getDrawingHorizontalLine: (value) => FlLine(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    strokeWidth: 1,
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 40,
+                      interval: 10,
+                      getTitlesWidget: (value, meta) => Text(
+                        '${value.toInt()}%',
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 10),
+                      ),
+                    ),
+                  ),
+                  bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+                borderData: FlBorderData(show: false),
+                extraLinesData: ExtraLinesData(
+                  horizontalLines: [
+                    // Línea de valor óptimo
+                    HorizontalLine(
+                      y: humedadOptima,
+                      color: CafillariTheme.success,
+                      strokeWidth: 2,
+                      dashArray: [8, 4],
+                      label: HorizontalLineLabel(
+                        show: true,
+                        alignment: Alignment.topRight,
+                        style: TextStyle(
+                          color: CafillariTheme.success,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        labelResolver: (line) => 'ÓPTIMO',
+                      ),
+                    ),
+                  ],
+                ),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: _humHistory,
+                    isCurved: true,
+                    color: CafillariTheme.humidity,
+                    barWidth: 3,
+                    dotData: FlDotData(
+                      show: true,
+                      getDotPainter: (spot, percent, barData, index) {
+                        // Solo mostrar punto en el último valor
+                        if (index == _humHistory.length - 1) {
+                          return FlDotCirclePainter(
+                            radius: 6,
+                            color: CafillariTheme.humidity,
+                            strokeWidth: 2,
+                            strokeColor: Colors.white,
+                          );
+                        }
+                        return FlDotCirclePainter(radius: 0, color: Colors.transparent);
+                      },
+                    ),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: CafillariTheme.humidity.withValues(alpha: 0.15),
+                    ),
+                  ),
+                ],
+                minY: 30,
+                maxY: 100,
               ),
             ),
-          ],
-          minY: 40,
-          maxY: 95,
-        ),
+          ),
+        ],
       ),
     );
   }

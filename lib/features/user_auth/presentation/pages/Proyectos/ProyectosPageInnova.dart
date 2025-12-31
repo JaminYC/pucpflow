@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+﻿import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,7 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'dart:io';
 import 'proyecto_model.dart';
-import 'ProyectoDetallePage.dart';
+import 'ProyectoDetalleKanbanPage.dart';
+import 'tarea_model.dart';
 import 'package:flutter/foundation.dart';
 
 import 'dart:typed_data';
@@ -27,6 +28,7 @@ class _ProyectosPageInnovaState extends State<ProyectosPageInnova>  with Automat
   final FirebaseStorage _storage = FirebaseStorage.instance;
   
   String filtroVisibilidad = "Todos";
+  String filtroCategoria = "Todas";
   late VideoPlayerController _videoController;
   Map<String, String> nombresPropietarios = {};
   @override
@@ -68,8 +70,9 @@ Stream<List<Proyecto>> obtenerProyectos() async* {
       .snapshots()
       .map((snapshot) {
     return snapshot.docs.map((doc) => Proyecto.fromJson(doc.data())).where((proyecto) {
-      if (filtroVisibilidad == "Todos") return true;
-      return proyecto.visibilidad == filtroVisibilidad;
+      final coincideVisibilidad = filtroVisibilidad == "Todos" || proyecto.visibilidad == filtroVisibilidad;
+      final coincideCategoria = filtroCategoria == "Todas" || proyecto.categoria == filtroCategoria;
+      return coincideVisibilidad && coincideCategoria;
     }).toList();
   });
 }
@@ -153,7 +156,7 @@ Future<String?> _subirImagenPlataforma(XFile archivo) async {
 
 
 
-Future<void> _crearProyecto(String nombre, String visibilidad, XFile? imagenFile) async {
+Future<void> _crearProyecto(String nombre, String visibilidad, String categoria, String vision, XFile? imagenFile) async {
   final prefs = await SharedPreferences.getInstance();
   final uid = FirebaseAuth.instance.currentUser?.uid ?? prefs.getString("uid_empresarial");
   if (uid == null) return;
@@ -174,6 +177,8 @@ Future<void> _crearProyecto(String nombre, String visibilidad, XFile? imagenFile
     propietario: uid,
     participantes: [uid],
     visibilidad: visibilidad,
+    categoria: categoria,
+    vision: vision,
     imagenUrl: urlImagen,
   );
 
@@ -189,7 +194,9 @@ String _imagenPorDefecto() {
 
 void _mostrarDialogoNuevoProyecto() {
   String nombreProyecto = "";
+  String visionProyecto = "";
   String visibilidad = "Privado";
+  String categoria = "Laboral";
   XFile? imagenSeleccionada;
 
   showDialog(
@@ -207,10 +214,20 @@ void _mostrarDialogoNuevoProyecto() {
                     decoration: const InputDecoration(hintText: "Nombre del proyecto"),
                     onChanged: (value) => nombreProyecto = value,
                   ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: const InputDecoration(hintText: "Vision del proyecto (opcional)"),
+                    onChanged: (value) => visionProyecto = value,
+                  ),
                   DropdownButton<String>(
                     value: visibilidad,
                     onChanged: (value) => setStateDialog(() => visibilidad = value!),
                     items: ["Privado", "Publico"].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                  ),
+                  DropdownButton<String>(
+                    value: categoria,
+                    onChanged: (value) => setStateDialog(() => categoria = value!),
+                    items: ["Laboral", "Personal"].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
                   ),
                   const SizedBox(height: 10),
                   ElevatedButton.icon(
@@ -242,7 +259,7 @@ void _mostrarDialogoNuevoProyecto() {
               ElevatedButton(
                 onPressed: () async {
                   if (nombreProyecto.isNotEmpty) {
-                    await _crearProyecto(nombreProyecto, visibilidad, imagenSeleccionada);
+                    await _crearProyecto(nombreProyecto, visibilidad, categoria, visionProyecto, imagenSeleccionada);
                     Navigator.pop(context);
                   } else {
                     print("⚠️ Falta nombre o imagen");
@@ -265,7 +282,9 @@ void _mostrarDialogoNuevoProyecto() {
 void _editarProyecto(Proyecto proyecto) {
   final nombreController = TextEditingController(text: proyecto.nombre);
   final descripcionController = TextEditingController(text: proyecto.descripcion);
+  final visionController = TextEditingController(text: proyecto.vision);
   String visibilidad = proyecto.visibilidad;
+  String categoria = proyecto.categoria;
   XFile? imagenSeleccionada;
 
   showDialog(
@@ -287,10 +306,21 @@ void _editarProyecto(Proyecto proyecto) {
                     decoration: const InputDecoration(labelText: "Descripción"),
                     controller: descripcionController,
                   ),
+                  TextField(
+                    decoration: const InputDecoration(labelText: "Vision"),
+                    controller: visionController,
+                  ),
                   DropdownButton<String>(
                     value: visibilidad,
                     onChanged: (value) => setStateDialog(() => visibilidad = value!),
                     items: ["Privado", "Publico"]
+                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
+                  ),
+                  DropdownButton<String>(
+                    value: categoria,
+                    onChanged: (value) => setStateDialog(() => categoria = value!),
+                    items: ["Laboral", "Personal"]
                         .map((v) => DropdownMenuItem(value: v, child: Text(v)))
                         .toList(),
                   ),
@@ -336,7 +366,9 @@ void _editarProyecto(Proyecto proyecto) {
                   await FirebaseFirestore.instance.collection("proyectos").doc(proyecto.id).update({
                     "nombre": nombreController.text,
                     "descripcion": descripcionController.text,
+                    "vision": visionController.text,
                     "visibilidad": visibilidad,
+                    "categoria": categoria,
                     "imagenUrl": imagenUrl,
                     "propietario": uid,
                     "participantes": FieldValue.arrayUnion([uid]),
@@ -365,6 +397,12 @@ ImageProvider _obtenerImagenProyecto(String? url) {
   }
 }
 
+double _calcularProgreso(List<Tarea> tareas) {
+  if (tareas.isEmpty) return 0.0;
+  final completadas = tareas.where((t) => t.completado).length;
+  return completadas / tareas.length;
+}
+
 @override
 Widget build(BuildContext context) {
   super.build(context);
@@ -382,6 +420,15 @@ Widget build(BuildContext context) {
           value: filtroVisibilidad,
           onChanged: (value) => setState(() => filtroVisibilidad = value!),
           items: ["Todos", "Publico", "Privado"]
+              .map((f) => DropdownMenuItem(
+                  value: f, child: Text(f, style: const TextStyle(color: Colors.white))))
+              .toList(),
+        ),
+        DropdownButton<String>(
+          dropdownColor: Colors.black,
+          value: filtroCategoria,
+          onChanged: (value) => setState(() => filtroCategoria = value!),
+          items: ["Todas", "Laboral", "Personal"]
               .map((f) => DropdownMenuItem(
                   value: f, child: Text(f, style: const TextStyle(color: Colors.white))))
               .toList(),
@@ -438,6 +485,8 @@ Widget build(BuildContext context) {
                     final imagenUrl = (proyecto.imagenUrl != null && proyecto.imagenUrl!.isNotEmpty)
                         ? proyecto.imagenUrl!
                         : _imagenPorDefecto();
+                    final progreso = _calcularProgreso(proyecto.tareas);
+                    final porcentaje = (progreso * 100).round();
 
                     return Material(
                       color: Colors.transparent,
@@ -450,7 +499,7 @@ Widget build(BuildContext context) {
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => ProyectoDetallePage(proyectoId: proyecto.id),
+                              builder: (_) => ProyectoDetalleKanbanPage(proyectoId: proyecto.id),
                             ),
                           );
                           _videoController.play();
@@ -505,7 +554,7 @@ Widget build(BuildContext context) {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           Text(
-                                            "${proyecto.visibilidad} · ${nombresPropietarios[proyecto.propietario] ?? 'Usuario'}",
+                                            "${proyecto.categoria} - ${proyecto.visibilidad} - ${nombresPropietarios[proyecto.propietario] ?? 'Usuario'}",
                                             style: const TextStyle(
                                               color: Colors.white70,
                                               fontSize: 11,
@@ -522,6 +571,25 @@ Widget build(BuildContext context) {
                                             style: const TextStyle(
                                               color: Colors.white70,
                                               fontSize: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            "Avance: $porcentaje%",
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 12,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 2, bottom: 4),
+                                            child: LinearProgressIndicator(
+                                              value: progreso,
+                                              backgroundColor: Colors.white24,
+                                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+                                              minHeight: 4,
                                             ),
                                           ),
                                           if (isOwner)

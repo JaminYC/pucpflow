@@ -32,9 +32,17 @@ class ProjectAIService {
         ),
       );
       final result = await callable.call(payload);
-      final data = result.data;
+
+      // Convertir explícitamente a Map<String, dynamic>
+      final data = Map<String, dynamic>.from(result.data as Map);
+
       if (data['error'] != null) throw Exception(data['error']);
-      return data['blueprint'];
+
+      // Convertir el blueprint también
+      if (data['blueprint'] != null) {
+        return Map<String, dynamic>.from(data['blueprint'] as Map);
+      }
+      return null;
     } catch (e) {
       print('Error generando blueprint contextual: $e');
       return null;
@@ -68,9 +76,17 @@ class ProjectAIService {
         ),
       );
       final result = await callable.call(payload);
-      final data = result.data;
+
+      // Convertir explícitamente a Map<String, dynamic>
+      final data = Map<String, dynamic>.from(result.data as Map);
+
       if (data['error'] != null) throw Exception(data['error']);
-      return data['workflow'];
+
+      // Convertir el workflow también
+      if (data['workflow'] != null) {
+        return Map<String, dynamic>.from(data['workflow'] as Map);
+      }
+      return null;
     } catch (e) {
       print('Error generando workflow contextual: $e');
       return null;

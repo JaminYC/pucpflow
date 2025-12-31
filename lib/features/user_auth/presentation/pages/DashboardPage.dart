@@ -1,5 +1,7 @@
 
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({Key? key}) : super(key: key);
@@ -10,6 +12,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   String _selectedView = 'stats';
+  bool _loadingTasks = true;
 
   final List<_WellnessMetric> _metrics = const [
     _WellnessMetric(
@@ -50,6 +53,14 @@ class _DashboardPageState extends State<DashboardPage> {
     _WellnessEvent(day: 'Viernes', highlights: ['Running 5K', 'Retro con squad', 'Cena larga con amigos']),
   ];
 
+  List<_TaskCompletion> _taskCompletions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCompletedTasks();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -75,7 +86,11 @@ class _DashboardPageState extends State<DashboardPage> {
               _buildHeroCard(theme),
               const SizedBox(height: 24),
               _buildQuickStats(),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
+              _buildSectionHeader('Progreso de tareas', 'Dias y horas en que cierras pendientes'),
+              const SizedBox(height: 12),
+              _buildTaskProgress(),
+              const SizedBox(height: 28),
               _buildSectionHeader('Panel de bienestar', 'Visualiza la tendencia de tus hábitos'),
               const SizedBox(height: 12),
               _buildSegmentedControl(),
@@ -238,6 +253,263 @@ class _DashboardPageState extends State<DashboardPage> {
         },
       ),
     );
+  }
+
+  Widget _buildTaskProgress() {
+    final activeDays = _taskCompletions.map((e) => e.day).toSet().length;
+    final totalWeek = _taskCompletions.length;
+    final lateCount = _taskCompletions.where((e) => e.late).length;
+    final bestHour = _bestHourLabel();
+
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0E1B2D),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white24.withOpacity(0.12)),
+          ),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _taskStatChip('Dias activos', '$activeDays/7', Icons.today, Colors.cyanAccent),
+              _taskStatChip('Cerradas semana', '$totalWeek', Icons.check_circle, Colors.greenAccent),
+              _taskStatChip('Hora pico', bestHour, Icons.access_time, Colors.amberAccent),
+              _taskStatChip('Marcadas tarde', '$lateCount', Icons.flag, Colors.pinkAccent),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _aiReadyCard(),
+        const SizedBox(height: 12),
+        _buildTaskTimeline(),
+      ],
+    );
+  }
+
+  Widget _aiReadyCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.auto_awesome, color: Colors.cyanAccent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text('Listo para analisis IA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                SizedBox(height: 4),
+                Text('Historial de cierre con hora y dia para detectar patrones y sugerir bloques de enfoque.', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskTimeline() {
+    if (_loadingTasks) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_taskCompletions.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0E1B2D),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: const Text(
+          'No hay tareas completadas aún.',
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0E1B2D),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Column(
+        children: _taskCompletions.map((e) => _taskTile(e)).toList(),
+      ),
+    );
+  }
+
+  Widget _taskTile(_TaskCompletion item) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              children: [
+                Text(item.time, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 2),
+                Text(item.day, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                Text(item.project, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: item.late ? Colors.pinkAccent.withOpacity(0.18) : Colors.greenAccent.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(item.late ? 'Tarde' : 'A tiempo', style: const TextStyle(color: Colors.white, fontSize: 11)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _taskStatChip(String title, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+              Text(title, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _bestHourLabel() {
+    final hourCounts = <int, int>{};
+    for (final item in _taskCompletions) {
+      final hour = int.tryParse(item.time.split(':').first) ?? 0;
+      hourCounts[hour] = (hourCounts[hour] ?? 0) + 1;
+    }
+    if (hourCounts.isEmpty) return '--';
+    final best = hourCounts.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+    final label = best.toString().padLeft(2, '0');
+    return '$label:00';
+  }
+
+  Future<void> _loadCompletedTasks() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      setState(() {
+        _taskCompletions = [];
+        _loadingTasks = false;
+      });
+      return;
+    }
+
+    try {
+      final query = await FirebaseFirestore.instance.collection('proyectos').get();
+      final List<_TaskCompletion> collected = [];
+
+      for (final doc in query.docs) {
+        final data = doc.data();
+        final tareas = data['tareas'] as List<dynamic>? ?? [];
+        final projectName = (data['nombre'] ?? data['titulo'] ?? 'Proyecto').toString();
+
+        for (final tareaJson in tareas) {
+          if (tareaJson is Map<String, dynamic>) {
+            final responsables = List<String>.from(tareaJson['responsables'] ?? []);
+            final completado = tareaJson['completado'] == true;
+            if (!completado || !responsables.contains(uid)) continue;
+
+            final titulo = (tareaJson['titulo'] ?? 'Sin titulo').toString();
+            final fechaRaw = tareaJson['fecha'];
+            DateTime? fecha;
+            if (fechaRaw is Timestamp) {
+              fecha = fechaRaw.toDate();
+            } else if (fechaRaw is String) {
+              fecha = DateTime.tryParse(fechaRaw);
+            }
+
+            final day = fecha != null ? _formatDay(fecha) : '--';
+            final time = fecha != null ? _formatHour(fecha) : '--';
+            final late = fecha != null ? DateTime.now().isAfter(fecha) : false;
+
+            collected.add(_TaskCompletion(
+              day: day,
+              time: time,
+              title: titulo,
+              project: projectName,
+              late: late,
+            ));
+          }
+        }
+      }
+
+      collected.sort((a, b) => a.day.compareTo(b.day));
+
+      setState(() {
+        _taskCompletions = collected;
+        _loadingTasks = false;
+      });
+    } catch (e) {
+      setState(() {
+        _taskCompletions = [];
+        _loadingTasks = false;
+      });
+    }
+  }
+
+  String _formatDay(DateTime date) {
+    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    return days[date.weekday % 7];
+  }
+
+  String _formatHour(DateTime date) {
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 
   Widget _buildSectionHeader(String title, String subtitle) {
@@ -420,6 +692,16 @@ class _DashboardPageState extends State<DashboardPage> {
           .toList(),
     );
   }
+}
+
+class _TaskCompletion {
+  final String day;
+  final String time;
+  final String title;
+  final String project;
+  final bool late;
+
+  const _TaskCompletion({required this.day, required this.time, required this.title, required this.project, required this.late});
 }
 
 class _WellnessMetric {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'pmi_ia_service_web.dart';
-import 'ProyectoDetallePage.dart';
+import 'ProyectoDetalleKanbanPage.dart';
 import 'tarea_model.dart';
 
 /// Página para crear proyectos PMI usando IA
@@ -16,7 +16,9 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
   final _formKey = GlobalKey<FormState>();
   final _nombreController = TextEditingController();
   final _descripcionController = TextEditingController();
+  final _visionController = TextEditingController();
   final _pmiIAService = PMIIAServiceWeb();
+  String _categoria = "Laboral";
 
   DateTime? _fechaInicio;
   DateTime? _fechaFin;
@@ -30,6 +32,7 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
   void dispose() {
     _nombreController.dispose();
     _descripcionController.dispose();
+    _visionController.dispose();
     super.dispose();
   }
 
@@ -302,6 +305,8 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
         objetivo: proyectoIA['objetivo'],
         alcance: proyectoIA['alcance'],
         presupuesto: proyectoIA['presupuestoEstimado']?.toDouble(),
+        categoria: _categoria,
+        vision: _visionController.text.trim(),
       );
 
       if (proyectoId == null) {
@@ -333,7 +338,7 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
         // Navegar al proyecto creado
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (context) => ProyectoDetallePage(proyectoId: proyectoId),
+            builder: (context) => ProyectoDetalleKanbanPage(proyectoId: proyectoId),
           ),
         );
       } else if (mounted) {
@@ -485,6 +490,69 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
                   borderSide: BorderSide.none,
                 ),
                 prefixIcon: const Icon(Icons.description, color: Colors.blue),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Categoria
+            const Text(
+              'Categoria',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: _categoria,
+              dropdownColor: Colors.grey.shade900,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.grey.shade900,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                prefixIcon: const Icon(Icons.category, color: Colors.blue),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'Laboral', child: Text('Laboral')),
+                DropdownMenuItem(value: 'Personal', child: Text('Personal')),
+              ],
+              onChanged: (value) {
+                setState(() => _categoria = value ?? 'Laboral');
+              },
+            ),
+
+            const SizedBox(height: 24),
+
+            // Vision
+            const Text(
+              'Vision del Proyecto (opcional)',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _visionController,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 2,
+              decoration: InputDecoration(
+                hintText: 'Ej: Transformar el proceso en 6 meses...',
+                hintStyle: const TextStyle(color: Colors.white38),
+                filled: true,
+                fillColor: Colors.grey.shade900,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                prefixIcon: const Icon(Icons.visibility, color: Colors.blue),
               ),
             ),
 

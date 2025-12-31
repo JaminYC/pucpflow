@@ -28,7 +28,7 @@ import 'package:pucpflow/features/user_auth/Usuario/UserModel.dart';
 
 import 'package:pucpflow/features/user_auth/firebase_auth_implementation/firebase_auth_services.dart';
 import 'package:pucpflow/services/global_overlay_service.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/pomodoro/PomodoroCompactWidget.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/pomodoro/PomodoroFloatingButton.dart';
 
 import 'package:pucpflow/features/user_auth/presentation/pages/AsistenteIA/AsistentePageNew.dart';
 
@@ -82,7 +82,7 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/categor
 
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectosPage.dart';
 
-
+import 'package:pucpflow/features/user_auth/presentation/pages/Briefing/briefing_diario_page.dart';
 
 import '../dashboard.dart';
 
@@ -197,7 +197,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
     _cargarTareasUsuario();
 
-    _sincronizarTareasConCalendario();
+    // No sincronizar automáticamente - solo cuando el usuario lo solicite
+    // _sincronizarTareasConCalendario();
 
     _escucharCambiosEnTareas();
 
@@ -1073,7 +1074,7 @@ Widget _buildMainScaffold(BuildContext context){
 
                   context,
 
-                  MaterialPageRoute(builder: (context) => AsistentePageNew()),
+                  MaterialPageRoute(builder: (context) => const AsistentePageNew()),
 
                 );
 
@@ -1091,48 +1092,11 @@ Widget _buildMainScaffold(BuildContext context){
 
 
 
-        Positioned(
-
+        // 🍅 Botón flotante de Pomodoro con timer integrado
+        const Positioned(
           right: 16,
-
           bottom: 20,
-
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [Color(0xFFE74C3C), Color(0xFFC0392B)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Color(0xFFE74C3C).withValues(alpha: 0.3),
-                  blurRadius: 15,
-                  offset: Offset(0, 5),
-                ),
-              ],
-            ),
-            child: FloatingActionButton(
-
-              heroTag: "pomodoro",
-
-              onPressed: () {
-                // Navegar a la página de Pomodoro (comportamiento original)
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const PomodoroPage(),
-                  ),
-                );
-              },
-
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-
-              child: const Icon(Icons.timer, color: Colors.white),
-
-            ),
-          ),
-
+          child: PomodoroFloatingButton(),
         ),
 
       ],
@@ -1352,7 +1316,7 @@ Widget _buildDashboard() {
 
       ),
 
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isMobile ? 12 : 16),
 
       child: Column(
 
@@ -1366,12 +1330,19 @@ Widget _buildDashboard() {
 
                 children: [
 
-                  Text(
+                  Flexible(
+                    child: Text(
 
-                    "Resumen de Tareas",
+                      "Resumen de Tareas",
 
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textColor),
+                      style: TextStyle(
+                        fontSize: isMobile ? 13 : 15,
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
+                      ),
+                      overflow: TextOverflow.ellipsis,
 
+                    ),
                   ),
 
                   ElevatedButton.icon(
@@ -1380,11 +1351,14 @@ Widget _buildDashboard() {
 
                       backgroundColor: ThemeProvider.accentBlue,
 
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isMobile ? 10 : 14,
+                        vertical: isMobile ? 8 : 10,
+                      ),
 
                       shape: RoundedRectangleBorder(
 
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(isMobile ? 10 : 12),
 
                         side: BorderSide(
                           color: themeProvider.isDarkMode
@@ -1411,9 +1385,19 @@ Widget _buildDashboard() {
 
                     },
 
-                    icon: const Icon(Icons.calendar_month, color: Colors.white, size: 18),
+                    icon: Icon(
+                      Icons.calendar_month,
+                      color: Colors.white,
+                      size: isMobile ? 16 : 18,
+                    ),
 
-                    label: const Text("Calendario", style: TextStyle(color: Colors.white, fontSize: 13)),
+                    label: Text(
+                      "Calendario",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: isMobile ? 11 : 13,
+                      ),
+                    ),
 
                   ),
 
@@ -1421,21 +1405,27 @@ Widget _buildDashboard() {
 
               ),
 
-              const SizedBox(height: 10),
+              SizedBox(height: isMobile ? 8 : 10),
               Row(
                 children: [
                   Text(
                     "Categoria:",
-                    style: TextStyle(color: secondaryTextColor, fontSize: 12),
+                    style: TextStyle(
+                      color: secondaryTextColor,
+                      fontSize: isMobile ? 11 : 12,
+                    ),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: isMobile ? 6 : 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isMobile ? 8 : 10,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: themeProvider.isDarkMode
                         ? Colors.white.withValues(alpha: 0.05)
                         : Colors.black.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(isMobile ? 8 : 10),
                       border: Border.all(
                         color: themeProvider.isDarkMode
                           ? Colors.white.withValues(alpha: 0.2)
@@ -1447,7 +1437,10 @@ Widget _buildDashboard() {
                         value: _filtroCategoriaTareas,
                         dropdownColor: themeProvider.isDarkMode ? ThemeProvider.darkCard : Colors.white,
                         iconEnabledColor: textColor,
-                        style: TextStyle(color: textColor, fontSize: 12),
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: isMobile ? 11 : 12,
+                        ),
                         onChanged: (value) {
                           setState(() => _filtroCategoriaTareas = value ?? "Todas");
                         },
@@ -1975,6 +1968,7 @@ Widget _buildTareaCard(
   VoidCallback? onPrimaryAction,
 }) {
   final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+  final isMobile = MediaQuery.of(context).size.width < 600;
   final bool completada = tarea.completado;
   final Color statusColor = completada ? const Color(0xFF34C759) : const Color(0xFF2D9BF0);
   final Color accent = esLibre ? const Color(0xFF5D5FEF) : statusColor;
@@ -1992,10 +1986,13 @@ Widget _buildTareaCard(
   final String actionLabel = esLibre ? "Tomar tarea" : (completada ? "Completada" : "Marcar completada");
 
   return Container(
-    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-    padding: const EdgeInsets.all(18),
+    margin: EdgeInsets.symmetric(
+      horizontal: isMobile ? 2 : 8,
+      vertical: isMobile ? 4 : 8,
+    ),
+    padding: EdgeInsets.all(isMobile ? 8 : 18),
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(isMobile ? 12 : 22),
       gradient: LinearGradient(
         colors: themeProvider.isDarkMode
           ? [const Color(0xFF101524), const Color(0xFF111C32)]
@@ -2006,9 +2003,9 @@ Widget _buildTareaCard(
       boxShadow: [
         BoxShadow(
           color: Colors.black.withValues(alpha: themeProvider.isDarkMode ? 0.35 : 0.12),
-          blurRadius: 15,
-          spreadRadius: 1,
-          offset: const Offset(0, 5),
+          blurRadius: isMobile ? 10 : 15,
+          spreadRadius: isMobile ? 0 : 1,
+          offset: Offset(0, isMobile ? 3 : 5),
         ),
       ],
       border: Border.all(
@@ -2021,18 +2018,20 @@ Widget _buildTareaCard(
     child: Container(
       decoration: BoxDecoration(
         border: Border(
-          left: BorderSide(color: categoriaColor, width: 4),
+          left: BorderSide(color: categoriaColor, width: isMobile ? 3 : 4),
         ),
       ),
-      padding: const EdgeInsets.only(left: 12),
+      padding: EdgeInsets.only(left: isMobile ? 8 : 12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildProjectImage(context, imagenProyecto, proyecto),
-            const SizedBox(width: 16),
+            if (!isMobile)
+              _buildProjectImage(context, imagenProyecto, proyecto),
+            if (!isMobile)
+              SizedBox(width: isMobile ? 10 : 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2046,56 +2045,88 @@ Widget _buildTareaCard(
                           children: [
                             Text(
                               tarea.titulo,
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: themeProvider.isDarkMode ? Colors.white : Color(0xFF1A1A1A)),
+                              style: TextStyle(
+                                fontSize: isMobile ? 14 : 18,
+                                fontWeight: FontWeight.w700,
+                                color: themeProvider.isDarkMode ? Colors.white : Color(0xFF1A1A1A),
+                              ),
+                              maxLines: isMobile ? 1 : 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 4),
+                            SizedBox(height: isMobile ? 3 : 4),
                             Row(
                               children: [
                                 Container(
-                                  width: 8,
-                                  height: 8,
+                                  width: isMobile ? 5 : 8,
+                                  height: isMobile ? 5 : 8,
                                   decoration: BoxDecoration(
                                     color: categoriaColor,
                                     shape: BoxShape.circle,
                                   ),
                                 ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  categoriaLabel,
-                                  style: TextStyle(
-                                    color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A),
-                                    fontSize: 12,
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    categoriaLabel,
+                                    style: TextStyle(
+                                      color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A),
+                                      fontSize: isMobile ? 10 : 12,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 4),
+                            SizedBox(height: isMobile ? 2 : 4),
                             Text(
                               proyecto,
-                              style: TextStyle(color: themeProvider.isDarkMode ? Colors.white54 : Color(0xFF4A4A4A), fontSize: 13, letterSpacing: 0.2),
+                              style: TextStyle(
+                                color: themeProvider.isDarkMode ? Colors.white54 : Color(0xFF4A4A4A),
+                                fontSize: isMobile ? 10 : 13,
+                                letterSpacing: 0.2,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: badgeColor.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: badgeColor.withValues(alpha: 0.6)),
-                        ),
-                        child: Text(
-                          tarea.dificultad?.toUpperCase() ?? 'NORMAL',
-                          style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 12),
+                      SizedBox(width: isMobile ? 4 : 8),
+                      Flexible(
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isMobile ? 6 : 12,
+                            vertical: isMobile ? 3 : 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: badgeColor.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(isMobile ? 10 : 16),
+                            border: Border.all(color: badgeColor.withValues(alpha: 0.6)),
+                          ),
+                          child: Text(
+                            tarea.dificultad?.toUpperCase() ?? 'NORMAL',
+                            style: TextStyle(
+                              color: badgeColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: isMobile ? 9 : 12,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  if (tarea.descripcion != null) ...[
-                    const SizedBox(height: 10),
+                  if (tarea.descripcion != null && !isMobile) ...[
+                    SizedBox(height: isMobile ? 6 : 10),
                     Text(
                       tarea.descripcion!,
-                      style: TextStyle(color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A), height: 1.4),
+                      style: TextStyle(
+                        color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A),
+                        height: 1.4,
+                        fontSize: isMobile ? 11 : 14,
+                      ),
+                      maxLines: isMobile ? 1 : null,
+                      overflow: isMobile ? TextOverflow.ellipsis : null,
                     ),
                   ],
                 ],
@@ -2103,52 +2134,69 @@ Widget _buildTareaCard(
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 10,
-          runSpacing: 8,
-          children: [
-            _buildInfoChip(context, Icons.schedule, "${tarea.duracion} min"),
-            if (tarea.fecha != null)
-              _buildInfoChip(
-                context,
-                Icons.event,
-                "${tarea.fecha!.day}/${tarea.fecha!.month} ${tarea.fecha!.hour}:${tarea.fecha!.minute.toString().padLeft(2, '0')}",
-              ),
-            _buildInfoChip(context, Icons.label, tarea.tipoTarea),
-          ],
+        SizedBox(height: isMobile ? 8 : 14),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _buildInfoChip(context, Icons.schedule, "${tarea.duracion} min"),
+              SizedBox(width: isMobile ? 6 : 10),
+              if (tarea.fecha != null)
+                _buildInfoChip(
+                  context,
+                  Icons.event,
+                  "${tarea.fecha!.day}/${tarea.fecha!.month} ${tarea.fecha!.hour}:${tarea.fecha!.minute.toString().padLeft(2, '0')}",
+                ),
+              if (tarea.fecha != null)
+                SizedBox(width: isMobile ? 6 : 10),
+              _buildInfoChip(context, Icons.label, tarea.tipoTarea),
+            ],
+          ),
         ),
         if (!esLibre) ...[
-          const SizedBox(height: 18),
+          SizedBox(height: isMobile ? 12 : 18),
           ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(isMobile ? 8 : 12),
             child: LinearProgressIndicator(
               value: completada ? 1 : 0.35,
-              minHeight: 10,
+              minHeight: isMobile ? 8 : 10,
               backgroundColor: Colors.white12,
               valueColor: AlwaysStoppedAnimation(accent),
             ),
           ),
         ],
-        const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.bottomRight,
-          child: ElevatedButton.icon(
-            icon: Icon(
-              esLibre ? Icons.playlist_add : (completada ? Icons.check_circle : Icons.check),
-              color: Colors.white,
-              size: 18,
+        SizedBox(height: isMobile ? 8 : 14),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Flexible(
+              child: ElevatedButton.icon(
+                icon: Icon(
+                  esLibre ? Icons.playlist_add : (completada ? Icons.check_circle : Icons.check),
+                  color: Colors.white,
+                  size: isMobile ? 14 : 18,
+                ),
+                label: Text(
+                  actionLabel,
+                  style: TextStyle(fontSize: isMobile ? 11 : 14),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accent,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isMobile ? 10 : 20,
+                    vertical: isMobile ? 6 : 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(isMobile ? 8 : 14),
+                  ),
+                  elevation: disableAction ? 0 : 4,
+                ),
+                onPressed: disableAction ? null : onPrimaryAction,
+              ),
             ),
-            label: Text(actionLabel),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: accent,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              elevation: disableAction ? 0 : 4,
-            ),
-            onPressed: disableAction ? null : onPrimaryAction,
-          ),
+          ],
         ),
       ],
     ),
@@ -2158,19 +2206,34 @@ Widget _buildTareaCard(
 
 Widget _buildInfoChip(BuildContext context, IconData icon, String label) {
   final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+  final isMobile = MediaQuery.of(context).size.width < 600;
+
   return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    padding: EdgeInsets.symmetric(
+      horizontal: isMobile ? 8 : 10,
+      vertical: isMobile ? 4 : 6,
+    ),
     decoration: BoxDecoration(
       color: themeProvider.isDarkMode ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(isMobile ? 10 : 14),
       border: Border.all(color: themeProvider.isDarkMode ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.1)),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A), size: 14),
-        const SizedBox(width: 6),
-        Text(label, style: TextStyle(color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A), fontSize: 12)),
+        Icon(
+          icon,
+          color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A),
+          size: isMobile ? 12 : 14,
+        ),
+        SizedBox(width: isMobile ? 4 : 6),
+        Text(
+          label,
+          style: TextStyle(
+            color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A),
+            fontSize: isMobile ? 10 : 12,
+          ),
+        ),
       ],
     ),
   );
@@ -2178,18 +2241,27 @@ Widget _buildInfoChip(BuildContext context, IconData icon, String label) {
 
 Widget _buildProjectImage(BuildContext context, String? url, String proyecto) {
   final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+  final isMobile = MediaQuery.of(context).size.width < 600;
+  final imageSize = isMobile ? 50.0 : 70.0;
+  final borderRadius = isMobile ? 12.0 : 18.0;
+  final fontSize = isMobile ? 16.0 : 22.0;
+
   final placeholder = Container(
-    width: 70,
-    height: 70,
+    width: imageSize,
+    height: imageSize,
     decoration: BoxDecoration(
       color: themeProvider.isDarkMode ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(borderRadius),
       border: Border.all(color: themeProvider.isDarkMode ? Colors.white12 : Colors.black.withValues(alpha: 0.1)),
     ),
     child: Center(
       child: Text(
         proyecto.isNotEmpty ? proyecto[0].toUpperCase() : '?',
-        style: TextStyle(color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A), fontWeight: FontWeight.bold, fontSize: 22),
+        style: TextStyle(
+          color: themeProvider.isDarkMode ? Colors.white70 : Color(0xFF4A4A4A),
+          fontWeight: FontWeight.bold,
+          fontSize: fontSize,
+        ),
       ),
     ),
   );
@@ -2197,14 +2269,14 @@ Widget _buildProjectImage(BuildContext context, String? url, String proyecto) {
   if (url == null || url.isEmpty) return placeholder;
 
   return Container(
-    width: 70,
-    height: 70,
+    width: imageSize,
+    height: imageSize,
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(borderRadius),
       border: Border.all(color: themeProvider.isDarkMode ? Colors.white12 : Colors.black.withValues(alpha: 0.1)),
     ),
     child: ClipRRect(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(borderRadius),
       child: Image.network(
         url,
         fit: BoxFit.cover,
@@ -2351,18 +2423,33 @@ Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
   Widget _buildDashboardItem(IconData icon, String title, int count, Color iconColor) {
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final textColor = themeProvider.isDarkMode ? Colors.white : Colors.black87;
+    final isMobile = MediaQuery.of(context).size.width < 600;
 
     return Column(
 
       children: [
 
-        Icon(icon, color: iconColor, size: 30),
+        Icon(icon, color: iconColor, size: isMobile ? 24 : 30),
 
-        const SizedBox(height: 5),
+        SizedBox(height: isMobile ? 4 : 5),
 
-        Text(title, style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold)),
+        Text(
+          title,
+          style: TextStyle(
+            color: textColor,
+            fontSize: isMobile ? 10 : 12,
+            fontWeight: FontWeight.bold,
+          ),
+          textAlign: TextAlign.center,
+        ),
 
-        Text("$count", style: TextStyle(color: textColor, fontSize: 20)),
+        Text(
+          "$count",
+          style: TextStyle(
+            color: textColor,
+            fontSize: isMobile ? 16 : 20,
+          ),
+        ),
 
       ],
 
@@ -2498,7 +2585,19 @@ Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
 
         ),
 
-
+        // 🆕 Briefing Diario
+        ListTile(
+          leading: const Icon(Icons.wb_sunny, color: Color(0xFF5BE4A8)),
+          title: const Text('Briefing del Día', style: TextStyle(color: Colors.white)),
+          subtitle: const Text('Tu plan diario', style: TextStyle(color: Colors.white60, fontSize: 12)),
+          onTap: () {
+            Navigator.pop(context);
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BriefingDiarioPage()),
+            );
+          },
+        ),
 
         ListTile(
 
@@ -2567,9 +2666,7 @@ Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
 
           onTap: () {
 
-            FirebaseAuth.instance.signOut();
-
-            Navigator.pushReplacementNamed(context, '/login');
+            cerrarSesion(context);
 
           },
 

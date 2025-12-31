@@ -1,6 +1,6 @@
 class Tarea {
   String titulo;
-  DateTime? fecha;
+  DateTime? fecha; // ⚠️ DEPRECADO: Se mantiene por compatibilidad, usar fechaLimite o fechaProgramada
   int duracion;
   int prioridad;
   bool completado;
@@ -21,12 +21,18 @@ class Tarea {
   String? entregable;     // "Project Charter", "Plan de Proyecto", "Informe Final"
   String? paqueteTrabajo; // "Documentación Inicial", "Análisis de Riesgos", "Testing"
 
+  // ========================================
+  // 🆕 CAMPOS DE FECHAS MEJORADOS
+  // ========================================
+  DateTime? fechaLimite;     // Deadline - cuándo DEBE estar completa la tarea
+  DateTime? fechaProgramada; // Hora/fecha programada - cuándo se HARÁ la tarea
+
   // CAMPO AUXILIAR (NO SE GUARDA EN FIRESTORE)
   List<String>? responsablesNombres;
 
   Tarea({
     required this.titulo,
-    this.fecha,
+    this.fecha, // Se mantiene por compatibilidad
     required this.duracion,
     this.prioridad = 2,
     this.completado = false,
@@ -43,13 +49,16 @@ class Tarea {
     this.fasePMI,
     this.entregable,
     this.paqueteTrabajo,
+    // Campos de fechas mejorados
+    this.fechaLimite,
+    this.fechaProgramada,
     this.responsablesNombres,
   });
 
   Map<String, dynamic> toJson() {
     return {
       'titulo': titulo,
-      'fecha': fecha?.toIso8601String(),
+      'fecha': fecha?.toIso8601String(), // Mantener por compatibilidad
       'duracion': duracion,
       'prioridad': prioridad,
       'completado': completado,
@@ -66,13 +75,36 @@ class Tarea {
       'fasePMI': fasePMI,
       'entregable': entregable,
       'paqueteTrabajo': paqueteTrabajo,
+      // Campos de fechas mejorados
+      'fechaLimite': fechaLimite?.toIso8601String(),
+      'fechaProgramada': fechaProgramada?.toIso8601String(),
     };
   }
 
   factory Tarea.fromJson(Map<String, dynamic> json) {
+    // Migración automática: si existe 'fecha' pero no 'fechaLimite', asumimos que 'fecha' es el deadline
+    DateTime? fechaMigrada;
+    DateTime? fechaLimiteMigrada;
+    DateTime? fechaProgramadaMigrada;
+
+    if (json['fecha'] != null) {
+      fechaMigrada = DateTime.parse(json['fecha']);
+    }
+
+    if (json['fechaLimite'] != null) {
+      fechaLimiteMigrada = DateTime.parse(json['fechaLimite']);
+    } else if (fechaMigrada != null) {
+      // Si no hay fechaLimite pero sí fecha, migrar fecha → fechaLimite
+      fechaLimiteMigrada = fechaMigrada;
+    }
+
+    if (json['fechaProgramada'] != null) {
+      fechaProgramadaMigrada = DateTime.parse(json['fechaProgramada']);
+    }
+
     return Tarea(
       titulo: json['titulo'] ?? 'Sin título',
-      fecha: json['fecha'] != null ? DateTime.parse(json['fecha']) : null,
+      fecha: fechaMigrada, // Mantener por compatibilidad
       duracion: json['duracion'] ?? 60,
       prioridad: json['prioridad'] ?? 2,
       completado: json['completado'] ?? false,
@@ -83,12 +115,20 @@ class Tarea {
       dificultad: json['dificultad'],
       descripcion: json['descripcion'],
       tareasPrevias: List<String>.from(json['tareasPrevias'] ?? []),
-      area: json['area'] ?? 'General',
+      area: _normalizarArea(json['area'] ?? 'General'),
       habilidadesRequeridas: List<String>.from(json['habilidadesRequeridas'] ?? []),
       // Campos PMI
       fasePMI: json['fasePMI'],
       entregable: json['entregable'],
       paqueteTrabajo: json['paqueteTrabajo'],
+      // Campos de fechas mejorados
+      fechaLimite: fechaLimiteMigrada,
+      fechaProgramada: fechaProgramadaMigrada,
     );
+  }
+
+  // Normalizar nombres de áreas (eliminar saltos de línea y espacios extra)
+  static String _normalizarArea(String area) {
+    return area.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 }

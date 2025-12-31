@@ -163,17 +163,20 @@ class BriefingService {
 
   /// Verifica si una tarea pertenece al día especificado
   bool _esTareaDelDia(Tarea tarea, DateTime fecha) {
-    if (tarea.fecha == null) {
-      // Si no tiene fecha, considerarla para hoy si no está completada
+    // Priorizar fechaProgramada, luego fechaLimite, luego fecha (legacy)
+    DateTime? fechaRelevante = tarea.fechaProgramada ?? tarea.fechaLimite ?? tarea.fecha;
+
+    if (fechaRelevante == null) {
+      // Si no tiene ninguna fecha, considerarla para hoy si no está completada
       final hoy = DateTime.now();
       return fecha.year == hoy.year &&
           fecha.month == hoy.month &&
           fecha.day == hoy.day;
     }
 
-    return tarea.fecha!.year == fecha.year &&
-        tarea.fecha!.month == fecha.month &&
-        tarea.fecha!.day == fecha.day;
+    return fechaRelevante.year == fecha.year &&
+        fechaRelevante.month == fecha.month &&
+        fechaRelevante.day == fecha.day;
   }
 
   /// Verifica si una tarea tiene dependencias pendientes
@@ -217,12 +220,26 @@ class BriefingService {
     }
 
     // Tiene hora programada cercana
-    if (tarea.fecha != null) {
+    if (tarea.fechaProgramada != null) {
       final ahora = DateTime.now();
-      final diferencia = tarea.fecha!.difference(ahora);
+      final diferencia = tarea.fechaProgramada!.difference(ahora);
 
       if (diferencia.inHours <= 2 && diferencia.inMinutes > 0) {
         motivos.add('Inicio en ${diferencia.inMinutes} min');
+      } else if (diferencia.inHours <= 0 && diferencia.inMinutes <= 0 && diferencia.inMinutes > -60) {
+        motivos.add('¡Debe iniciar ahora!');
+      }
+    }
+
+    // Deadline cercano (menos de 24 horas)
+    if (tarea.fechaLimite != null) {
+      final ahora = DateTime.now();
+      final diferencia = tarea.fechaLimite!.difference(ahora);
+
+      if (diferencia.inHours <= 24 && diferencia.inHours > 0) {
+        motivos.add('Deadline en ${diferencia.inHours}h');
+      } else if (diferencia.inHours <= 0) {
+        motivos.add('⚠️ Deadline vencido');
       }
     }
 

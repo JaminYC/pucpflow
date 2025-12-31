@@ -167,12 +167,16 @@ class TareaBriefing {
     required bool tieneDependenciasPendientes,
     String motivoPrioridad = '',
   }) {
+    // Priorizar fechaProgramada para "cuándo hacer la tarea"
+    // Si no hay fechaProgramada, usar fechaLimite o fecha (legacy)
+    final horaInicioEfectiva = tarea.fechaProgramada ?? tarea.fechaLimite ?? tarea.fecha;
+
     return TareaBriefing(
       tareaId: tareaId,
       proyectoId: proyectoId,
       proyectoNombre: proyectoNombre,
       titulo: tarea.titulo,
-      horaInicio: tarea.fecha,
+      horaInicio: horaInicioEfectiva,
       duracion: tarea.duracion,
       prioridad: tarea.prioridad,
       fasePMI: tarea.fasePMI,

@@ -1,0 +1,8 @@
+{
+  "name": "vastoria-rutas-seed",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "firebase-admin": "^12.5.0"
+  }
+}

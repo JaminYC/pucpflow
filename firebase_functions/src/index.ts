@@ -1,0 +1,1 @@
+export { weeklySync } from './weeklySync';

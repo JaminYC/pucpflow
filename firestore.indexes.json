@@ -1,0 +1,51 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "proyectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "participantes",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "fechaCreacion",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "proyectos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "creadorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fechaCreacion",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "skill_suggestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "frequency",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

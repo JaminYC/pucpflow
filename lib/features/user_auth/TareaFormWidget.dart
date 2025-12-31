@@ -30,7 +30,8 @@ class _TareaFormWidgetState extends State<TareaFormWidget> {
   List<String> responsables = [];
   bool mostrarRequisitos = false; // Oculto por defecto
   late String areaSeleccionada;
-  DateTime? fechaLimite; // ✅ Nueva: fecha límite/deadline
+  DateTime? fechaLimite; // ✅ Fecha límite/deadline
+  DateTime? fechaProgramada; // ✅ Hora/fecha programada para hacer la tarea
 
   final List<String> habilidades = [
     "Planificación",
@@ -55,7 +56,8 @@ class _TareaFormWidgetState extends State<TareaFormWidget> {
       duracion = widget.tareaInicial!.duracion;
       requisitos = Map<String, int>.from(widget.tareaInicial!.requisitos ?? {});
       responsables = List<String>.from(widget.tareaInicial!.responsables);
-      fechaLimite = widget.tareaInicial!.fecha; // ✅ Cargar fecha límite existente
+      fechaLimite = widget.tareaInicial!.fechaLimite ?? widget.tareaInicial!.fecha; // ✅ Cargar fecha límite
+      fechaProgramada = widget.tareaInicial!.fechaProgramada; // ✅ Cargar hora programada
 
       // Normalizar el área seleccionada (eliminar saltos de línea y espacios extra)
       String areaTemporal = widget.tareaInicial?.area ?? (widget.areas.keys.isNotEmpty ? _normalizarArea(widget.areas.keys.first) : "General");
@@ -256,6 +258,129 @@ class _TareaFormWidgetState extends State<TareaFormWidget> {
                 ),
                 const SizedBox(height: 16),
 
+                // ✅ NUEVO: Selector de Hora/Fecha Programada
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[900],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green, width: 1),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "🕐 Hora Programada (Opcional)",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              "Cuándo se HARÁ la tarea",
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 11,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              fechaProgramada != null
+                                  ? "${fechaProgramada!.day}/${fechaProgramada!.month}/${fechaProgramada!.year} ${fechaProgramada!.hour.toString().padLeft(2, '0')}:${fechaProgramada!.minute.toString().padLeft(2, '0')}"
+                                  : "No establecida",
+                              style: TextStyle(
+                                color: fechaProgramada != null ? Colors.green : Colors.grey[400],
+                                fontSize: 16,
+                                fontWeight: fechaProgramada != null ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          if (fechaProgramada != null)
+                            IconButton(
+                              icon: const Icon(Icons.clear, color: Colors.red, size: 20),
+                              onPressed: () {
+                                setState(() => fechaProgramada = null);
+                              },
+                              tooltip: "Quitar hora programada",
+                            ),
+                          IconButton(
+                            icon: const Icon(Icons.access_time, color: Colors.green),
+                            onPressed: () async {
+                              // Primero seleccionar fecha
+                              final DateTime? pickedDate = await showDatePicker(
+                                context: context,
+                                initialDate: fechaProgramada ?? DateTime.now(),
+                                firstDate: DateTime.now(),
+                                lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+                                builder: (context, child) {
+                                  return Theme(
+                                    data: Theme.of(context).copyWith(
+                                      colorScheme: const ColorScheme.dark(
+                                        primary: Colors.green,
+                                        onPrimary: Colors.white,
+                                        surface: Color(0xFF1E1E1E),
+                                        onSurface: Colors.white,
+                                      ),
+                                    ),
+                                    child: child!,
+                                  );
+                                },
+                              );
+
+                              if (pickedDate != null) {
+                                // Luego seleccionar hora
+                                final TimeOfDay? pickedTime = await showTimePicker(
+                                  context: context,
+                                  initialTime: fechaProgramada != null
+                                      ? TimeOfDay.fromDateTime(fechaProgramada!)
+                                      : TimeOfDay.now(),
+                                  builder: (context, child) {
+                                    return Theme(
+                                      data: Theme.of(context).copyWith(
+                                        colorScheme: const ColorScheme.dark(
+                                          primary: Colors.green,
+                                          onPrimary: Colors.white,
+                                          surface: Color(0xFF1E1E1E),
+                                          onSurface: Colors.white,
+                                        ),
+                                      ),
+                                      child: child!,
+                                    );
+                                  },
+                                );
+
+                                if (pickedTime != null) {
+                                  setState(() {
+                                    fechaProgramada = DateTime(
+                                      pickedDate.year,
+                                      pickedDate.month,
+                                      pickedDate.day,
+                                      pickedTime.hour,
+                                      pickedTime.minute,
+                                    );
+                                  });
+                                }
+                              }
+                            },
+                            tooltip: "Seleccionar hora programada",
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 // ✅ MEJORADO: Sección de Asignación de Responsables (siempre visible)
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -365,7 +490,7 @@ class _TareaFormWidgetState extends State<TareaFormWidget> {
                           // ✅ ACTUALIZADO: Usar nuevos campos de fecha
                           fecha: fechaLimite, // Mantener por compatibilidad
                           fechaLimite: fechaLimite, // ✅ Deadline - fecha límite de entrega
-                          fechaProgramada: null, // TODO: Agregar selector en futuro
+                          fechaProgramada: fechaProgramada, // ✅ Hora programada (si fue establecida)
                         );
                         widget.onSubmit(tarea);
                       }

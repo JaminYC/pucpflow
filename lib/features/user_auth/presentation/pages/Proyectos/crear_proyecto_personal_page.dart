@@ -176,7 +176,9 @@ class _CrearProyectoPersonalPageState extends State<CrearProyectoPersonalPage> {
           tareas.add(Tarea(
             titulo: nombreTarea,
             descripcion: tareaData['descripcion'] ?? '',
-            fecha: fechaLimite, // ✅ Fecha límite calculada (no DateTime.now())
+            fecha: fechaLimite, // Mantener por compatibilidad
+            fechaLimite: fechaLimite, // ✅ Deadline - fecha límite calculada
+            fechaProgramada: null, // No hay hora específica en proyectos personales
             duracion: duracionMinutos,
             prioridad: _parsePrioridad(tareaData['prioridad']),
             completado: false,

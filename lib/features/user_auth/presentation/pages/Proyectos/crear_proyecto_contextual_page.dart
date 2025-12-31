@@ -21,12 +21,7 @@ class _CrearProyectoContextualPageState
     extends State<CrearProyectoContextualPage> {
   final _formKey = GlobalKey<FormState>();
   final _nombreController = TextEditingController();
-  final _descripcionController = TextEditingController();
   final _visionController = TextEditingController();
-  final _focusController = TextEditingController();
-  final _softSkillsController = TextEditingController();
-  final _driversController = TextEditingController();
-  final _customContextController = TextEditingController();
 
   ProjectMethodology _methodology = ProjectMethodology.general;
   String _categoria = "Laboral";
@@ -40,12 +35,7 @@ class _CrearProyectoContextualPageState
   @override
   void dispose() {
     _nombreController.dispose();
-    _descripcionController.dispose();
     _visionController.dispose();
-    _focusController.dispose();
-    _softSkillsController.dispose();
-    _driversController.dispose();
-    _customContextController.dispose();
     super.dispose();
   }
 
@@ -70,7 +60,7 @@ class _CrearProyectoContextualPageState
                 iconTheme: const IconThemeData(color: Colors.white),
                 flexibleSpace: FlexibleSpaceBar(
                   title: const Text(
-                    'Crear Proyecto con IA',
+                    'Proyecto Flexible',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -103,9 +93,9 @@ class _CrearProyectoContextualPageState
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildSectionHeader(
-                            icon: Icons.description_outlined,
-                            title: 'Información del Proyecto',
-                            subtitle: 'Define el contexto y alcance inicial',
+                            icon: Icons.rocket_launch_outlined,
+                            title: 'Comienza tu proyecto',
+                            subtitle: 'Solo lo esencial, la IA hará el resto',
                           ),
                           const SizedBox(height: 24),
                           _buildTextField(
@@ -117,91 +107,24 @@ class _CrearProyectoContextualPageState
                           ),
                           const SizedBox(height: 16),
                           _buildCategoriaDropdown(),
+                          const SizedBox(height: 16),
                           _buildTextField(
                             controller: _visionController,
-                            label: 'Vision del proyecto',
-                            maxLines: 2,
+                            label: '¿Qué quieres lograr?',
+                            helper: 'Describe tu objetivo principal',
+                            maxLines: 3,
+                            validator: (value) => value == null || value.trim().isEmpty
+                                ? 'Obligatorio'
+                                : null,
                           ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _descripcionController,
-                            label: 'Descripción breve / historia del usuario',
-                            maxLines: 4,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Metodología
-                    _buildGlassCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                          const SizedBox(height: 24),
                           _buildSectionHeader(
                             icon: Icons.account_tree_outlined,
-                            title: 'Metodología Base',
-                            subtitle: 'Selecciona el framework de trabajo',
+                            title: 'Metodología',
+                            subtitle: 'Elige tu enfoque de trabajo',
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 16),
                           _buildMethodologySelector(),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Foco estratégico
-                    _buildGlassCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionHeader(
-                            icon: Icons.track_changes_outlined,
-                            title: 'Foco Estratégico',
-                            subtitle: 'Define prioridades y áreas clave',
-                          ),
-                          const SizedBox(height: 24),
-                          _buildTextField(
-                            controller: _focusController,
-                            label: 'Áreas de enfoque',
-                            helper:
-                                'Ej: Descubrimiento de cliente, Experiencia móvil, Operaciones',
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _softSkillsController,
-                            label: 'Soft skills prioritarias',
-                            helper:
-                                'Ej: Comunicación efectiva, Gestión del cambio, Liderazgo',
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _driversController,
-                            label: 'Drivers de negocio',
-                            helper:
-                                'Ej: Retención de clientes, Velocidad de entrega, Innovación',
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Contexto adicional
-                    _buildGlassCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionHeader(
-                            icon: Icons.note_add_outlined,
-                            title: 'Contexto Adicional',
-                            subtitle: 'Información complementaria (opcional)',
-                          ),
-                          const SizedBox(height: 24),
-                          _buildTextField(
-                            controller: _customContextController,
-                            label: 'Notas adicionales',
-                            maxLines: 4,
-                          ),
                         ],
                       ),
                     ),
@@ -746,23 +669,40 @@ class _CrearProyectoContextualPageState
 
     final config = ProjectBlueprintConfig(
       methodology: _methodology,
-      focusAreas: _parseList(_focusController.text),
-      softSkillFocus: _parseList(_softSkillsController.text),
-      businessDrivers: _parseList(_driversController.text),
-      customContext: _customContextController.text.trim().isEmpty
-          ? null
-          : _tryParseJson(_customContextController.text.trim()),
+      focusAreas: const [], // Simplificado: sin foco estratégico manual
+      softSkillFocus: const [], // Simplificado: IA infiere skills
+      businessDrivers: const [], // Simplificado: IA infiere drivers
+      customContext: null, // Simplificado: sin contexto custom
     );
 
-    final result = await _aiService.generarBlueprint(
-      documentosBase64:
-          _attachments.map((doc) => base64Encode(doc.bytes)).toList(),
+    // ✅ Usar generarWorkflow en lugar de generarBlueprint (formato nuevo)
+    print('🚀 INICIANDO GENERACIÓN DE WORKFLOW');
+    print('   📋 Proyecto: ${_nombreController.text.trim()}');
+    print('   🎯 Metodología: ${_methodology.label} (${_methodology.apiName})');
+    print('   💡 Objetivo: ${_visionController.text.trim()}');
+
+    final result = await _aiService.generarWorkflow(
       nombreProyecto: _nombreController.text.trim(),
-      descripcionBreve: _descripcionController.text.trim(),
       config: config,
+      habilidadesEquipo: const [], // Sin habilidades específicas del equipo
+      objetivo: _visionController.text.trim(),
+      macroEntregables: _attachments.isNotEmpty
+          ? ['Documentos adjuntos']
+          : null,
     );
 
     if (!mounted) return;
+
+    print('📦 RESULTADO RECIBIDO:');
+    print('   - Es null: ${result == null}');
+    if (result != null) {
+      print('   - Keys: ${result.keys.toList()}');
+      print('   - Tiene workflow: ${result.containsKey("workflow")}');
+      if (result.containsKey("workflow")) {
+        final wf = result["workflow"] as List?;
+        print('   - Fases en workflow: ${wf?.length ?? 0}');
+      }
+    }
 
     setState(() {
       _generando = false;
@@ -844,23 +784,13 @@ class _CrearProyectoContextualPageState
             color: const Color(0xFF2D3347),
           ),
           const SizedBox(height: 24),
+          // ✅ Solo mostrar información legible y útil para el usuario
           if (data['resumenEjecutivo'] != null)
-            _buildPreviewBlock('Resumen ejecutivo', data['resumenEjecutivo']),
+            _buildPreviewBlock('📝 Resumen', data['resumenEjecutivo']),
           if (data['objetivosSMART'] != null)
-            _buildListBlock('Objetivos SMART', data['objetivosSMART']),
-          if (data['hitosPrincipales'] != null)
-            _buildListBlock('Hitos principales', data['hitosPrincipales']),
-          if (data['backlogInicial'] != null)
-            _buildListBlock('Backlog inicial', data['backlogInicial']),
-          if (data['skillMatrixSugerida'] != null)
-            _buildListBlock(
-                'Matriz de skills sugerida', data['skillMatrixSugerida']),
-          if (data['softSkillsPlan'] != null)
-            _buildPreviewBlock(
-                'Plan de soft skills', data['softSkillsPlan'].toString()),
-          if (data['recomendacionesPMI'] != null)
-            _buildPreviewBlock('Recomendaciones PMI',
-                data['recomendacionesPMI'].toString()),
+            _buildListBlock('🎯 Objetivos', data['objetivosSMART']),
+          if (data['workflow'] != null && data['workflow'] is List)
+            _buildWorkflowPreview('📋 Fases del proyecto', data['workflow']),
         ],
       ),
     );
@@ -913,6 +843,105 @@ class _CrearProyectoContextualPageState
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWorkflowPreview(String title, List workflow) {
+    if (workflow.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Color(0xFFFFFFFF),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...workflow.take(5).map((fase) {
+            final nombre = fase['nombre'] ?? 'Fase sin nombre';
+            final objetivo = fase['objetivo'] ?? '';
+            final tareas = fase['tareas'] as List? ?? [];
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1F3A).withOpacity(0.3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFF10B981).withOpacity(0.2),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${tareas.length} tareas',
+                          style: TextStyle(
+                            color: const Color(0xFF10B981),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          nombre,
+                          style: const TextStyle(
+                            color: Color(0xFFFFFFFF),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (objetivo.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      objetivo,
+                      style: TextStyle(
+                        color: const Color(0xFFB8BCC8),
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }).toList(),
         ],
       ),
     );
@@ -1040,14 +1069,36 @@ class _CrearProyectoContextualPageState
       final proyectoRef =
           FirebaseFirestore.instance.collection('proyectos').doc();
 
-      final tareas = _mapBlueprintToTasks(_blueprint!);
+      final tareas = _mapBlueprintToTasks(_blueprint!, user.uid);
+
+      print('\n🔍 VERIFICACIÓN FINAL DE ÁREAS:');
+      print('   📊 Total de tareas generadas: ${tareas.length}');
+
+      // ✅ Construir áreas únicas desde las tareas generadas
+      final areasContextuales = <String, List<String>>{};
+      for (final tarea in tareas) {
+        final areaNormalizada = tarea.area.trim();
+        if (!areasContextuales.containsKey(areaNormalizada)) {
+          areasContextuales[areaNormalizada] = [];
+          print('   ✅ Área agregada: "$areaNormalizada"');
+        }
+      }
+
+      print('   🔒 TOTAL ÁREAS ÚNICAS FINALES: ${areasContextuales.length}');
+      print('   📋 Lista de áreas: ${areasContextuales.keys.toList()}');
+
+      // 🚨 VERIFICACIÓN CRÍTICA: Detectar si hay duplicados
+      final areasSet = areasContextuales.keys.toSet();
+      if (areasSet.length != areasContextuales.length) {
+        print('   ❌ ERROR: Se detectaron duplicados en áreas!');
+        throw Exception('Error crítico: áreas duplicadas detectadas');
+      }
+      print('   ✅ VALIDACIÓN EXITOSA: No hay duplicados\n');
 
       final proyecto = Proyecto(
         id: proyectoRef.id,
         nombre: _nombreController.text.trim(),
-        descripcion: _descripcionController.text.trim().isEmpty
-            ? (_blueprint!['resumenEjecutivo'] ?? '')
-            : _descripcionController.text.trim(),
+        descripcion: _blueprint!['resumenEjecutivo'] ?? '',
         vision: _visionController.text.trim(),
         fechaInicio: DateTime.now(),
         fechaFin: null,
@@ -1057,6 +1108,7 @@ class _CrearProyectoContextualPageState
         participantes: [user.uid],
         categoria: _categoria,
         tareas: tareas,
+        areas: areasContextuales, // ✅ Áreas fijas para proyectos contextuales
         blueprintIA: _blueprint,
         objetivo: _blueprint!['resumenEjecutivo'],
         alcance:
@@ -1093,133 +1145,129 @@ class _CrearProyectoContextualPageState
     }
   }
 
-  List<Tarea> _mapBlueprintToTasks(Map<String, dynamic> blueprint) {
+  /// Normaliza un nombre de área/fase para garantizar unicidad
+  String _normalizarNombreArea(String nombre) {
+    return nombre
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ') // Espacios múltiples → un espacio
+        .replaceAll(RegExp(r'[^\w\sáéíóúñÁÉÍÓÚÑ-]'), '') // Remover caracteres especiales excepto espacios, guiones y acentos
+        .toLowerCase(); // Normalizar a minúsculas para comparación
+  }
+
+  List<Tarea> _mapBlueprintToTasks(Map<String, dynamic> blueprint, String userId) {
     final tasks = <Tarea>[];
-    final backlog = blueprint['backlogInicial'] as List? ?? [];
-    final defaultSkills = _skillsFromMatrix(blueprint);
 
-    for (final item in backlog) {
-      final map = item is Map ? Map<String, dynamic>.from(item) : {};
-      final tipo = (map['tipo'] ?? 'Contextual').toString();
-      final entregables = _safeStringList(map['entregables']);
-      final metricas = _safeStringList(map['metricasExito']);
-      final descripcionParts = <String>[];
-      if (entregables.isNotEmpty) {
-        descripcionParts.add('Entregables: ${entregables.join(", ")}');
+    // ✅ Procesar workflow/fases (nuevo formato) en lugar de backlog/hitos (formato viejo)
+    final workflow = blueprint['workflow'] as List? ?? [];
+
+    print('📊 Generando proyecto flexible con ${workflow.length} fases del workflow...');
+
+    // 🔒 PASO 1: Crear un mapa para detectar y resolver duplicados de nombres de fases
+    final nombresUsados = <String, String>{}; // normalizado → original único
+    final nombresOriginales = <String>[]; // Lista ordenada de nombres únicos
+
+    for (var i = 0; i < workflow.length; i++) {
+      var nombreOriginal = workflow[i]['nombre']?.toString().trim() ?? 'Fase ${i + 1}';
+      var nombreNormalizado = _normalizarNombreArea(nombreOriginal);
+
+      // Si ya existe ese nombre normalizado, agregar sufijo
+      if (nombresUsados.containsKey(nombreNormalizado)) {
+        var contador = 2;
+        var nuevoNombre = '$nombreOriginal $contador';
+        var nuevoNormalizado = _normalizarNombreArea(nuevoNombre);
+
+        while (nombresUsados.containsKey(nuevoNormalizado)) {
+          contador++;
+          nuevoNombre = '$nombreOriginal $contador';
+          nuevoNormalizado = _normalizarNombreArea(nuevoNombre);
+        }
+
+        nombreOriginal = nuevoNombre;
+        nombreNormalizado = nuevoNormalizado;
+        print('   ⚠️ Nombre de fase duplicado detectado, renombrado a: "$nombreOriginal"');
       }
-      if (metricas.isNotEmpty) {
-        descripcionParts.add('Métricas: ${metricas.join(", ")}');
-      }
-      tasks.add(
-        Tarea(
-          titulo: (map['nombre'] ?? 'Tarea contextual') as String,
-          fecha: DateTime.now(),
-          duracion: tipo.toLowerCase() == 'seguimiento' ? 45 : 60,
-          prioridad: 3,
-          completado: false,
-          colorId: _colorForTipo(tipo),
-          responsables: const [],
-          tipoTarea: tipo,
-          requisitos: const {},
-          dificultad: 'media',
-          descripcion: descripcionParts.isEmpty ? null : descripcionParts.join('\n'),
-          tareasPrevias: const [],
-          area: 'Blueprint IA',
-          habilidadesRequeridas: defaultSkills,
-          fasePMI: null,
-          entregable: 'Backlog IA',
-          paqueteTrabajo: null,
-        ),
-      );
+
+      nombresUsados[nombreNormalizado] = nombreOriginal;
+      nombresOriginales.add(nombreOriginal);
     }
 
-    final hitos = blueprint['hitosPrincipales'] as List? ?? [];
-    for (final item in hitos) {
-      final map = item is Map ? Map<String, dynamic>.from(item) : {};
-      final soft = _safeStringList(map['softSkillsClaves']);
-      final riesgos = _safeStringList(map['riesgosHumanos']);
-      final descripcionParts = <String>[];
-      if (riesgos.isNotEmpty) {
-        descripcionParts.add('Riesgos humanos: ${riesgos.join(", ")}');
-      }
-      if (soft.isNotEmpty) {
-        descripcionParts.add('Soft skills clave: ${soft.join(", ")}');
-      }
-      tasks.add(
-        Tarea(
-          titulo: 'Hito: ${map['nombre'] ?? 'Sin nombre'}',
-          fecha: DateTime.now().add(Duration(days: _parseMonth(map['mes']) * 30)),
-          duracion: 30,
-          prioridad: 4,
+    print('   ✅ Nombres de fases únicos garantizados: $nombresOriginales');
+
+    // 🔒 PASO 2: Generar tareas usando los nombres únicos
+    int faseIndex = 0;
+    int duracionAcumuladaDias = 0;
+
+    for (var fase in workflow) {
+      final nombreFaseUnico = nombresOriginales[faseIndex]; // ✅ Usar nombre único garantizado
+      final tareasFase = fase['tareas'] as List? ?? [];
+      final duracionFaseDiasNum = fase['duracionDias'] ?? 7;
+      final duracionFaseDias = (duracionFaseDiasNum is int) ? duracionFaseDiasNum : (duracionFaseDiasNum as num).toInt();
+
+      print('   ✓ Fase "${nombreFaseUnico}" (${tareasFase.length} tareas)');
+
+      for (var tareaData in tareasFase) {
+        final nombreTarea = tareaData['titulo'] ?? 'Tarea ${tasks.length + 1}';
+
+        // ✅ Combinar habilidades técnicas y blandas
+        final habilidadesTecnicas = List<String>.from(tareaData['habilidadesTecnicas'] ?? []);
+        final habilidadesBlandas = List<String>.from(tareaData['habilidadesBlandas'] ?? []);
+        final todasHabilidades = [...habilidadesTecnicas, ...habilidadesBlandas];
+
+        // ✅ Obtener outputs como entregable
+        final outputs = List<String>.from(tareaData['outputs'] ?? []);
+        final entregable = outputs.isNotEmpty ? outputs.join(', ') : null;
+
+        // ✅ Calcular fecha límite distribuyendo tareas en la duración de la fase
+        final duracionTareaDias = tareasFase.isNotEmpty ? (duracionFaseDias / tareasFase.length).ceil() : duracionFaseDias;
+        duracionAcumuladaDias += duracionTareaDias;
+        final fechaLimite = DateTime.now().add(Duration(days: duracionAcumuladaDias));
+
+        print('      📅 Tarea "$nombreTarea" → Fecha: ${fechaLimite.toString().split(' ')[0]} (+$duracionAcumuladaDias días)');
+
+        tasks.add(Tarea(
+          titulo: nombreTarea,
+          descripcion: tareaData['descripcion'] ?? '',
+          fecha: fechaLimite, // Mantener por compatibilidad
+          fechaLimite: fechaLimite, // ✅ Deadline - fecha límite de entrega
+          fechaProgramada: null, // No hay hora específica en proyectos contextuales
+          duracion: duracionTareaDias * 8 * 60, // Convertir días a minutos (8h/día)
+          prioridad: 3, // Prioridad media por defecto
           completado: false,
-          colorId: 0xFFFFB74D,
-          responsables: const [],
-          tipoTarea: 'Hito',
-          requisitos: const {},
+          colorId: _getColorForPhase(nombreFaseUnico, faseIndex),
+          responsables: [userId], // ✅ Auto-asignar al creador
+          tipoTarea: fase['tipo'] ?? 'Flexible',
+          requisitos: {},
           dificultad: 'media',
-          descripcion: descripcionParts.isEmpty ? null : descripcionParts.join('\n'),
-          tareasPrevias: const [],
-          area: 'Hitos',
-          habilidadesRequeridas: soft.isNotEmpty ? soft : defaultSkills,
-          fasePMI: null,
-          entregable: 'Hito IA',
+          tareasPrevias: [],
+          area: nombreFaseUnico, // 🔒 GARANTIZADO ÚNICO
+          habilidadesRequeridas: todasHabilidades,
+          fasePMI: nombreFaseUnico, // 🔒 GARANTIZADO ÚNICO
+          entregable: entregable,
           paqueteTrabajo: null,
-        ),
-      );
+        ));
+      }
+
+      faseIndex++;
     }
+
+    print('✅ Proyecto flexible generado: ${tasks.length} tareas en ${workflow.length} fases');
+    print('🔒 Áreas únicas garantizadas: ${nombresOriginales.toSet().length} áreas distintas');
 
     return tasks;
   }
 
-  List<String> _skillsFromMatrix(Map<String, dynamic> blueprint) {
-    final matrix = blueprint['skillMatrixSugerida'] as List? ?? [];
-    final result = <String>[];
-    for (final item in matrix) {
-      final map = item is Map ? Map<String, dynamic>.from(item) : {};
-      final skill = map['skill'] ?? map['name'];
-      if (skill is String && skill.isNotEmpty) {
-        result.add(skill);
-      }
-      if (result.length >= 4) break;
-    }
-    return result;
-  }
-
-  List<String> _safeStringList(dynamic source) {
-    if (source is List) {
-      return source
-          .whereType<String>()
-          .map((e) => e.trim())
-          .where((element) => element.isNotEmpty)
-          .toList();
-    } else if (source is String && source.isNotEmpty) {
-      return [source];
-    }
-    return [];
-  }
-
-  int _colorForTipo(String? tipo) {
-    switch (tipo?.toLowerCase()) {
-      case 'descubrimiento':
-        return 0xFF64B5F6;
-      case 'ejecucion':
-        return 0xFF81C784;
-      case 'seguimiento':
-        return 0xFFFFD54F;
-      default:
-        return 0xFF90A4AE;
-    }
-  }
-
-  int _parseMonth(dynamic value) {
-    if (value is num) return value.toInt().clamp(1, 24);
-    if (value is String) {
-      final parsed = int.tryParse(value);
-      if (parsed != null) {
-        return parsed.clamp(1, 24);
-      }
-    }
-    return 1;
+  int _getColorForPhase(String nombreFase, int index) {
+    // Colores diferentes para cada fase
+    final colores = [
+      0xFF64B5F6, // Azul
+      0xFF81C784, // Verde
+      0xFFFFD54F, // Amarillo
+      0xFFFF8A65, // Naranja
+      0xFFBA68C8, // Púrpura
+      0xFF4DD0E1, // Cyan
+      0xFFAED581, // Lima
+    ];
+    return colores[index % colores.length];
   }
 }
 

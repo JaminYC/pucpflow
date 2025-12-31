@@ -197,10 +197,13 @@ class PMIIAService {
 
         for (var tareaData in tareasData) {
           // Crear tarea en el formato existente
+          final fechaLimiteCalculada = DateTime.now().add(Duration(days: tareaData['duracionDias'] ?? 7));
           final tarea = Tarea(
             titulo: tareaData['titulo'] ?? '',
             descripcion: tareaData['descripcion'] ?? '',
-            fecha: DateTime.now().add(Duration(days: tareaData['duracionDias'] ?? 7)),
+            fecha: fechaLimiteCalculada, // Mantener por compatibilidad
+            fechaLimite: fechaLimiteCalculada, // ✅ Deadline - fecha límite calculada
+            fechaProgramada: null, // No hay hora específica en proyectos PMI generados por IA
             duracion: (tareaData['duracionDias'] ?? 1) * 60, // Convertir días a minutos
             prioridad: tareaData['prioridad'] ?? 3,
             completado: false,

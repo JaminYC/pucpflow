@@ -26,6 +26,7 @@ class Tarea {
   // ========================================
   DateTime? fechaLimite;     // Deadline - cuándo DEBE estar completa la tarea
   DateTime? fechaProgramada; // Hora/fecha programada - cuándo se HARÁ la tarea
+  DateTime? fechaCompletada; // Timestamp exacto de cuándo se completó la tarea
 
   // CAMPO AUXILIAR (NO SE GUARDA EN FIRESTORE)
   List<String>? responsablesNombres;
@@ -52,6 +53,7 @@ class Tarea {
     // Campos de fechas mejorados
     this.fechaLimite,
     this.fechaProgramada,
+    this.fechaCompletada,
     this.responsablesNombres,
   });
 
@@ -78,6 +80,7 @@ class Tarea {
       // Campos de fechas mejorados
       'fechaLimite': fechaLimite?.toIso8601String(),
       'fechaProgramada': fechaProgramada?.toIso8601String(),
+      'fechaCompletada': fechaCompletada?.toIso8601String(),
     };
   }
 
@@ -86,6 +89,7 @@ class Tarea {
     DateTime? fechaMigrada;
     DateTime? fechaLimiteMigrada;
     DateTime? fechaProgramadaMigrada;
+    DateTime? fechaCompletadaMigrada;
 
     if (json['fecha'] != null) {
       fechaMigrada = DateTime.parse(json['fecha']);
@@ -100,6 +104,10 @@ class Tarea {
 
     if (json['fechaProgramada'] != null) {
       fechaProgramadaMigrada = DateTime.parse(json['fechaProgramada']);
+    }
+
+    if (json['fechaCompletada'] != null) {
+      fechaCompletadaMigrada = DateTime.parse(json['fechaCompletada']);
     }
 
     return Tarea(
@@ -124,6 +132,7 @@ class Tarea {
       // Campos de fechas mejorados
       fechaLimite: fechaLimiteMigrada,
       fechaProgramada: fechaProgramadaMigrada,
+      fechaCompletada: fechaCompletadaMigrada,
     );
   }
 

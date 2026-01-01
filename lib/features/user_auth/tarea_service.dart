@@ -17,16 +17,60 @@ class TareaService {
         if (tareas[i]["titulo"] == tarea.titulo &&
             (tareas[i]["responsables"] as List).contains(userId)) {
           tareas[i]["completado"] = completado;
+
+          // Guardar la fecha y hora exacta de completado
+          if (completado) {
+            tareas[i]["fechaCompletada"] = Timestamp.now();
+          } else {
+            // Si se desmarca, remover la fecha de completado
+            tareas[i]["fechaCompletada"] = null;
+          }
         }
       }
 
       await _firestore.collection("proyectos").doc(doc.id).update({"tareas": tareas});
     }
 
-    if (completado) {
-      await _firestore.collection("users").doc(userId).update({
-        "puntosTotales": FieldValue.increment(1),
-      });
+    // Actualizar las listas del usuario
+    final userDoc = await _firestore.collection("users").doc(userId).get();
+    if (userDoc.exists) {
+      final userData = userDoc.data();
+      if (userData != null) {
+        List<String> tareasAsignadas = List<String>.from(userData['tareasAsignadas'] ?? []);
+        List<String> tareasHechas = List<String>.from(userData['tareasHechas'] ?? []);
+        List<String> tareasPorHacer = List<String>.from(userData['tareasPorHacer'] ?? []);
+
+        if (completado) {
+          // Mover de asignadas/por hacer a hechas
+          tareasAsignadas.remove(tarea.titulo);
+          tareasPorHacer.remove(tarea.titulo);
+          if (!tareasHechas.contains(tarea.titulo)) {
+            tareasHechas.add(tarea.titulo);
+          }
+
+          // Incrementar puntos
+          await _firestore.collection("users").doc(userId).update({
+            "puntosTotales": FieldValue.increment(1),
+            'tareasAsignadas': tareasAsignadas,
+            'tareasHechas': tareasHechas,
+            'tareasPorHacer': tareasPorHacer,
+          });
+        } else {
+          // Mover de hechas de regreso a asignadas
+          tareasHechas.remove(tarea.titulo);
+          if (!tareasAsignadas.contains(tarea.titulo)) {
+            tareasAsignadas.add(tarea.titulo);
+          }
+
+          // Decrementar puntos
+          await _firestore.collection("users").doc(userId).update({
+            "puntosTotales": FieldValue.increment(-1),
+            'tareasAsignadas': tareasAsignadas,
+            'tareasHechas': tareasHechas,
+            'tareasPorHacer': tareasPorHacer,
+          });
+        }
+      }
     }
   }
 
@@ -53,6 +97,23 @@ class TareaService {
         await _firestore.collection("proyectos").doc(doc.id).update({"tareas": tareas});
       }
     }
+
+    // Agregar la tarea a la lista del usuario
+    final userDoc = await _firestore.collection("users").doc(userId).get();
+    if (userDoc.exists) {
+      final userData = userDoc.data();
+      if (userData != null) {
+        List<String> tareasAsignadas = List<String>.from(userData['tareasAsignadas'] ?? []);
+
+        // Agregar a tareasAsignadas si no está ya
+        if (!tareasAsignadas.contains(tarea.titulo)) {
+          tareasAsignadas.add(tarea.titulo);
+          await _firestore.collection("users").doc(userId).update({
+            'tareasAsignadas': tareasAsignadas,
+          });
+        }
+      }
+    }
   }
 
   Future<void> agregarTareaAProyecto(String proyectoId, Tarea tarea) async {
@@ -62,9 +123,35 @@ class TareaService {
   }
 
   Future<void> eliminarTareaDeProyecto(String proyectoId, Tarea tarea) async {
+    // Eliminar la tarea del proyecto
     await _firestore.collection("proyectos").doc(proyectoId).update({
       "tareas": FieldValue.arrayRemove([tarea.toJson()])
     });
+
+    // Eliminar la tarea de las listas de todos los responsables
+    for (String userId in tarea.responsables) {
+      final userDoc = await _firestore.collection("users").doc(userId).get();
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        if (userData != null) {
+          List<String> tareasAsignadas = List<String>.from(userData['tareasAsignadas'] ?? []);
+          List<String> tareasHechas = List<String>.from(userData['tareasHechas'] ?? []);
+          List<String> tareasPorHacer = List<String>.from(userData['tareasPorHacer'] ?? []);
+
+          // Eliminar el título de la tarea de todas las listas
+          tareasAsignadas.remove(tarea.titulo);
+          tareasHechas.remove(tarea.titulo);
+          tareasPorHacer.remove(tarea.titulo);
+
+          // Actualizar el documento del usuario
+          await _firestore.collection("users").doc(userId).update({
+            'tareasAsignadas': tareasAsignadas,
+            'tareasHechas': tareasHechas,
+            'tareasPorHacer': tareasPorHacer,
+          });
+        }
+      }
+    }
   }
 
   Future<void> actualizarTareaEnProyecto(String proyectoId, Tarea original, Tarea editada) async {
@@ -156,5 +243,44 @@ class TareaService {
     if (tarea.dificultad == "alta") return 3;
     if (tarea.dificultad == "media") return 2;
     return 1;
+  }
+
+  /// Sincroniza las listas de tareas del usuario con las tareas reales de los proyectos
+  Future<void> sincronizarTareasDeUsuario(String userId) async {
+    // Obtener todas las tareas de todos los proyectos donde el usuario es responsable
+    final proyectosSnapshot = await _firestore.collection("proyectos").get();
+
+    List<String> tareasAsignadasReales = [];
+    List<String> tareasHechasReales = [];
+
+    for (var proyectoDoc in proyectosSnapshot.docs) {
+      final data = proyectoDoc.data();
+      List<dynamic> tareas = data["tareas"] ?? [];
+
+      for (var tareaData in tareas) {
+        List<dynamic> responsables = tareaData["responsables"] ?? [];
+
+        // Si el usuario es responsable de esta tarea
+        if (responsables.contains(userId)) {
+          String titulo = tareaData["titulo"] ?? "";
+          bool completado = tareaData["completado"] ?? false;
+
+          if (titulo.isNotEmpty) {
+            if (completado) {
+              tareasHechasReales.add(titulo);
+            } else {
+              tareasAsignadasReales.add(titulo);
+            }
+          }
+        }
+      }
+    }
+
+    // Actualizar el documento del usuario con las listas sincronizadas
+    await _firestore.collection("users").doc(userId).update({
+      'tareasAsignadas': tareasAsignadasReales,
+      'tareasHechas': tareasHechasReales,
+      'tareasPorHacer': [], // Limpiar tareas por hacer (no se usan actualmente)
+    });
   }
 }

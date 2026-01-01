@@ -2,6 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pucpflow/features/user_auth/Usuario/UserModel.dart';
+import 'package:pucpflow/features/user_auth/firebase_auth_implementation/firebase_auth_services.dart';
+import 'package:pucpflow/features/user_auth/tarea_service.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({Key? key}) : super(key: key);
@@ -11,54 +14,44 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  String _selectedView = 'stats';
   bool _loadingTasks = true;
-
-  final List<_WellnessMetric> _metrics = const [
-    _WellnessMetric(
-      title: 'Energía diaria',
-      icon: Icons.flash_on,
-      value: 0.78,
-      description: 'Horas de sueño reparador',
-      color: Color(0xFF5BE4A8),
-    ),
-    _WellnessMetric(
-      title: 'Mindfulness',
-      icon: Icons.self_improvement,
-      value: 0.62,
-      description: 'Sesiones de respiración y foco',
-      color: Color(0xFF9B6BFF),
-    ),
-    _WellnessMetric(
-      title: 'Social',
-      icon: Icons.people_alt_outlined,
-      value: 0.55,
-      description: 'Interacciones significativas',
-      color: Color(0xFFFFA851),
-    ),
-    _WellnessMetric(
-      title: 'Movimiento',
-      icon: Icons.directions_run,
-      value: 0.82,
-      description: 'Actividad física semanal',
-      color: Color(0xFF5CC4FF),
-    ),
-  ];
-
-  final List<_WellnessEvent> _history = const [
-    _WellnessEvent(day: 'Lunes', highlights: ['Yoga mañanero', 'Reunión con mentor', 'Diario de gratitud']),
-    _WellnessEvent(day: 'Martes', highlights: ['Meditación', '15 min de journaling']),
-    _WellnessEvent(day: 'Miércoles', highlights: ['Entrenamiento funcional', 'Café con equipo de innovación']),
-    _WellnessEvent(day: 'Jueves', highlights: ['Revisión de metas', 'Sesión de respiración guiada']),
-    _WellnessEvent(day: 'Viernes', highlights: ['Running 5K', 'Retro con squad', 'Cena larga con amigos']),
-  ];
+  bool _loadingUser = true;
+  UserModel? _userData;
+  final TareaService _tareaService = TareaService();
 
   List<_TaskCompletion> _taskCompletions = [];
 
   @override
   void initState() {
     super.initState();
+    _loadUserData();
     _loadCompletedTasks();
+  }
+
+  Future<void> _loadUserData() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      setState(() => _loadingUser = false);
+      return;
+    }
+
+    try {
+      // Sincronizar tareas primero
+      await _tareaService.sincronizarTareasDeUsuario(uid);
+
+      // Cargar datos del usuario
+      final userData = await FirebaseAuthService().getUserFromFirestore(uid);
+      if (mounted) {
+        setState(() {
+          _userData = userData;
+          _loadingUser = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loadingUser = false);
+      }
+    }
   }
 
   @override
@@ -76,6 +69,15 @@ class _DashboardPageState extends State<DashboardPage> {
           'Mi Progreso Integral',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, letterSpacing: 0.3),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: () {
+              _loadUserData();
+              _loadCompletedTasks();
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -87,22 +89,17 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 24),
               _buildQuickStats(),
               const SizedBox(height: 24),
-              _buildSectionHeader('Progreso de tareas', 'Dias y horas en que cierras pendientes'),
+              _buildSectionHeader('Progreso de tareas', 'Días y horas en que cierras pendientes'),
               const SizedBox(height: 12),
               _buildTaskProgress(),
               const SizedBox(height: 28),
-              _buildSectionHeader('Panel de bienestar', 'Visualiza la tendencia de tus hábitos'),
+              _buildSectionHeader('Análisis de Productividad', 'Descubre tus mejores días y horarios'),
               const SizedBox(height: 12),
-              _buildSegmentedControl(),
-              const SizedBox(height: 12),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: _selectedView == 'stats' ? _buildMetricsGrid() : _buildHistoryTimeline(),
-              ),
+              _buildProductivityAnalysis(),
               const SizedBox(height: 32),
-              _buildSectionHeader('Sugerencias rápidas', 'Acciones cortas para continuar con buena racha'),
+              _buildSectionHeader('Timeline de Tareas', 'Historial de tareas completadas'),
               const SizedBox(height: 12),
-              _buildTips(),
+              _buildTaskTimeline(),
             ],
           ),
         ),
@@ -111,7 +108,38 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildHeroCard(ThemeData theme) {
-    const wellbeing = 0.76;
+    if (_loadingUser || _userData == null) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF133E87), Color(0xFF0B192F)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
+
+    // Calcular progreso basado en tareas completadas
+    final totalTareas = _userData!.tareasAsignadas.length +
+                        _userData!.tareasHechas.length +
+                        _userData!.tareasPorHacer.length;
+    final wellbeing = totalTareas == 0 ? 0.0 : _userData!.tareasHechas.length / totalTareas;
+
+    // Obtener mensaje personalizado
+    String mensaje = 'Comienza a completar tareas para ver tu progreso.';
+    if (wellbeing >= 0.8) {
+      mensaje = '¡Excelente! Estás completando tus tareas de manera efectiva. Mantén el ritmo.';
+    } else if (wellbeing >= 0.5) {
+      mensaje = 'Buen progreso. Continúa enfocándote en tus prioridades para mejorar tu productividad.';
+    } else if (wellbeing > 0) {
+      mensaje = 'Tienes varias tareas pendientes. Prioriza las más importantes para avanzar.';
+    }
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -139,10 +167,13 @@ class _DashboardPageState extends State<DashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Balance saludable', style: theme.textTheme.titleLarge?.copyWith(color: Colors.white)),
+                Text(
+                  'Progreso de Productividad',
+                  style: theme.textTheme.titleLarge?.copyWith(color: Colors.white),
+                ),
                 const SizedBox(height: 8),
                 Text(
-                  'Tu energía semanal está por encima del promedio. Mantén la constancia en descanso y socialización para sostener la curva.',
+                  mensaje,
                   style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white70, height: 1.5),
                 ),
                 const SizedBox(height: 16),
@@ -152,7 +183,10 @@ class _DashboardPageState extends State<DashboardPage> {
                     color: Colors.white.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text('✔ 4 hábitos completados hoy', style: TextStyle(color: Colors.white)),
+                  child: Text(
+                    '✔ ${_userData!.tareasHechas.length} tareas completadas | ${_userData!.puntosTotales} puntos',
+                    style: const TextStyle(color: Colors.white),
+                  ),
                 ),
               ],
             ),
@@ -197,7 +231,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   style: theme.textTheme.headlineMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 4),
-                Text('Equilibrio general', style: theme.textTheme.labelMedium?.copyWith(color: Colors.white70)),
+                Text('Tareas completadas', style: theme.textTheme.labelMedium?.copyWith(color: Colors.white70)),
               ],
             ),
           ),
@@ -207,10 +241,32 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildQuickStats() {
+    if (_loadingUser || _userData == null) {
+      return const SizedBox(
+        height: 110,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final items = [
-      _QuickStat(icon: Icons.bedtime, label: 'Sueño', value: '7h 15m', description: 'Ritmo estable'),
-      _QuickStat(icon: Icons.monitor_heart, label: 'Frecuencia', value: '68 bpm', description: 'Reposo promedio'),
-      _QuickStat(icon: Icons.water_drop, label: 'Hidratación', value: '6 vasos', description: 'Meta del día 80%'),
+      _QuickStat(
+        icon: Icons.assignment_outlined,
+        label: 'Asignadas',
+        value: '${_userData!.tareasAsignadas.length}',
+        description: 'Tareas pendientes',
+      ),
+      _QuickStat(
+        icon: Icons.check_circle_outline,
+        label: 'Completadas',
+        value: '${_userData!.tareasHechas.length}',
+        description: 'Entregas validadas',
+      ),
+      _QuickStat(
+        icon: Icons.star_rate_rounded,
+        label: 'Puntos',
+        value: '${_userData!.puntosTotales}',
+        description: 'Nivel de progreso',
+      ),
     ];
 
     return SizedBox(
@@ -284,8 +340,6 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         const SizedBox(height: 12),
         _aiReadyCard(),
-        const SizedBox(height: 12),
-        _buildTaskTimeline(),
       ],
     );
   }
@@ -325,76 +379,216 @@ class _DashboardPageState extends State<DashboardPage> {
     if (_taskCompletions.isEmpty) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: const Color(0xFF0E1B2D),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white.withOpacity(0.08)),
         ),
-        child: const Text(
-          'No hay tareas completadas aún.',
-          style: TextStyle(color: Colors.white70),
+        child: Column(
+          children: [
+            Icon(Icons.timeline_outlined, color: Colors.white.withOpacity(0.3), size: 48),
+            const SizedBox(height: 12),
+            const Text(
+              'No hay tareas completadas aún.',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Completa tareas para ver tu historial aquí',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+          ],
         ),
       );
     }
+
+    // Las tareas ya están ordenadas por timestamp (más recientes primero)
+    final sortedTasks = _taskCompletions;
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: const Color(0xFF0E1B2D),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withOpacity(0.08)),
       ),
       child: Column(
-        children: _taskCompletions.map((e) => _taskTile(e)).toList(),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header con contador de tareas
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16, left: 4),
+            child: Row(
+              children: [
+                Icon(Icons.history, color: Colors.white.withOpacity(0.7), size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  '${sortedTasks.length} tarea${sortedTasks.length != 1 ? 's' : ''} completada${sortedTasks.length != 1 ? 's' : ''}',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Timeline items
+          for (int i = 0; i < sortedTasks.length; i++)
+            _timelineItem(sortedTasks[i], isLast: i == sortedTasks.length - 1),
+        ],
       ),
     );
   }
 
-  Widget _taskTile(_TaskCompletion item) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-      ),
+  Widget _timelineItem(_TaskCompletion item, {required bool isLast}) {
+    return IntrinsicHeight(
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 42,
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              children: [
-                Text(item.time, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 2),
-                Text(item.day, style: const TextStyle(color: Colors.white54, fontSize: 10)),
-              ],
-            ),
+          // Columna de la línea de tiempo (izquierda)
+          Column(
+            children: [
+              // Punto del timeline
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: item.late ? Colors.orangeAccent : Colors.greenAccent,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: (item.late ? Colors.orangeAccent : Colors.greenAccent).withOpacity(0.4),
+                      blurRadius: 8,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+              ),
+              // Línea vertical (solo si no es el último)
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white.withOpacity(0.3),
+                          Colors.white.withOpacity(0.05),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 16),
+          // Contenido de la tarea (derecha)
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(item.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                Text(item.project, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              ],
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.04),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: item.late
+                    ? Colors.orangeAccent.withOpacity(0.2)
+                    : Colors.greenAccent.withOpacity(0.15),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header con hora y día
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.schedule,
+                        size: 14,
+                        color: Colors.white.withOpacity(0.6),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${item.time} • ${item.day}',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.6),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      // Badge de estado
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: item.late
+                            ? Colors.orangeAccent.withOpacity(0.15)
+                            : Colors.greenAccent.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              item.late ? Icons.access_time : Icons.check_circle,
+                              size: 12,
+                              color: item.late ? Colors.orangeAccent : Colors.greenAccent,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              item.late ? 'Tarde' : 'A tiempo',
+                              style: TextStyle(
+                                color: item.late ? Colors.orangeAccent : Colors.greenAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // Título de la tarea
+                  Text(
+                    item.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // Nombre del proyecto
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.folder_outlined,
+                        size: 14,
+                        color: Colors.white.withOpacity(0.5),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          item.project,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.7),
+                            fontSize: 13,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: item.late ? Colors.pinkAccent.withOpacity(0.18) : Colors.greenAccent.withOpacity(0.18),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(item.late ? 'Tarde' : 'A tiempo', style: const TextStyle(color: Colors.white, fontSize: 11)),
           ),
         ],
       ),
@@ -464,17 +658,40 @@ class _DashboardPageState extends State<DashboardPage> {
             if (!completado || !responsables.contains(uid)) continue;
 
             final titulo = (tareaJson['titulo'] ?? 'Sin titulo').toString();
-            final fechaRaw = tareaJson['fecha'];
-            DateTime? fecha;
-            if (fechaRaw is Timestamp) {
-              fecha = fechaRaw.toDate();
-            } else if (fechaRaw is String) {
-              fecha = DateTime.tryParse(fechaRaw);
+
+            // Leer la fecha de completado (no la fecha límite)
+            final fechaCompletadaRaw = tareaJson['fechaCompletada'];
+            DateTime? fechaCompletada;
+            if (fechaCompletadaRaw is Timestamp) {
+              fechaCompletada = fechaCompletadaRaw.toDate();
+            } else if (fechaCompletadaRaw is String) {
+              fechaCompletada = DateTime.tryParse(fechaCompletadaRaw);
             }
 
-            final day = fecha != null ? _formatDay(fecha) : '--';
-            final time = fecha != null ? _formatHour(fecha) : '--';
-            final late = fecha != null ? DateTime.now().isAfter(fecha) : false;
+            // Si no hay fechaCompletada, usar la fecha límite como fallback (para tareas antiguas)
+            if (fechaCompletada == null) {
+              final fechaRaw = tareaJson['fecha'];
+              if (fechaRaw is Timestamp) {
+                fechaCompletada = fechaRaw.toDate();
+              } else if (fechaRaw is String) {
+                fechaCompletada = DateTime.tryParse(fechaRaw);
+              }
+            }
+
+            final day = fechaCompletada != null ? _formatDay(fechaCompletada) : '--';
+            final time = fechaCompletada != null ? _formatHour(fechaCompletada) : '--';
+
+            // Verificar si se completó tarde comparando con la fecha límite
+            final fechaLimiteRaw = tareaJson['fecha'];
+            DateTime? fechaLimite;
+            if (fechaLimiteRaw is Timestamp) {
+              fechaLimite = fechaLimiteRaw.toDate();
+            } else if (fechaLimiteRaw is String) {
+              fechaLimite = DateTime.tryParse(fechaLimiteRaw);
+            }
+            final late = (fechaCompletada != null && fechaLimite != null)
+                ? fechaCompletada.isAfter(fechaLimite)
+                : false;
 
             collected.add(_TaskCompletion(
               day: day,
@@ -482,12 +699,19 @@ class _DashboardPageState extends State<DashboardPage> {
               title: titulo,
               project: projectName,
               late: late,
+              timestamp: fechaCompletada,
             ));
           }
         }
       }
 
-      collected.sort((a, b) => a.day.compareTo(b.day));
+      // Ordenar por timestamp (más recientes primero)
+      collected.sort((a, b) {
+        if (a.timestamp == null && b.timestamp == null) return 0;
+        if (a.timestamp == null) return 1;
+        if (b.timestamp == null) return -1;
+        return b.timestamp!.compareTo(a.timestamp!); // Descendente (más recientes primero)
+      });
 
       setState(() {
         _taskCompletions = collected;
@@ -523,173 +747,237 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildSegmentedControl() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0E1B2D),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Row(
-        children: [
-          _buildSegmentButton('stats', 'Indicadores'),
-          _buildSegmentButton('history', 'Rutina semanal'),
-        ],
-      ),
-    );
-  }
-
-  Expanded _buildSegmentButton(String value, String label) {
-    final isSelected = _selectedView == value;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedView = value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF133E87) : Colors.transparent,
-            borderRadius: BorderRadius.circular(24),
-          ),
+  Widget _buildProductivityAnalysis() {
+    if (_loadingTasks || _taskCompletions.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(40),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0E1B2D),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: const Center(
           child: Text(
-            label,
+            'Completa tareas para ver tu análisis de productividad',
+            style: TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
-            style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontWeight: FontWeight.w600),
           ),
         ),
-      ),
-    );
-  }
+      );
+    }
 
-  Widget _buildMetricsGrid() {
-    return GridView.builder(
-      key: const ValueKey('stats'),
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.1,
-      ),
-      itemCount: _metrics.length,
-      itemBuilder: (_, index) {
-        final metric = _metrics[index];
-        return Container(
-          padding: const EdgeInsets.all(16),
+    // Análisis por día de la semana
+    final Map<String, int> tareasPorDia = {};
+    final List<String> diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+    for (var dia in diasSemana) {
+      tareasPorDia[dia] = 0;
+    }
+
+    for (var tarea in _taskCompletions) {
+      tareasPorDia[tarea.day] = (tareasPorDia[tarea.day] ?? 0) + 1;
+    }
+
+    // Encontrar el mejor día
+    String mejorDia = diasSemana[0];
+    int maxTareas = 0;
+    tareasPorDia.forEach((dia, cantidad) {
+      if (cantidad > maxTareas) {
+        maxTareas = cantidad;
+        mejorDia = dia;
+      }
+    });
+
+    // Análisis por hora
+    final Map<int, int> tareasPorHora = {};
+    for (var tarea in _taskCompletions) {
+      final hora = int.tryParse(tarea.time.split(':').first) ?? 0;
+      tareasPorHora[hora] = (tareasPorHora[hora] ?? 0) + 1;
+    }
+
+    int mejorHora = 0;
+    int maxTareasHora = 0;
+    tareasPorHora.forEach((hora, cantidad) {
+      if (cantidad > maxTareasHora) {
+        maxTareasHora = cantidad;
+        mejorHora = hora;
+      }
+    });
+
+    return Column(
+      children: [
+        // Mejores días
+        Container(
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: const Color(0xFF0E1B2D),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Row(
+                children: [
+                  Icon(Icons.calendar_today, color: Colors.cyan.shade400, size: 22),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Mejores Días de la Semana',
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ...diasSemana.map((dia) {
+                final cantidad = tareasPorDia[dia] ?? 0;
+                final porcentaje = maxTareas == 0 ? 0.0 : cantidad / maxTareas;
+                final esMejor = dia == mejorDia && cantidad > 0;
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                dia,
+                                style: TextStyle(
+                                  color: esMejor ? Colors.cyan.shade400 : Colors.white,
+                                  fontWeight: esMejor ? FontWeight.bold : FontWeight.normal,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              if (esMejor) ...[
+                                const SizedBox(width: 8),
+                                Icon(Icons.star, color: Colors.amber.shade400, size: 16),
+                              ],
+                            ],
+                          ),
+                          Text(
+                            '$cantidad tareas',
+                            style: TextStyle(
+                              color: esMejor ? Colors.cyan.shade400 : Colors.white70,
+                              fontWeight: esMejor ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LinearProgressIndicator(
+                          value: porcentaje,
+                          minHeight: 8,
+                          backgroundColor: Colors.white.withValues(alpha: 0.05),
+                          valueColor: AlwaysStoppedAnimation(
+                            esMejor ? Colors.cyan.shade400 : Colors.blue.shade600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Mejores horas
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0E1B2D),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.access_time, color: Colors.orange.shade400, size: 22),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Horarios Más Productivos',
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildHourStat('Mañana\n(6-12)', _countTasksInRange(6, 12), Icons.wb_sunny, Colors.orange.shade400),
+                  _buildHourStat('Tarde\n(12-18)', _countTasksInRange(12, 18), Icons.wb_twilight, Colors.amber.shade400),
+                  _buildHourStat('Noche\n(18-24)', _countTasksInRange(18, 24), Icons.nights_stay, Colors.indigo.shade400),
+                ],
+              ),
+              const SizedBox(height: 20),
               Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: metric.color.withOpacity(0.15), borderRadius: BorderRadius.circular(14)),
-                child: Icon(metric.icon, color: metric.color, size: 22),
-              ),
-              const SizedBox(height: 14),
-              Text(metric.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 6),
-              Text(metric.description, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-              const Spacer(),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  value: metric.value,
-                  minHeight: 8,
-                  backgroundColor: Colors.white12,
-                  valueColor: AlwaysStoppedAnimation(metric.color),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade400.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.shade400.withValues(alpha: 0.3)),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text('${(metric.value * 100).round()}%', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                child: Row(
+                  children: [
+                    Icon(Icons.lightbulb_outline, color: Colors.orange.shade400),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Tu hora pico: ${mejorHora.toString().padLeft(2, '0')}:00 con $maxTareasHora tareas',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
-  Widget _buildHistoryTimeline() {
-    return Column(
-      key: const ValueKey('history'),
-      children: _history
-          .map(
-            (event) => Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0E1B2D),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.white.withOpacity(0.05)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.only(top: 8),
-                    decoration: const BoxDecoration(color: Color(0xFF5BE4A8), shape: BoxShape.circle),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(event.day, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        ...event.highlights.map(
-                          (highlight) => Padding(
-                            padding: const EdgeInsets.only(bottom: 2),
-                            child: Text('• $highlight', style: const TextStyle(color: Colors.white60, fontSize: 13)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-          .toList(),
-    );
+  int _countTasksInRange(int start, int end) {
+    return _taskCompletions.where((tarea) {
+      final hora = int.tryParse(tarea.time.split(':').first) ?? 0;
+      return hora >= start && hora < end;
+    }).length;
   }
 
-  Widget _buildTips() {
-    final tips = [
-      {'icon': Icons.alarm_add, 'text': 'Agenda recordatorios de micro descansos cada 90 minutos.'},
-      {'icon': Icons.waves, 'text': 'Prueba una serie de respiraciones cuadradas antes de dormir.'},
-      {'icon': Icons.public, 'text': 'Sal 10 minutos a tomar sol, ayuda a regular tu energía.'},
-    ];
-
+  Widget _buildHourStat(String label, int count, IconData icon, Color color) {
     return Column(
-      children: tips
-          .map(
-            (tip) => Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0E1B2D),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withOpacity(0.04)),
-              ),
-              child: Row(
-                children: [
-                  Icon(tip['icon'] as IconData, color: Colors.white, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text(tip['text'] as String, style: const TextStyle(color: Colors.white70))),
-                ],
-              ),
-            ),
-          )
-          .toList(),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color, size: 28),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '$count',
+          style: TextStyle(
+            color: color,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 11),
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 }
@@ -700,25 +988,16 @@ class _TaskCompletion {
   final String title;
   final String project;
   final bool late;
+  final DateTime? timestamp; // Para ordenar por fecha de completado
 
-  const _TaskCompletion({required this.day, required this.time, required this.title, required this.project, required this.late});
-}
-
-class _WellnessMetric {
-  final String title;
-  final IconData icon;
-  final double value;
-  final String description;
-  final Color color;
-
-  const _WellnessMetric({required this.title, required this.icon, required this.value, required this.description, required this.color});
-}
-
-class _WellnessEvent {
-  final String day;
-  final List<String> highlights;
-
-  const _WellnessEvent({required this.day, required this.highlights});
+  const _TaskCompletion({
+    required this.day,
+    required this.time,
+    required this.title,
+    required this.project,
+    required this.late,
+    this.timestamp,
+  });
 }
 
 class _QuickStat {

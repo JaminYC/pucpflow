@@ -7,10 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pucpflow/features/app/splash_screen/splash_screen.dart'; // Importa la pantalla de Splash
 
 import 'package:provider/provider.dart';
-import 'package:pucpflow/demo/animations_demo_page.dart'; // Demo de animaciones
-import 'package:pucpflow/demo/bubble_button_demo.dart'; // Demo del botón de burbujas
-import 'package:pucpflow/demo/gamification_quick_access.dart'; // Demo de gamification
 import 'package:pucpflow/providers/theme_provider.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Briefing/briefing_diario_page.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -733,32 +731,17 @@ Widget _buildMainScaffold(BuildContext context){
           ),
 
           actions: [
-            // 🎨 Botón para ver DEMO de animaciones
+            // ☀️ Botón para Briefing del Día
             IconButton(
-              icon: const Icon(Icons.animation),
-              tooltip: '🎨 Ver Demo Animaciones',
+              icon: const Icon(Icons.wb_sunny),
+              tooltip: '☀️ Briefing del Día',
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const AnimationsDemoPage()),
+                  MaterialPageRoute(builder: (_) => const BriefingDiarioPage()),
                 );
               },
             ),
-
-            // Botón para ver tu Bubble Button
-            IconButton(
-              icon: const Icon(Icons.bubble_chart),
-              tooltip: '🎈 Ver Bubble Button',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const BubbleButtonDemo()),
-                );
-              },
-            ),
-
-            // 🎮 Botón para Gamification Test
-            const GamificationQuickAccessButton(),
 
             // Toggle de tema elegante (tipo switch)
             Padding(
@@ -2333,6 +2316,9 @@ Future<void> marcarTareaComoCompletada(Tarea tarea, String nombreProyecto) async
       if (tareas[i]["titulo"] == tarea.titulo) {
 
         tareas[i]["completado"] = true;
+
+        // Guardar la fecha y hora exacta de completado
+        tareas[i]["fechaCompletada"] = DateTime.now().toIso8601String();
 
       }
 

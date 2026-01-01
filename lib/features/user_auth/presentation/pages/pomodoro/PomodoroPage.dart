@@ -44,10 +44,12 @@ class _PomodoroPageState extends State<PomodoroPage> {
     super.initState();
     initNotifications();
     loadPomodoroHistory();
+    _loadTimerState(); // Cargar estado del timer
   }
 
   @override
   void dispose() {
+    _saveTimerState(); // Guardar estado antes de cerrar
     timer?.cancel();
     super.dispose();
   }
@@ -119,6 +121,52 @@ class _PomodoroPageState extends State<PomodoroPage> {
     await prefs.setStringList('pomodoroHistory', historyData);
   }
 
+  // ===== PERSISTENCIA DEL ESTADO DEL TIMER =====
+  Future<void> _saveTimerState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('pomodoro.remainingSeconds', remainingSeconds);
+    await prefs.setBool('pomodoro.isRunning', isRunning);
+    await prefs.setBool('pomodoro.isWorkInterval', isWorkInterval);
+    await prefs.setBool('pomodoro.isLongBreak', isLongBreak);
+    await prefs.setInt('pomodoro.completedPomodoros', completedPomodoros);
+    await prefs.setInt('pomodoro.completedWorkSessions', completedWorkSessions);
+    await prefs.setString('pomodoro.currentTask', currentTask);
+    await prefs.setInt('pomodoro.lastSaveTime', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  Future<void> _loadTimerState() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final savedTime = prefs.getInt('pomodoro.lastSaveTime');
+    if (savedTime != null) {
+      final elapsed = DateTime.now().millisecondsSinceEpoch - savedTime;
+      final elapsedSeconds = (elapsed / 1000).floor();
+
+      setState(() {
+        remainingSeconds = prefs.getInt('pomodoro.remainingSeconds') ?? 1500;
+        isRunning = prefs.getBool('pomodoro.isRunning') ?? false;
+        isWorkInterval = prefs.getBool('pomodoro.isWorkInterval') ?? true;
+        isLongBreak = prefs.getBool('pomodoro.isLongBreak') ?? false;
+        completedPomodoros = prefs.getInt('pomodoro.completedPomodoros') ?? 0;
+        completedWorkSessions = prefs.getInt('pomodoro.completedWorkSessions') ?? 0;
+        currentTask = prefs.getString('pomodoro.currentTask') ?? "Sin tarea";
+
+        // Si el timer estaba corriendo, restar el tiempo transcurrido
+        if (isRunning) {
+          remainingSeconds = (remainingSeconds - elapsedSeconds).clamp(0, _currentIntervalTotalSeconds);
+
+          // Si se acabó el tiempo mientras la app estaba cerrada
+          if (remainingSeconds <= 0) {
+            _completeInterval();
+          } else {
+            // Reanudar timer
+            startTimer();
+          }
+        }
+      });
+    }
+  }
+
   void _logHistory(String type, int durationMinutes) {
     pomodoroHistory.add({
       "task": currentTask,
@@ -129,33 +177,63 @@ class _PomodoroPageState extends State<PomodoroPage> {
     savePomodoroHistory();
   }
 
-  void initNotifications() {
+  void initNotifications() async {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initializationSettings = InitializationSettings(android: androidSettings);
-    localNotificationsPlugin.initialize(initializationSettings);
+    await localNotificationsPlugin.initialize(initializationSettings);
+
+    // Crear canal de notificaciones en Android
+    const androidChannel = AndroidNotificationChannel(
+      'pomodoro_channel',
+      'Pomodoro Timer',
+      description: 'Notificaciones cuando termina un intervalo Pomodoro',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+      showBadge: true,
+    );
+
+    await localNotificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(androidChannel);
   }
 
   void showNotification(String title, String body) async {
     const androidDetails = AndroidNotificationDetails(
       'pomodoro_channel',
-      'Pomodoro',
-      channelDescription: 'Notificaciones para el Pomodoro',
-      importance: Importance.high,
+      'Pomodoro Timer',
+      channelDescription: 'Notificaciones cuando termina un intervalo Pomodoro',
+      importance: Importance.max,
       priority: Priority.high,
       playSound: true,
+      enableVibration: true,
+      enableLights: true,
+      showWhen: true,
+      styleInformation: BigTextStyleInformation(''),
+      icon: '@mipmap/ic_launcher',
     );
     const notificationDetails = NotificationDetails(android: androidDetails);
-    await localNotificationsPlugin.show(0, title, body, notificationDetails);
+    await localNotificationsPlugin.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000, // ID único
+      title,
+      body,
+      notificationDetails,
+    );
   }
 
   void startTimer() {
     if (timer != null) timer!.cancel();
     setState(() => isRunning = true);
+    _saveTimerState(); // Guardar estado
     timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (remainingSeconds > 0) {
         setState(() {
           remainingSeconds--;
         });
+        // Guardar cada 10 segundos para no saturar
+        if (remainingSeconds % 10 == 0) {
+          _saveTimerState();
+        }
       } else {
         _completeInterval();
       }
@@ -165,6 +243,7 @@ class _PomodoroPageState extends State<PomodoroPage> {
   void pauseTimer() {
     timer?.cancel();
     setState(() => isRunning = false);
+    _saveTimerState(); // Guardar estado
   }
 
   void resetTimer() {
@@ -175,6 +254,7 @@ class _PomodoroPageState extends State<PomodoroPage> {
       isLongBreak = false;
       isRunning = false;
     });
+    _saveTimerState(); // Guardar estado
   }
 
   Future<void> skipInterval() async {
@@ -193,10 +273,16 @@ class _PomodoroPageState extends State<PomodoroPage> {
         if (selectedTarea != null) {
           await _marcarTareaCompletada(selectedTarea!);
         }
-        showNotification("Descanso", "Completaste un pomodoro. Toma un respiro.");
+        showNotification(
+          "🎉 ¡Pomodoro completado!",
+          "Completaste un pomodoro de ${workDuration} minutos. Toma un descanso.",
+        );
       } else {
         _logHistory(isLongBreak ? "long_break" : "break", isLongBreak ? longBreakDuration : breakDuration);
-        showNotification("Trabajo", "Hora de concentrarse de nuevo.");
+        showNotification(
+          "⏰ Descanso terminado",
+          "Hora de volver a concentrarse. ¡Vamos!",
+        );
       }
     }
 
@@ -209,6 +295,8 @@ class _PomodoroPageState extends State<PomodoroPage> {
       remainingSeconds = _currentIntervalTotalSeconds;
       isRunning = autoStartNextInterval && !skip;
     });
+
+    _saveTimerState(); // Guardar estado después de completar intervalo
 
     if (autoStartNextInterval && !skip) {
       startTimer();
@@ -224,6 +312,9 @@ class _PomodoroPageState extends State<PomodoroPage> {
       for (int i = 0; i < tareas.length; i++) {
         if (tareas[i]["titulo"] == tarea.titulo && (tareas[i]["responsables"] as List).contains(userId)) {
           tareas[i]["completado"] = true;
+
+          // Guardar la fecha y hora exacta de completado
+          tareas[i]["fechaCompletada"] = DateTime.now().toIso8601String();
         }
       }
       await _firestore.collection("proyectos").doc(doc.id).update({"tareas": tareas});

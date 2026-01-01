@@ -170,6 +170,15 @@ class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
       for (int i = 0; i < tareas.length; i++) {
         if (tareas[i]["titulo"] == tarea.titulo) {
           tareas[i]["completado"] = completado;
+
+          // Guardar la fecha y hora exacta de completado
+          if (completado) {
+            tareas[i]["fechaCompletada"] = DateTime.now().toIso8601String();
+          } else {
+            // Si se desmarca, remover la fecha de completado
+            tareas[i]["fechaCompletada"] = null;
+          }
+
           tareaEncontrada = true;
           break;
         }
@@ -256,16 +265,44 @@ class _ProyectoDetallePageState extends State<ProyectoDetallePage> {
 }
 
   Map<String, List<String>> _mergeAreasWithTaskAreas(Map<String, List<String>> base) {
-    final updated = Map<String, List<String>>.from(base);
-    final derived = <String>{};
-    for (final tarea in tareas) {
-      final nombre = tarea.area.isNotEmpty ? tarea.area : "General";
-      derived.add(nombre);
+    // Normalizar áreas base primero
+    final Map<String, List<String>> baseNormalizado = {};
+    for (var entry in base.entries) {
+      final areaNormalizada = entry.key.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (areaNormalizada.isNotEmpty) {
+        baseNormalizado[areaNormalizada] = entry.value;
+      }
     }
+
+    final updated = Map<String, List<String>>.from(baseNormalizado);
+    final derived = <String>{};
+
+    debugPrint('🔍 DEBUG _mergeAreasWithTaskAreas:');
+    debugPrint('   Base areas (normalizadas): ${baseNormalizado.keys}');
+    debugPrint('   Total tareas: ${tareas.length}');
+
+    // Normalizar y recopilar áreas de tareas
+    for (final tarea in tareas) {
+      String nombre = tarea.area.isNotEmpty ? tarea.area : "General";
+      // Normalizar el nombre del área
+      nombre = nombre.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (nombre.isNotEmpty) {
+        derived.add(nombre);
+      }
+    }
+
+    debugPrint('   Áreas derivadas de tareas: $derived');
+
     if (derived.isEmpty) derived.add("General");
+
+    // Usar Set para garantizar unicidad
     for (final area in derived) {
       updated.putIfAbsent(area, () => []);
     }
+
+    debugPrint('   Áreas finales (merged): ${updated.keys}');
+    debugPrint('   Total áreas únicas: ${updated.keys.length}');
+
     return updated;
   }
 
@@ -526,7 +563,7 @@ Widget _buildParticipantesSection() {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Blueprint IA',
+              '📋 Plan del Proyecto IA',
               style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
             ),
             if (resumen != null && resumen.toString().isNotEmpty) ...[
@@ -1698,6 +1735,15 @@ Future<void> _actualizarEstadoTarea(Tarea tarea) async {
   for (var t in tareasJson) {
     if (t["titulo"] == tarea.titulo) {
       t["completado"] = tarea.completado;
+
+      // Guardar la fecha y hora exacta de completado
+      if (tarea.completado) {
+        t["fechaCompletada"] = DateTime.now().toIso8601String();
+      } else {
+        // Si se desmarca, remover la fecha de completado
+        t["fechaCompletada"] = null;
+      }
+
       break;
     }
   }
@@ -2113,6 +2159,12 @@ void _mostrarDialogoDetalleTareaPMI(Tarea tarea) {
                       if (tarea.dificultad != null)
                         _buildDetalleItem('Dificultad', tarea.dificultad!),
                       _buildDetalleItem('Estado', tarea.completado ? 'Completada' : 'Pendiente'),
+                      // Mostrar cuándo se completó la tarea
+                      if (tarea.completado && tarea.fechaCompletada != null)
+                        _buildDetalleItem(
+                          'Completada el',
+                          '${tarea.fechaCompletada!.day.toString().padLeft(2, '0')}/${tarea.fechaCompletada!.month.toString().padLeft(2, '0')}/${tarea.fechaCompletada!.year} a las ${tarea.fechaCompletada!.hour.toString().padLeft(2, '0')}:${tarea.fechaCompletada!.minute.toString().padLeft(2, '0')}',
+                        ),
                       _buildDetalleItem('Recurso recomendado', tarea.area),
                     ],
                   ),

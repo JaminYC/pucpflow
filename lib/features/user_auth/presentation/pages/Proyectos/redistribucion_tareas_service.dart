@@ -1,5 +1,7 @@
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/proyecto_model.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/google_calendar_service.dart';
+import 'package:googleapis/calendar/v3.dart' as calendar;
 
 /// Resultado de la redistribución de tareas
 class ResultadoRedistribucion {
@@ -20,15 +22,19 @@ class ResultadoRedistribucion {
 
 /// Servicio para redistribuir tareas pendientes de forma inteligente
 class RedistribucionTareasService {
+  final GoogleCalendarService _calendarService = GoogleCalendarService();
 
   /// Redistribuye las tareas pendientes dentro del rango de fechas del proyecto
   /// considerando dificultad, prioridad y carga de trabajo
-  ResultadoRedistribucion redistribuirTareas({
+  /// Si se proporciona calendarApi, usará Google Calendar para encontrar slots libres
+  Future<ResultadoRedistribucion> redistribuirTareas({
     required Proyecto proyecto,
     required List<Tarea> tareas,
     DateTime? fechaInicioPersonalizada,
     DateTime? fechaFinPersonalizada,
-  }) {
+    calendar.CalendarApi? calendarApi,
+    String? responsableUid,
+  }) async {
     // Separar tareas completadas y pendientes
     final tareasCompletadas = tareas.where((t) => t.completado).toList();
     final tareasPendientes = tareas.where((t) => !t.completado).toList();
@@ -69,11 +75,23 @@ class RedistribucionTareasService {
     final tareasOrdenadas = _ordenarTareasPorImportancia(tareasPendientes);
 
     // Calcular distribución óptima de fechas
-    final tareasRedistribuidas = _distribuirFechas(
-      tareasOrdenadas,
-      fechaInicio,
-      fechaFin,
-    );
+    // Si tenemos Google Calendar API, usarla para encontrar slots libres
+    List<Tarea> tareasRedistribuidas;
+    if (calendarApi != null && responsableUid != null) {
+      tareasRedistribuidas = await _distribuirFechasConCalendar(
+        tareasOrdenadas,
+        fechaInicio,
+        fechaFin,
+        calendarApi,
+        responsableUid,
+      );
+    } else {
+      tareasRedistribuidas = _distribuirFechas(
+        tareasOrdenadas,
+        fechaInicio,
+        fechaFin,
+      );
+    }
 
     // Combinar tareas completadas (sin cambios) con tareas redistribuidas
     final todasLasTareas = [...tareasCompletadas, ...tareasRedistribuidas];
@@ -191,6 +209,161 @@ class RedistribucionTareasService {
     }
 
     return tareasActualizadas;
+  }
+
+  /// Distribuye las fechas usando Google Calendar para encontrar slots libres
+  Future<List<Tarea>> _distribuirFechasConCalendar(
+    List<Tarea> tareas,
+    DateTime fechaInicio,
+    DateTime fechaFin,
+    calendar.CalendarApi calendarApi,
+    String responsableUid,
+  ) async {
+    if (tareas.isEmpty) return [];
+
+    List<Tarea> tareasActualizadas = [];
+
+    // Obtener todos los horarios ocupados en el rango
+    final busyTimes = await _calendarService.getBusyTimes(
+      calendarApi,
+      fechaInicio,
+      fechaFin,
+    );
+
+    DateTime fechaActual = fechaInicio;
+
+    for (var tarea in tareas) {
+      // Buscar el primer slot libre que pueda acomodar esta tarea
+      DateTime? slotEncontrado = await _encontrarSiguienteSlotLibre(
+        calendarApi,
+        responsableUid,
+        fechaActual,
+        fechaFin,
+        tarea.duracion,
+        busyTimes,
+      );
+
+      if (slotEncontrado == null) {
+        // Si no hay slot disponible, usar el método tradicional
+        slotEncontrado = _asignarSlotTradicional(fechaActual, tarea.duracion);
+      }
+
+      // Crear copia de la tarea con nueva fecha programada
+      final tareaActualizada = Tarea(
+        titulo: tarea.titulo,
+        fecha: tarea.fecha, // Mantener fecha límite
+        fechaLimite: tarea.fechaLimite,
+        fechaProgramada: slotEncontrado, // Asignar fecha programada
+        fechaCompletada: tarea.fechaCompletada,
+        duracion: tarea.duracion,
+        prioridad: tarea.prioridad,
+        completado: tarea.completado,
+        colorId: tarea.colorId,
+        responsables: tarea.responsables,
+        tipoTarea: tarea.tipoTarea,
+        requisitos: tarea.requisitos,
+        dificultad: tarea.dificultad,
+        descripcion: tarea.descripcion,
+        tareasPrevias: tarea.tareasPrevias,
+        area: tarea.area,
+        habilidadesRequeridas: tarea.habilidadesRequeridas,
+        fasePMI: tarea.fasePMI,
+        entregable: tarea.entregable,
+        paqueteTrabajo: tarea.paqueteTrabajo,
+        googleCalendarEventId: tarea.googleCalendarEventId,
+      );
+
+      tareasActualizadas.add(tareaActualizada);
+
+      // Actualizar la fecha actual para la siguiente tarea
+      fechaActual = slotEncontrado.add(Duration(minutes: tarea.duracion + 15)); // 15 min buffer
+    }
+
+    return tareasActualizadas;
+  }
+
+  /// Encuentra el siguiente slot libre en Google Calendar
+  Future<DateTime?> _encontrarSiguienteSlotLibre(
+    calendar.CalendarApi calendarApi,
+    String responsableUid,
+    DateTime desde,
+    DateTime hasta,
+    int duracionMinutos,
+    List<calendar.TimePeriod> busyTimes,
+  ) async {
+    DateTime fechaBusqueda = desde;
+    const horaInicio = 9; // 9 AM
+    const horaFin = 17; // 5 PM
+
+    // Buscar hasta 14 días en el futuro
+    final maxDias = 14;
+    int diasBuscados = 0;
+
+    while (diasBuscados < maxDias && fechaBusqueda.isBefore(hasta)) {
+      // Saltar fines de semana
+      if (fechaBusqueda.weekday > 5) {
+        fechaBusqueda = _siguienteDiaLaboral(fechaBusqueda);
+        continue;
+      }
+
+      // Probar slots cada 30 minutos dentro del horario laboral
+      for (int hora = horaInicio; hora < horaFin; hora++) {
+        for (int minuto = 0; minuto < 60; minuto += 30) {
+          final slotInicio = DateTime(
+            fechaBusqueda.year,
+            fechaBusqueda.month,
+            fechaBusqueda.day,
+            hora,
+            minuto,
+          );
+
+          final slotFin = slotInicio.add(Duration(minutes: duracionMinutos));
+
+          // Verificar que el slot termine antes de las 5 PM
+          if (slotFin.hour >= horaFin) continue;
+
+          // Verificar si este slot está libre
+          final hayConflicto = await _calendarService.verificarDisponibilidadHorario(
+            calendarApi,
+            responsableUid,
+            slotInicio,
+            slotFin,
+          );
+
+          if (!hayConflicto) {
+            return slotInicio; // ✅ Slot libre encontrado
+          }
+        }
+      }
+
+      // Pasar al siguiente día laboral
+      fechaBusqueda = _siguienteDiaLaboral(fechaBusqueda);
+      diasBuscados++;
+    }
+
+    return null; // No se encontró slot libre
+  }
+
+  /// Asignar slot de forma tradicional (sin Google Calendar)
+  DateTime _asignarSlotTradicional(DateTime fecha, int duracion) {
+    // Asegurar que sea día laboral
+    DateTime fechaAjustada = fecha;
+    while (fechaAjustada.weekday > 5) {
+      fechaAjustada = fechaAjustada.add(const Duration(days: 1));
+    }
+
+    // Asignar a las 9 AM si no tiene hora
+    if (fechaAjustada.hour < 9 || fechaAjustada.hour >= 17) {
+      fechaAjustada = DateTime(
+        fechaAjustada.year,
+        fechaAjustada.month,
+        fechaAjustada.day,
+        9,
+        0,
+      );
+    }
+
+    return fechaAjustada;
   }
 
   /// Calcula el siguiente día laboral (lunes a viernes)

@@ -281,30 +281,38 @@ DateTime? findFreeSlot(List<calendar.TimePeriod> busyTimes, int durationMinutes)
 
 
     /// ✅ **Agendar evento en Google Calendar**
- Future<void> agendarEventoEnCalendario(calendar.CalendarApi calendarApi, Tarea tarea, String responsableUid) async {
+ Future<String?> agendarEventoEnCalendario(calendar.CalendarApi calendarApi, Tarea tarea, String responsableUid) async {
   try {
     // 🔹 Obtener el email del responsable desde Firestore
     final userQuery = await _firestore.collection("users").doc(responsableUid).get();
     if (!userQuery.exists) {
       print("⚠️ Responsable no encontrado en Firestore.");
-      return;
+      return null;
     }
 
     final responsibleEmail = userQuery["email"];
     if (responsibleEmail == null || responsibleEmail.isEmpty) {
       print("⚠️ No se encontró el email del responsable.");
-      return;
+      return null;
+    }
+
+    // Determinar qué fecha usar para el evento
+    final fechaEvento = tarea.fechaProgramada ?? tarea.fechaLimite ?? tarea.fecha;
+    if (fechaEvento == null) {
+      print("⚠️ La tarea no tiene fecha programada ni límite.");
+      return null;
     }
 
     // ✅ Crear el evento SIN INVITACIONES
     final event = calendar.Event(
       summary: tarea.titulo,
+      description: tarea.descripcion ?? '',
       start: calendar.EventDateTime(
-        dateTime: tarea.fecha!.toUtc(),
+        dateTime: fechaEvento.toUtc(),
         timeZone: "America/Lima",
       ),
       end: calendar.EventDateTime(
-        dateTime: tarea.fecha!.toUtc().add(Duration(minutes: tarea.duracion)),
+        dateTime: fechaEvento.toUtc().add(Duration(minutes: tarea.duracion)),
         timeZone: "America/Lima",
       ),
       // 🔹 NO AGREGAMOS `attendees` PARA EVITAR INVITACIONES
@@ -312,14 +320,117 @@ DateTime? findFreeSlot(List<calendar.TimePeriod> busyTimes, int durationMinutes)
       guestsCanInviteOthers: false, // Evita que se envíen invitaciones
       transparency: "opaque", // ✅ Asegura que se bloquee el horario
       visibility: "private", // ✅ El evento solo es visible para el usuario
+      // 🔹 Guardar el ID de la tarea en extended properties para poder sincronizar después
+      extendedProperties: calendar.EventExtendedProperties(
+        private: {
+          'tareaId': tarea.titulo, // Usamos título como ID temporal
+          'proyectoId': '', // Se puede agregar después
+        },
+      ),
     );
 
     // 🔹 Agregar el evento al calendario del responsable (NO DEL CREADOR)
-    await calendarApi.events.insert(event, "primary", sendUpdates: "none");
+    final createdEvent = await calendarApi.events.insert(event, "primary", sendUpdates: "none");
 
     print("✅ Evento agregado directamente al Google Calendar del usuario $responsibleEmail sin invitación.");
+    return createdEvent.id; // Retornar el ID del evento para poder actualizarlo después
   } catch (e) {
     print("❌ Error al agendar evento: $e");
+    return null;
+  }
+}
+
+/// ✅ **Actualizar evento existente en Google Calendar**
+Future<bool> actualizarEventoEnCalendario(
+  calendar.CalendarApi calendarApi,
+  String eventId,
+  Tarea tarea,
+  String responsableUid,
+) async {
+  try {
+    final userQuery = await _firestore.collection("users").doc(responsableUid).get();
+    if (!userQuery.exists) {
+      print("⚠️ Responsable no encontrado en Firestore.");
+      return false;
+    }
+
+    final responsibleEmail = userQuery["email"];
+    if (responsibleEmail == null || responsibleEmail.isEmpty) {
+      print("⚠️ No se encontró el email del responsable.");
+      return false;
+    }
+
+    // Determinar qué fecha usar para el evento
+    final fechaEvento = tarea.fechaProgramada ?? tarea.fechaLimite ?? tarea.fecha;
+    if (fechaEvento == null) {
+      print("⚠️ La tarea no tiene fecha programada ni límite.");
+      return false;
+    }
+
+    // Obtener el evento existente
+    final existingEvent = await calendarApi.events.get("primary", eventId);
+
+    // Actualizar los campos del evento
+    existingEvent.summary = tarea.titulo;
+    existingEvent.description = tarea.descripcion ?? '';
+    existingEvent.start = calendar.EventDateTime(
+      dateTime: fechaEvento.toUtc(),
+      timeZone: "America/Lima",
+    );
+    existingEvent.end = calendar.EventDateTime(
+      dateTime: fechaEvento.toUtc().add(Duration(minutes: tarea.duracion)),
+      timeZone: "America/Lima",
+    );
+
+    // Actualizar el evento en Google Calendar
+    await calendarApi.events.update(existingEvent, "primary", eventId, sendUpdates: "none");
+
+    print("✅ Evento actualizado en Google Calendar del usuario $responsibleEmail.");
+    return true;
+  } catch (e) {
+    print("❌ Error al actualizar evento: $e");
+    return false;
+  }
+}
+
+/// ✅ **Eliminar evento de Google Calendar**
+Future<bool> eliminarEventoDeCalendario(
+  calendar.CalendarApi calendarApi,
+  String eventId,
+) async {
+  try {
+    await calendarApi.events.delete("primary", eventId, sendUpdates: "none");
+    print("✅ Evento eliminado de Google Calendar.");
+    return true;
+  } catch (e) {
+    print("❌ Error al eliminar evento: $e");
+    return false;
+  }
+}
+
+/// 🔹 **Buscar evento en Google Calendar por título de tarea**
+Future<String?> buscarEventoPorTarea(
+  calendar.CalendarApi calendarApi,
+  String tituloTarea,
+) async {
+  try {
+    final events = await calendarApi.events.list(
+      "primary",
+      q: tituloTarea, // Buscar por query
+      maxResults: 10,
+    );
+
+    if (events.items != null && events.items!.isNotEmpty) {
+      for (var event in events.items!) {
+        if (event.summary == tituloTarea) {
+          return event.id; // Retornar el ID del evento encontrado
+        }
+      }
+    }
+    return null;
+  } catch (e) {
+    print("❌ Error al buscar evento: $e");
+    return null;
   }
 }
 

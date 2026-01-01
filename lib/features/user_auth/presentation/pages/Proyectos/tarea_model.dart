@@ -28,6 +28,11 @@ class Tarea {
   DateTime? fechaProgramada; // Hora/fecha programada - cuándo se HARÁ la tarea
   DateTime? fechaCompletada; // Timestamp exacto de cuándo se completó la tarea
 
+  // ========================================
+  // 🆕 GOOGLE CALENDAR INTEGRATION
+  // ========================================
+  String? googleCalendarEventId; // ID del evento en Google Calendar para sincronización
+
   // CAMPO AUXILIAR (NO SE GUARDA EN FIRESTORE)
   List<String>? responsablesNombres;
 
@@ -54,6 +59,8 @@ class Tarea {
     this.fechaLimite,
     this.fechaProgramada,
     this.fechaCompletada,
+    // Google Calendar integration
+    this.googleCalendarEventId,
     this.responsablesNombres,
   });
 
@@ -81,6 +88,8 @@ class Tarea {
       'fechaLimite': fechaLimite?.toIso8601String(),
       'fechaProgramada': fechaProgramada?.toIso8601String(),
       'fechaCompletada': fechaCompletada?.toIso8601String(),
+      // Google Calendar integration
+      'googleCalendarEventId': googleCalendarEventId,
     };
   }
 
@@ -133,6 +142,8 @@ class Tarea {
       fechaLimite: fechaLimiteMigrada,
       fechaProgramada: fechaProgramadaMigrada,
       fechaCompletada: fechaCompletadaMigrada,
+      // Google Calendar integration
+      googleCalendarEventId: json['googleCalendarEventId'],
     );
   }
 

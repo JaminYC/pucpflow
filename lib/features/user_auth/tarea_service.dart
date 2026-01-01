@@ -2,9 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pucpflow/features/user_auth/Usuario/UserModel.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/google_calendar_service.dart';
 
 class TareaService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final GoogleCalendarService _calendarService = GoogleCalendarService();
 
   Future<void> marcarTareaComoCompletada(Tarea tarea, bool completado, String userId) async {
     final proyectosSnapshot = await _firestore.collection("proyectos").get();
@@ -116,13 +118,54 @@ class TareaService {
     }
   }
 
-  Future<void> agregarTareaAProyecto(String proyectoId, Tarea tarea) async {
+  Future<void> agregarTareaAProyecto(String proyectoId, Tarea tarea, {bool syncToCalendar = true}) async {
+    // Si la tarea tiene responsables y fecha programada/límite, intentar sincronizar con Google Calendar
+    if (syncToCalendar && tarea.responsables.isNotEmpty && (tarea.fechaProgramada != null || tarea.fechaLimite != null)) {
+      try {
+        final calendarApi = await _calendarService.signInAndGetCalendarApi(silentOnly: true);
+        if (calendarApi != null) {
+          // Agendar para cada responsable
+          for (String responsableId in tarea.responsables) {
+            final eventId = await _calendarService.agendarEventoEnCalendario(
+              calendarApi,
+              tarea,
+              responsableId,
+            );
+
+            // Guardar el ID del evento en la tarea (solo el primero)
+            if (eventId != null && tarea.googleCalendarEventId == null) {
+              tarea.googleCalendarEventId = eventId;
+            }
+          }
+        }
+      } catch (e) {
+        print("⚠️ No se pudo sincronizar con Google Calendar: $e");
+        // Continuar sin sincronización
+      }
+    }
+
     await _firestore.collection("proyectos").doc(proyectoId).update({
       "tareas": FieldValue.arrayUnion([tarea.toJson()])
     });
   }
 
-  Future<void> eliminarTareaDeProyecto(String proyectoId, Tarea tarea) async {
+  Future<void> eliminarTareaDeProyecto(String proyectoId, Tarea tarea, {bool syncToCalendar = true}) async {
+    // Eliminar evento de Google Calendar si existe
+    if (syncToCalendar && tarea.googleCalendarEventId != null) {
+      try {
+        final calendarApi = await _calendarService.signInAndGetCalendarApi(silentOnly: true);
+        if (calendarApi != null) {
+          await _calendarService.eliminarEventoDeCalendario(
+            calendarApi,
+            tarea.googleCalendarEventId!,
+          );
+        }
+      } catch (e) {
+        print("⚠️ No se pudo eliminar el evento de Google Calendar: $e");
+        // Continuar con la eliminación de Firestore
+      }
+    }
+
     // Eliminar la tarea del proyecto
     await _firestore.collection("proyectos").doc(proyectoId).update({
       "tareas": FieldValue.arrayRemove([tarea.toJson()])
@@ -154,7 +197,26 @@ class TareaService {
     }
   }
 
-  Future<void> actualizarTareaEnProyecto(String proyectoId, Tarea original, Tarea editada) async {
+  Future<void> actualizarTareaEnProyecto(String proyectoId, Tarea original, Tarea editada, {bool syncToCalendar = true}) async {
+    // Actualizar evento en Google Calendar si existe
+    if (syncToCalendar && editada.googleCalendarEventId != null && editada.responsables.isNotEmpty) {
+      try {
+        final calendarApi = await _calendarService.signInAndGetCalendarApi(silentOnly: true);
+        if (calendarApi != null) {
+          // Actualizar para el primer responsable (normalmente el creador)
+          await _calendarService.actualizarEventoEnCalendario(
+            calendarApi,
+            editada.googleCalendarEventId!,
+            editada,
+            editada.responsables.first,
+          );
+        }
+      } catch (e) {
+        print("⚠️ No se pudo actualizar el evento de Google Calendar: $e");
+        // Continuar con la actualización de Firestore
+      }
+    }
+
     final doc = await _firestore.collection("proyectos").doc(proyectoId).get();
     if (!doc.exists) return;
 

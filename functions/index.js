@@ -1,5 +1,6 @@
 // ✅ index.js completo y funcional con Firebase Functions v2
 const { onCall } = require("firebase-functions/v2/https");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
@@ -59,7 +60,7 @@ Devuelve la respuesta en formato JSON con esta estructura:
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4-0125-preview",
+      model: "gpt-4o-mini",
       temperature: 0.3,
       messages: [
         {
@@ -229,7 +230,7 @@ Devuélvelo en este formato JSON:
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4-0125-preview",
+      model: "gpt-4o-mini",
       temperature: 0.6,
       messages: [
         { role: "system", content: "Eres un analista de talento experto en IA." },
@@ -384,7 +385,7 @@ exports.analizarIdea = onCall({ secrets: [openaiKey], cors: true }, async (reque
   const openai = new OpenAI({ apiKey: openaiKey.value() });
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4",
+    model: "gpt-4o-mini",
     temperature: 0.4,
     messages: [
       { role: "system", content: "Eres un asistente experto en innovación tecnológica en procesos en mineria." },
@@ -437,7 +438,7 @@ exports.iterarIdea = onCall({ secrets: [openaiKey], cors: true }, async (request
       const openai = new OpenAI({ apiKey: openaiKey.value() });
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-4",
+        model: "gpt-4o-mini",
         temperature: 0.5,
         messages: [
           { role: "system", content: "Eres un asesor experto en innovación y validación de ideas." },
@@ -485,7 +486,7 @@ exports.reforzarIdea = onCall({ secrets: [openaiKey], cors: true }, async (reque
   const openai = new OpenAI({ apiKey: openaiKey.value() });
 
   const completion = await openai.chat.completions.create({
-    model: "gpt-4",
+    model: "gpt-4o-mini",
     temperature: 0.4,
     messages: [
       { role: "system", content: "Eres un asistente de innovación industrial." },
@@ -539,7 +540,7 @@ exports.validarRespuestasIteracion = onCall({ secrets: [openaiKey], cors: true }
       try {
         const openai = new OpenAI({ apiKey: openaiKey.value() });
         const completion = await openai.chat.completions.create({
-          model: "gpt-4",
+          model: "gpt-4o-mini",
           temperature: 0.4,
           messages: [
             { role: "system", content: "Eres un evaluador experto que valida ideas basadas en respuestas del usuario." },
@@ -595,7 +596,7 @@ exports.generarTareasDesdeIdea = onCall({ secrets: [openaiKey], cors: true }, as
       try {
         const openai = new OpenAI({ apiKey: openaiKey.value() });
         const response = await openai.chat.completions.create({
-          model: "gpt-4",
+          model: "gpt-4o-mini",
           temperature: 0.4,
           messages: [
             { role: "system", content: "Eres un generador de tareas para proyectos de innovación." },
@@ -624,6 +625,48 @@ exports.adanChat = onCall({ secrets:[openaiKey], timeoutSeconds:60, cors: true }
     const userId = request.data?.userId;
     const history = Array.isArray(request.data?.history) ? request.data.history : [];
     const conversationId = request.data?.conversationId || null;
+    const rawAttachments = Array.isArray(request.data?.attachments)
+      ? request.data.attachments
+      : [];
+
+    const MAX_ATTACHMENTS = 4;
+    const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+    const MAX_TOTAL_ATTACHMENT_BYTES = 6 * 1024 * 1024;
+    const MAX_ATTACHMENT_TEXT = 6000;
+
+    const attachments = [];
+    const attachmentMeta = [];
+    let totalAttachmentBytes = 0;
+
+    for (const item of rawAttachments.slice(0, MAX_ATTACHMENTS)) {
+      const name = (item?.name || "archivo").toString().slice(0, 200);
+      const extension = (item?.extension || "").toString().toLowerCase().slice(0, 10);
+      const mimeType = (item?.mimeType || "").toString().slice(0, 100);
+      const dataBase64 = (item?.dataBase64 || "").toString();
+      if (!dataBase64) continue;
+      let buffer;
+      try {
+        buffer = Buffer.from(dataBase64, "base64");
+      } catch (err) {
+        continue;
+      }
+      if (!buffer || buffer.length === 0) continue;
+      if (buffer.length > MAX_ATTACHMENT_BYTES) continue;
+      if (totalAttachmentBytes + buffer.length > MAX_TOTAL_ATTACHMENT_BYTES) continue;
+      totalAttachmentBytes += buffer.length;
+      attachments.push({
+        name,
+        extension,
+        mimeType,
+        size: buffer.length,
+        buffer
+      });
+      attachmentMeta.push({
+        name,
+        mimeType: mimeType || null,
+        size: buffer.length
+      });
+    }
 
     if (!text) return { reply: "¿Qué necesitas?" };
     if (!userId) return { reply: "Necesito que inicies sesión para poder ayudarte mejor." };
@@ -982,9 +1025,69 @@ ${contexto}
 IMPORTANTE: Tu objetivo es ser un compañero inteligente y confiable que mejora la productividad del usuario mediante asistencia precisa, oportuna y contextualmente relevante.
 `;
 
+    const attachmentTextBlocks = [];
+    const attachmentMetaBlocks = [];
+    const clipAttachmentText = (value) => {
+      if (!value) return "";
+      const cleaned = value.replace(/\u0000/g, "").trim();
+      if (cleaned.length <= MAX_ATTACHMENT_TEXT) return cleaned;
+      return `${cleaned.slice(0, MAX_ATTACHMENT_TEXT)}...`;
+    };
+
+    for (const file of attachments) {
+      const nameLower = file.name.toLowerCase();
+      const isPdf = file.mimeType === "application/pdf" ||
+        file.extension === "pdf" ||
+        nameLower.endsWith(".pdf");
+      const isTextLike = (file.mimeType || "").startsWith("text/") ||
+        ["txt", "md", "markdown", "json", "csv", "xml", "yml", "yaml", "log"].includes(file.extension) ||
+        file.mimeType === "application/json";
+
+      if (isPdf) {
+        try {
+          const pdfData = await pdfParse(file.buffer);
+          const extracted = clipAttachmentText(pdfData.text || "");
+          if (extracted) {
+            attachmentTextBlocks.push(`File: ${file.name}\n${extracted}`);
+          } else {
+            attachmentMetaBlocks.push(`File: ${file.name} (${file.mimeType || "unknown"}, ${file.size} bytes)`);
+          }
+        } catch (err) {
+          attachmentMetaBlocks.push(`File: ${file.name} (${file.mimeType || "unknown"}, ${file.size} bytes)`);
+        }
+        continue;
+      }
+
+      if (isTextLike) {
+        const extracted = clipAttachmentText(file.buffer.toString("utf8"));
+        if (extracted) {
+          attachmentTextBlocks.push(`File: ${file.name}\n${extracted}`);
+        } else {
+          attachmentMetaBlocks.push(`File: ${file.name} (${file.mimeType || "unknown"}, ${file.size} bytes)`);
+        }
+        continue;
+      }
+
+      attachmentMetaBlocks.push(`File: ${file.name} (${file.mimeType || "unknown"}, ${file.size} bytes)`);
+    }
+
+    const attachmentContextParts = [];
+    if (attachmentTextBlocks.length > 0) {
+      attachmentContextParts.push(
+        `Attached file content:\n${attachmentTextBlocks.join("\n\n")}`
+      );
+    }
+    if (attachmentMetaBlocks.length > 0) {
+      attachmentContextParts.push(
+        `Attached files without extracted text:\n${attachmentMetaBlocks.join("\n")}`
+      );
+    }
+    const attachmentContext = attachmentContextParts.join("\n\n");
+
     const messages = [
       { role: "system", content: systemPrompt },
-      ...history.slice(-5), // OPTIMIZADO: últimos 5 mensajes para respuesta más rápida
+      ...history.slice(-5),
+      ...(attachmentContext ? [{ role: "user", content: attachmentContext }] : []),
       { role: "user", content: text }
     ];
 
@@ -1163,11 +1266,15 @@ IMPORTANTE: Tu objetivo es ser un compañero inteligente y confiable que mejora 
       .collection('adan_conversations').doc(activeConversationId);
 
     // Guardar mensaje del usuario
+    const userMetadata = { userId };
+    if (attachmentMeta.length > 0) {
+      userMetadata.attachments = attachmentMeta;
+    }
     await conversationRef.collection('messages').add({
       role: 'user',
       content: text,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      metadata: { userId }
+      metadata: userMetadata
     });
 
     // Guardar respuesta de ADAN
@@ -1343,7 +1450,7 @@ exports.transcribirAudio = onCall({ secrets: [openaiKey], timeoutSeconds: 300, c
 
     // Modelo rápido y bueno para STT
     const resp = await openai.audio.transcriptions.create({
-      model: "gpt-4o-mini-transcribe",     // o "gpt-4o-transcribe"
+      model: "whisper-1",     // Modelo oficial de OpenAI para transcripción
       file: file,                           // o { file: fs.createReadStream(...) }
       response_format: "text",              // "json" o "text"
       language,                             // "es" para español
@@ -1486,7 +1593,7 @@ Devuelve un JSON válido con esta estructura EXACTA:
 `;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-4o-mini",
       max_completion_tokens: 12000,
       response_format: { type: "json_object" },
       messages: [
@@ -1562,37 +1669,82 @@ exports.generarWorkflowContextual = onCall({
     const macroTexto = (macroEntregables || []).map((item, idx) => `${idx + 1}. ${item}`).join("\n");
     const contextoLibre = JSON.stringify(contexto || {});
 
+    // Crear guía específica según metodología
+    let metodologiaGuia = "";
+    switch(methodology) {
+      case "strategic":
+        metodologiaGuia = `
+METODOLOGÍA ESTRATÉGICA - GUÍA ESPECÍFICA:
+- Fases sugeridas: Análisis Estratégico → Planificación Trimestral → Ejecución de Iniciativas → Seguimiento y Ajuste
+- Duración típica: 3-6 meses por fase
+- Tareas clave: Análisis FODA, Definición de OKRs, Mapeo de stakeholders, Planning estratégico, Revisiones trimestrales
+- Entregables: Plan estratégico documentado, Roadmap trimestral, Dashboard de KPIs, Informes de seguimiento
+- Roles: Director de Estrategia, Analista de Negocio, PMO, Stakeholder Manager`;
+        break;
+      case "agile":
+        metodologiaGuia = `
+METODOLOGÍA ÁGIL (SCRUM/KANBAN) - GUÍA ESPECÍFICA:
+- Fases sugeridas: Sprint 0 (Setup) → Sprints de Desarrollo (2-4) → Sprint de Cierre y Retrospectiva
+- Duración típica: 1-2 semanas por sprint
+- Tareas clave: Sprint Planning, Daily Standups, Sprint Review, Retrospectiva, Refinamiento de Backlog, Definition of Done
+- Entregables: Product Backlog priorizado, Incrementos funcionales por sprint, Burndown charts, Retrospectiva documentada
+- Roles: Scrum Master, Product Owner, Equipo de Desarrollo, Stakeholders
+- Ceremonias obligatorias: Planning, Daily, Review, Retro`;
+        break;
+      case "lean":
+        metodologiaGuia = `
+METODOLOGÍA LEAN (MVP/STARTUP) - GUÍA ESPECÍFICA:
+- Fases sugeridas: Descubrimiento y Validación → Build MVP → Measure & Learn → Pivotar o Perseverar
+- Duración típica: 2-4 semanas por ciclo Build-Measure-Learn
+- Tareas clave: Customer interviews, Definir hipótesis, Crear MVP mínimo, A/B testing, Métricas de validación, Decisión pivot/persevere
+- Entregables: Lean Canvas, Prototipo/MVP funcional, Métricas de tracción, Informe de aprendizajes, Decisión fundamentada
+- Roles: Product Manager, UX Researcher, Growth Hacker, Desarrollador Full-Stack
+- Principio clave: Minimizar desperdicio, validar rápido, iterar constantemente`;
+        break;
+      case "discovery":
+        metodologiaGuia = `
+METODOLOGÍA INNOVACIÓN (DESIGN THINKING/DISCOVERY) - GUÍA ESPECÍFICA:
+- Fases sugeridas: Empatizar → Definir → Idear → Prototipar → Testear → Iterar
+- Duración típica: 1-3 semanas por fase
+- Tareas clave: User research, Mapa de empatía, Problem statement, Brainstorming, Prototipado rápido, User testing, Iteración basada en feedback
+- Entregables: Insights de usuarios, Problema definido, Soluciones ideadas, Prototipos testeables, Feedback validado
+- Roles: Design Thinker, UX Researcher, Facilitador de Innovación, Prototipador
+- Principio clave: Foco en el usuario, iteración rápida, fallar rápido y barato`;
+        break;
+      default:
+        metodologiaGuia = `
+METODOLOGÍA GENERAL - GUÍA ESPECÍFICA:
+- Fases sugeridas: Planificación → Ejecución → Seguimiento → Cierre
+- Duración típica: Varía según complejidad
+- Tareas clave: Definir alcance, Asignar recursos, Ejecutar tareas, Monitorear progreso, Documentar lecciones
+- Entregables: Plan de proyecto, Entregables funcionales, Reportes de progreso, Documentación final
+- Roles: Project Manager, Equipo técnico, Stakeholders`;
+    }
+
     const prompt = `
-Eres un Workflow Orchestrator experto que genera flujos de trabajo adaptativos y contextualizados.
+Eres un Workflow Orchestrator experto especializado en ${methodology.toUpperCase()}.
 
 PROYECTO: ${nombreProyecto}
-Metodología base: ${methodology}
+METODOLOGÍA SELECCIONADA: ${methodology}
 Objetivo principal: ${objective}
 
-MACRO ENTREGABLES:
-${macroTexto || "No declarados explícitamente"}
+${metodologiaGuia}
 
-INVENTARIO DE HABILIDADES DEL EQUIPO:
-${skillSummary || "No hay skills específicas declaradas (asume equipo multidisciplinario)"}
+MACRO ENTREGABLES SOLICITADOS:
+${macroTexto || "No especificados - infiere según metodología"}
 
-CONTEXTO ADICIONAL:
-${contextoLibre}
+HABILIDADES DEL EQUIPO:
+${skillSummary || "Equipo multidisciplinario genérico"}
 
-INSTRUCCIONES:
-1. Genera 3-7 fases de workflow que cubran el ciclo completo del proyecto
-2. Cada fase debe tener un objetivo claro y medible
-3. Asigna tipo correcto: "descubrimiento" (investigación, análisis), "ejecucion" (desarrollo, implementación), "seguimiento" (monitoreo, optimización)
-4. Define dependencias realistas entre fases
-5. Identifica riesgos humanos específicos (burnout, falta de comunicación, resistencia al cambio, etc.)
-6. Crea 2-5 tareas por fase con habilidades técnicas Y blandas necesarias
-7. Sugiere responsables basados en el inventario de skills o roles genéricos
+INSTRUCCIONES CRÍTICAS:
+1. DEBES generar un workflow 100% ALINEADO con la metodología ${methodology}
+2. Las fases, tareas y entregables deben SER ESPECÍFICOS de ${methodology} - NO genéricos
+3. Usa la terminología correcta de ${methodology} (ej: si es agile usa "Sprint", no "Fase")
+4. Los nombres de fases deben reflejar la metodología (ej: agile="Sprint 1", lean="Build-Measure-Learn Ciclo 1")
+5. Las tareas deben incluir prácticas REALES de ${methodology}
+6. Genera 3-5 fases coherentes con ${methodology}
 
-IMPORTANTE:
-- Las tareas deben ser específicas y accionables
-- Los outputs deben ser entregables concretos
-- Las habilidades técnicas deben ser reales (ej: "Python", "React", "SQL")
-- Las habilidades blandas deben ser específicas (ej: "Facilitación de reuniones", "Negociación", "Pensamiento crítico")
-- Los indicadores de éxito deben ser medibles
+FORMATO EXACTO DE RESPUESTA:
 
 Devuelve un JSON válido con esta estructura EXACTA:
 {
@@ -1626,7 +1778,7 @@ Devuelve un JSON válido con esta estructura EXACTA:
 `;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-4o-mini",
       max_completion_tokens: 10000,
       response_format: { type: "json_object" },
       messages: [
@@ -2157,15 +2309,22 @@ exports.generarProyectoPMI = onCall({
 
     logger.info(`📝 Texto total extraído: ${textoCompleto.length} caracteres`);
 
-    // 2. Generar estructura PMI con OpenAI GPT-5 mini
+    // 2. Generar estructura PMI con OpenAI GPT-4o-mini
     const prompt = `
 Eres un experto certificado PMP (Project Management Professional) con profundo conocimiento del PMBOK 7ma edición y experiencia liderando proyectos complejos.
 
 PROYECTO: "${nombreProyecto}"
 Descripción: ${descripcionBreve || "No especificada"}
 
+INSTRUCCIONES CRÍTICAS:
+1. Lee CUIDADOSAMENTE toda la documentación proporcionada
+2. Identifica los detalles específicos, requisitos técnicos, entregables y actividades mencionadas
+3. Genera tareas ESPECÍFICAS basadas en el contenido real de los documentos
+4. NO uses tareas genéricas - cada tarea debe reflejar información concreta del proyecto
+5. Incluye números, especificaciones técnicas y detalles mencionados en los documentos
+
 TAREA:
-Analiza la documentación proporcionada y genera una estructura PMI completa y profesional con las 5 fases del ciclo de vida del proyecto:
+Analiza profundamente la documentación y genera una estructura PMI completa con las 5 fases del ciclo de vida:
 
 1. Iniciación
 2. Planificación
@@ -2173,27 +2332,45 @@ Analiza la documentación proporcionada y genera una estructura PMI completa y p
 4. Monitoreo y Control
 5. Cierre
 
+IMPORTANTE - CALIDAD DE LAS TAREAS:
+- Cada tarea debe tener un título descriptivo y específico (no genérico)
+- La descripción debe incluir detalles concretos de QUÉ hacer y CÓMO
+- Usa información específica de los documentos (tecnologías, metodologías, cantidades, etc.)
+- Incluye referencias a secciones o requisitos específicos del documento
+- Las habilidades requeridas deben ser técnicas y específicas del dominio del proyecto
+
 JERARQUÍA PMI (CRÍTICO):
 Debes seguir estrictamente esta jerarquía de 4 niveles:
 
 Fase → Entregables → Paquetes de Trabajo → Tareas
 
-EJEMPLO DE ESTRUCTURA CORRECTA:
+EJEMPLO DE TAREAS ESPECÍFICAS vs GENÉRICAS:
+
+❌ MAL (Genérico):
+- Titulo: "Desarrollar backend"
+- Descripción: "Crear el backend del sistema"
+
+✅ BIEN (Específico):
+- Titulo: "Implementar API REST con Node.js y PostgreSQL para gestión de usuarios"
+- Descripción: "Desarrollar endpoints REST (GET, POST, PUT, DELETE) para CRUD de usuarios usando Express.js 4.18. Incluir autenticación JWT, validación con Joi, y conexión a PostgreSQL 14. Implementar middleware de error handling y logging con Winston."
+
+❌ MAL (Genérico):
+- Titulo: "Hacer documentación"
+- Descripción: "Documentar el proyecto"
+
+✅ BIEN (Específico):
+- Titulo: "Elaborar Manual Técnico con diagramas de arquitectura y API endpoints"
+- Descripción: "Crear documentación técnica de 30-40 páginas incluyendo: diagrama de arquitectura hexagonal, especificación OpenAPI 3.0 de todos los endpoints, esquema de base de datos con modelo entidad-relación, guía de deployment en AWS EC2, y procedimientos de rollback."
+
+ESTRUCTURA DE EJEMPLO:
 
 Fase: "Iniciación"
 ├── Entregable: "Project Charter"
-│   ├── Paquete de Trabajo: "Documentación de Objetivos"
-│   │   ├── Tarea: "Definir objetivos SMART del proyecto"
-│   │   ├── Tarea: "Documentar justificación del negocio"
-│   │   └── Tarea: "Identificar criterios de éxito"
-│   └── Paquete de Trabajo: "Aprobaciones y Autorizaciones"
-│       ├── Tarea: "Preparar presentación para sponsor"
-│       └── Tarea: "Obtener firma del Project Charter"
-├── Entregable: "Registro de Stakeholders"
-│   └── Paquete de Trabajo: "Análisis de Partes Interesadas"
-│       ├── Tarea: "Identificar stakeholders clave"
-│       ├── Tarea: "Mapear poder e interés"
-│       └── Tarea: "Definir estrategia de comunicación"
+│   └── Paquete de Trabajo: "Documentación de Objetivos y Justificación"
+│       ├── Tarea: "Definir 5 objetivos SMART basados en los requisitos del negocio documentados"
+│       │   Descripción: "Redactar objetivos específicos, medibles, alcanzables, relevantes y con tiempo definido. Incluir métricas KPI como reducción de tiempo de respuesta en 40%, aumento de satisfacción de usuario a 4.5/5, y ROI del 120% en 18 meses."
+│       └── Tarea: "Elaborar análisis costo-beneficio con proyección financiera a 3 años"
+│           Descripción: "Crear modelo financiero detallando inversión inicial ($150K), costos operativos mensuales, ingresos proyectados, punto de equilibrio, y cálculo de VPN y TIR."
 
 REGLAS IMPORTANTES:
 
@@ -2230,6 +2407,12 @@ REGLAS IMPORTANTES:
 DOCUMENTACIÓN DEL PROYECTO:
 ${textoCompleto.substring(0, 50000)}
 
+RECORDATORIO FINAL - CALIDAD SOBRE CANTIDAD:
+- Prefiero 40 tareas ULTRA-ESPECÍFICAS con detalles concretos
+- Que 100 tareas genéricas que dicen "Hacer X" o "Desarrollar Y"
+- Cada tarea debe ser tan detallada que alguien pueda ejecutarla SIN leer el documento original
+- Usa SIEMPRE información específica del documento (tecnologías, cantidades, estándares, metodologías)
+
 Devuelve un JSON válido con esta estructura EXACTA:
 {
   "objetivo": "Objetivo general del proyecto (1-2 párrafos)",
@@ -2251,12 +2434,12 @@ Devuelve un JSON válido con esta estructura EXACTA:
               "descripcion": "Descripción del paquete de trabajo",
               "tareas": [
                 {
-                  "titulo": "Definir objetivos SMART del proyecto",
-                  "descripcion": "Descripción detallada de la tarea y cómo realizarla",
+                  "titulo": "Título específico que incluya tecnología/metodología/cantidad",
+                  "descripcion": "Descripción DETALLADA de 3-5 oraciones explicando QUÉ hacer paso a paso, CÓMO hacerlo, con QUÉ herramientas/tecnologías específicas, y QUÉ resultado esperar. Incluir números, versiones de software, estándares, y referencias a secciones del documento cuando sea posible.",
                   "duracionDias": 3,
                   "prioridad": 5,
-                  "habilidadesRequeridas": ["Gestión de Proyectos PMI", "Análisis de Negocio"],
-                  "areaRecomendada": "PMO"
+                  "habilidadesRequeridas": ["Tecnología Específica X", "Framework Y", "Metodología Z"],
+                  "areaRecomendada": "Equipo/Rol específico"
                 }
               ]
             }
@@ -2284,16 +2467,27 @@ Devuelve un JSON válido con esta estructura EXACTA:
 }
 `;
 
-    logger.info("🤖 Llamando a OpenAI GPT-5-mini...");
+    logger.info("🤖 Llamando a OpenAI GPT-4o-mini...");
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5-mini",
-      max_completion_tokens: 20000,
+      model: "gpt-4o-mini",
+      max_completion_tokens: 16000, // ✅ Máximo soportado por gpt-4o-mini es 16384
       response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content: "Eres un Project Manager certificado PMP con 20+ años de experiencia implementando proyectos siguiendo las mejores prácticas del PMBOK. Generas estructuras PMI completas, detalladas y profesionales que cumplen estrictamente los estándares del PMI."
+          content: `Eres un Project Manager certificado PMP con 20+ años de experiencia implementando proyectos complejos siguiendo las mejores prácticas del PMBOK.
+
+Tu especialidad es analizar documentación técnica en profundidad y extraer requisitos específicos para crear planes de proyecto detallados y accionables.
+
+CARACTERÍSTICAS DE TU TRABAJO:
+- Lees cada documento completo identificando tecnologías, metodologías, cantidades, especificaciones técnicas
+- Generas tareas ultra-específicas con títulos descriptivos y descripciones detalladas paso a paso
+- Incluyes números concretos, tecnologías específicas, y referencias a requisitos documentados
+- Evitas absolutamente cualquier tarea genérica como "Hacer X" o "Desarrollar Y"
+- Cada tarea debe ser tan específica que un ingeniero pueda ejecutarla sin necesitar aclaraciones
+
+NUNCA escribas tareas genéricas. SIEMPRE usa detalles concretos del documento.`
         },
         { role: "user", content: prompt }
       ]
@@ -2422,13 +2616,13 @@ exports.generarProyectoPersonal = onCall({
           logger.warn(`⚠️ Error parseando documento ${i + 1}:`, pdfError);
         }
       }
-      textoDocumentos = textoDocumentos.substring(0, 40000);
+      textoDocumentos = textoDocumentos.substring(0, 80000); // ✅ Aumentado de 40K a 80K
     }
 
     const prompt = `
-Eres un asistente de planificación de proyectos personales altamente adaptable y creativo.
+Eres un coach de productividad personal y planificador de proyectos experto, especializado en crear planes ultra-personalizados y accionables.
 
-Tu objetivo es crear un plan de proyecto TOTALMENTE PERSONALIZADO que se adapte a las necesidades únicas del usuario, sin seguir frameworks rígidos.
+Tu objetivo es analizar profundamente las necesidades del usuario y crear un plan ESPECÍFICO y DETALLADO que pueda ejecutarse inmediatamente.
 
 INFORMACIÓN DEL PROYECTO:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2449,20 +2643,45 @@ ${preferencias || "Ninguna especificada"}
 
 ${textoDocumentos ? `\n📄 DOCUMENTACIÓN ADICIONAL:\n${textoDocumentos}` : ""}
 
-INSTRUCCIONES:
-1. Analiza el contexto único del usuario
-2. Diseña una estructura flexible adaptada a sus necesidades
-3. Propón fases personalizadas (2-8 fases según lo que tenga sentido)
-4. Crea tareas realistas (2-10 por fase)
-5. Sugiere herramientas y recursos útiles
-6. Identifica riesgos específicos
-7. Propón hábitos que ayuden al éxito
+INSTRUCCIONES CRÍTICAS PARA MÁXIMA CALIDAD:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-IMPORTANTE:
-- Libertad total: No sigas metodologías rígidas
-- Sé creativo con los nombres de fases
-- Adapta TODO al contexto del usuario
-- Prioriza practicidad sobre teoría
+1. **Lee TODO el contexto** - No generes tareas genéricas
+2. **Extrae detalles específicos** - tecnologías, herramientas, métodos mencionados
+3. **Crea tareas ULTRA-ESPECÍFICAS** con pasos concretos y accionables
+4. **Calcula duraciones realistas** en días basadas en complejidad real
+5. **Identifica recursos exactos** - no digas "herramientas", di "Notion", "Figma", "VS Code"
+
+CALIDAD DE TAREAS - EJEMPLOS COMPARATIVOS:
+
+❌ MAL (Genérico - NUNCA hagas esto):
+{
+  "nombre": "Investigar el tema",
+  "descripcion": "Hacer investigación sobre el proyecto",
+  "tiempoEstimado": "1 semana",
+  "prioridad": "media"
+}
+
+✅ BIEN (Específico y accionable):
+{
+  "nombre": "Realizar análisis competitivo de 5 apps similares documentando features clave y patrones UX",
+  "descripcion": "Investigar y documentar en detalle: 1) Duolingo (sistema de gamificación, streaks, XP), 2) Notion (templates, databases, bloques), 3) Todoist (gestión de tareas, priorización, filtros), 4) Forest (focus timer con recompensas visuales), 5) Habitica (RPG aplicado a hábitos). Crear tabla comparativa en Google Sheets con columnas: Feature principal, Implementación técnica, Modelo de negocio, Pros/Cons, Aplicabilidad a nuestro proyecto. Incluir screenshots de flujos clave y notas de UX.",
+  "tiempoEstimado": "3 días",
+  "prioridad": "alta",
+  "recursosNecesarios": ["Google Sheets", "Licenses de prueba de apps", "Herramienta de screenshots (Snagit o similar)", "30 minutos diarios de uso de cada app"]
+}
+
+ESTRUCTURA DE FASES:
+- 2-8 fases personalizadas según complejidad del proyecto
+- Nombres descriptivos que reflejen el objetivo real (no "Fase 1", "Fase 2")
+- Cada fase con propósito claro y entregable tangible
+- Duración total realista considerando tiempo disponible del usuario
+
+CALIDAD SOBRE CANTIDAD:
+- Prefiero 20 tareas ULTRA-ESPECÍFICAS que 50 tareas genéricas
+- Cada tarea debe ser tan detallada que alguien pueda ejecutarla SIN hacer preguntas
+- Incluye números concretos, herramientas específicas, metodologías detalladas
+- Referencia información de los documentos cuando esté disponible
 
 Devuelve un JSON válido con esta estructura:
 {
@@ -2508,16 +2727,29 @@ Devuelve un JSON válido con esta estructura:
 }
 `;
 
-    logger.info("🤖 Llamando a GPT-5-mini para proyecto personal...");
+    logger.info("🤖 Llamando a GPT-4o-mini para proyecto personal...");
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-4o-mini",
       max_completion_tokens: 16000,
       response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content: "Eres un coach de productividad y planificación de proyectos personales. Creas planes ultra-personalizados adaptados a necesidades únicas. No sigues frameworks rígidos, diseñas soluciones flexibles y prácticas."
+          content: `Eres un coach de productividad personal de alto nivel y experto en planificación de proyectos.
+
+Tu especialidad es transformar ideas vagas en planes de acción ultra-específicos y ejecutables.
+
+CARACTERÍSTICAS DE TU TRABAJO:
+- Analizas profundamente el contexto y documentación proporcionada
+- Extraes detalles específicos: tecnologías, herramientas, metodologías mencionadas
+- Generas tareas tan específicas que alguien puede ejecutarlas SIN hacer preguntas
+- Incluyes pasos concretos, números reales, herramientas específicas
+- Adaptas el plan al tiempo disponible y restricciones del usuario
+- Evitas absolutamente cualquier tarea genérica o vaga
+
+NUNCA escribas tareas genéricas como "Investigar X" o "Hacer Y".
+SIEMPRE escribe tareas específicas con pasos detallados y herramientas concretas.`
         },
         { role: "user", content: prompt }
       ]
@@ -2627,3 +2859,472 @@ exports.chatWithAI = onCall({
     };
   }
 });
+
+// ========================================
+// 🤖 ASISTENTE DE PROYECTO CONTEXTUAL
+// ========================================
+exports.adanProyectoConsulta = onCall(
+  {
+    secrets: [openaiKey],
+    cors: true,
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
+  async (request) => {
+    try {
+      const { pregunta, contextoProyecto, proyectoId, historialConversacion } = request.data;
+
+      if (!pregunta || !contextoProyecto) {
+        throw new Error("Faltan parámetros requeridos");
+      }
+
+      logger.info("🤖 [Asistente Proyecto] Consulta recibida", { proyectoId, pregunta: pregunta.substring(0, 50) });
+
+      const openai = new OpenAI({ apiKey: openaiKey.value() });
+
+      // Preparar mensajes para el modelo
+      const mensajes = [
+        {
+          role: "system",
+          content: `Eres ADAN, un asistente experto en gestión de proyectos.
+
+Tu objetivo es ayudar al usuario con consultas sobre su proyecto específico.
+
+Tienes acceso completo a la siguiente información del proyecto:
+
+${contextoProyecto}
+
+CAPACIDADES:
+- Responder preguntas sobre el estado del proyecto
+- Analizar problemas y sugerir soluciones
+- Identificar riesgos y oportunidades
+- Generar resúmenes y reportes
+- Sugerir mejoras y optimizaciones
+- Detectar cuellos de botella
+- Recomendar redistribución de tareas
+
+DIRECTRICES:
+1. Sé conciso y directo
+2. Usa datos concretos del proyecto
+3. Identifica problemas específicos
+4. Ofrece soluciones accionables
+5. Usa emojis ocasionalmente para claridad
+6. Si detectas riesgos, menciónalos claramente
+7. Formatea tu respuesta con Markdown para mejor legibilidad
+
+Responde en español de forma profesional pero amigable.`,
+        },
+      ];
+
+      // Agregar historial si existe
+      if (historialConversacion && Array.isArray(historialConversacion)) {
+        mensajes.push(...historialConversacion.slice(-10)); // Últimos 10 mensajes
+      }
+
+      // Agregar pregunta actual
+      mensajes.push({
+        role: "user",
+        content: pregunta,
+      });
+
+      logger.info("🤖 [Asistente Proyecto] Llamando a OpenAI...");
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: mensajes,
+        temperature: 0.7,
+        max_tokens: 1500,
+      });
+
+      const respuesta = completion.choices[0].message.content;
+
+      logger.info("✅ [Asistente Proyecto] Respuesta generada", {
+        tokens: completion.usage.total_tokens
+      });
+
+      return {
+        success: true,
+        respuesta: respuesta,
+        tokens: completion.usage.total_tokens,
+        accionRealizada: false, // Por ahora solo consultas, no acciones
+      };
+
+    } catch (error) {
+      logger.error("❌ [Asistente Proyecto] Error:", error);
+      return {
+        success: false,
+        respuesta: "Lo siento, ocurrió un error procesando tu consulta. Por favor intenta nuevamente.",
+        error: error.message,
+      };
+    }
+  }
+);
+
+// ============================================================
+// 🧠 CATEGORIZACIÓN IA DE RECURSOS DE CONOCIMIENTO
+// ============================================================
+exports.categorizarRecurso = onCall({ secrets: [openaiKey], cors: true }, async (request) => {
+  const { titulo, url, nombreArchivo } = request.data;
+
+  if (!titulo) {
+    throw new Error("Se requiere al menos un título para categorizar.");
+  }
+
+  const openai = new OpenAI({ apiKey: openaiKey.value() });
+
+  const prompt = `Analiza el siguiente recurso y categorízalo.
+
+Título: ${titulo}
+${url ? `URL: ${url}` : ""}
+${nombreArchivo ? `Archivo: ${nombreArchivo}` : ""}
+
+Reglas de categorización:
+- Si la URL contiene youtube.com o youtu.be → tipo: "video"
+- Si el archivo termina en .pdf, .doc, .docx → tipo: "documento"
+- Si la URL contiene arxiv.org, scholar.google, researchgate → tipo: "paper"
+- Si contiene "tutorial", "guía", "how to", "cómo" → tipo: "tutorial"
+- Si el archivo es imagen (.jpg, .png, .gif, .webp) → tipo: "imagen"
+- En otro caso, infiere el tipo más probable
+
+Responde SOLO con un JSON válido (sin markdown, sin backticks):
+{
+  "tipo": "paper|video|tutorial|documento|imagen|otro",
+  "categoria": "breve categoría temática (máx 3 palabras)",
+  "tags": ["tag1", "tag2", "tag3"]
+}`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.1,
+      messages: [
+        { role: "system", content: "Eres un categorizador de recursos académicos y de proyecto. Responde solo con JSON válido." },
+        { role: "user", content: prompt },
+      ],
+    });
+
+    const respuesta = completion.choices[0].message.content.trim();
+    const resultado = JSON.parse(respuesta);
+
+    return {
+      tipo: resultado.tipo || "otro",
+      categoria: resultado.categoria || null,
+      tags: resultado.tags || [],
+    };
+  } catch (error) {
+    logger.error("❌ [categorizarRecurso] Error:", error);
+    return {
+      tipo: "otro",
+      categoria: null,
+      tags: [],
+    };
+  }
+});
+
+// ============================================================
+// 📋 IMPORTAR INVENTARIO DESDE IMAGEN/TEXTO (OCR + IA)
+// ============================================================
+exports.parsearInventarioDesdeImagen = onCall({
+  secrets: [openaiKey],
+  cors: true,
+  timeoutSeconds: 120,
+}, async (request) => {
+  const { imagenBase64, textoTabla, contextoProyecto } = request.data;
+
+  if (!imagenBase64 && !textoTabla) {
+    throw new Error("Se requiere una imagen (base64) o texto de tabla.");
+  }
+
+  const openai = new OpenAI({ apiKey: openaiKey.value() });
+
+  const systemPrompt = `Eres un asistente que extrae items de inventario de imágenes de tablas, fotos de listas, documentos o texto.
+Debes devolver SOLO un JSON válido (sin markdown, sin backticks) con el siguiente formato:
+{
+  "items": [
+    {
+      "nombre": "nombre del item",
+      "descripcion": "descripción breve",
+      "tipo": "fisico" o "digital",
+      "categoria": "materiales|herramientas|equipos|componentes|software|licencias|api|servidores|otro",
+      "cantidad": 1,
+      "estado": "pendiente",
+      "costoEstimado": null o número,
+      "proveedorFuente": "proveedor si se menciona" o null
+    }
+  ]
+}
+
+Reglas:
+- Extrae TODOS los items visibles en la tabla/imagen/texto
+- Si no se ve cantidad, pon 1
+- Si no se ve costo, pon null
+- Infiere si es físico o digital por el contexto
+- Categoriza usando las opciones disponibles
+- Si hay columnas como "Precio", "Costo", "P.U." → úsalas para costoEstimado
+- Si hay columnas como "Cant", "Qty", "Unidades" → úsalas para cantidad`;
+
+  const messages = [
+    { role: "system", content: systemPrompt },
+  ];
+
+  if (imagenBase64) {
+    // Usar GPT-4o (con visión) para procesar la imagen
+    messages.push({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `Extrae todos los items de inventario de esta imagen de tabla/lista.${contextoProyecto ? ` Contexto del proyecto: ${contextoProyecto}` : ""}`
+        },
+        {
+          type: "image_url",
+          image_url: {
+            url: `data:image/jpeg;base64,${imagenBase64}`,
+            detail: "high",
+          },
+        },
+      ],
+    });
+  } else {
+    messages.push({
+      role: "user",
+      content: `Extrae todos los items de inventario del siguiente texto de tabla:\n\n${textoTabla}${contextoProyecto ? `\n\nContexto del proyecto: ${contextoProyecto}` : ""}`,
+    });
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: imagenBase64 ? "gpt-4o" : "gpt-4o-mini",
+      temperature: 0.1,
+      max_tokens: 4000,
+      messages: messages,
+    });
+
+    const respuesta = completion.choices[0].message.content.trim();
+
+    // Intentar limpiar si viene con backticks
+    let jsonStr = respuesta;
+    if (jsonStr.startsWith("```")) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+    }
+
+    const resultado = JSON.parse(jsonStr);
+
+    logger.info("✅ [parsearInventario] Items extraídos:", {
+      cantidad: resultado.items?.length || 0,
+      tokens: completion.usage.total_tokens,
+    });
+
+    return {
+      success: true,
+      items: resultado.items || [],
+      tokens: completion.usage.total_tokens,
+    };
+  } catch (error) {
+    logger.error("❌ [parsearInventario] Error:", error);
+    return {
+      success: false,
+      items: [],
+      error: error.message,
+    };
+  }
+});
+
+// Nota: enviarCorreoProyecto fue removido - se usa Gmail web compose URL en el cliente
+
+// ============================================================
+// ✍️ GENERAR BORRADOR DE CORREO CON IA
+// ============================================================
+exports.redactarCorreoIA = onCall({
+  secrets: [openaiKey],
+  cors: true,
+  timeoutSeconds: 60,
+}, async (request) => {
+  const { asunto, nombreProyecto, vision, destinatarios } = request.data;
+
+  try {
+    const openai = new OpenAI({ apiKey: openaiKey.value() });
+
+    const destinatariosStr = destinatarios && destinatarios.length > 0
+      ? `Los destinatarios son: ${destinatarios.join(", ")}.`
+      : "";
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `Eres un asistente de comunicación profesional para equipos de trabajo.
+          Redactas correos claros, profesionales y directos en español.
+          El correo es para el proyecto "${nombreProyecto}".
+          ${vision ? `Visión del proyecto: ${vision}` : ""}
+          Responde SOLO con el cuerpo del correo, sin saludo inicial ni firma.
+          Máximo 150 palabras. Tono profesional pero cercano.`,
+        },
+        {
+          role: "user",
+          content: `Redacta el cuerpo de un correo sobre: "${asunto}". ${destinatariosStr}`,
+        },
+      ],
+      max_tokens: 300,
+      temperature: 0.7,
+    });
+
+    const cuerpo = completion.choices[0].message.content.trim();
+    return { success: true, cuerpo };
+  } catch (error) {
+    logger.error("❌ [redactarCorreoIA] Error:", error);
+    throw new Error(`Error al generar borrador: ${error.message}`);
+  }
+});
+
+// ============================================================
+// 🔔 NOTIFICACIONES - TRIGGER DE CAMBIOS EN TAREAS
+// ============================================================
+exports.notificarCambioTarea = onDocumentWritten(
+  "proyectos/{proyectoId}/tareas/{tareaId}",
+  async (event) => {
+    const proyectoId = event.params.proyectoId;
+    const tareaId = event.params.tareaId;
+    const db = admin.firestore();
+
+    const antes = event.data.before.exists ? event.data.before.data() : null;
+    const despues = event.data.after.exists ? event.data.after.data() : null;
+
+    // Tarea eliminada - no notificar
+    if (!despues) return;
+
+    // Obtener datos del proyecto (nombre)
+    let nombreProyecto = "tu proyecto";
+    try {
+      const proyectoSnap = await db.collection("proyectos").doc(proyectoId).get();
+      if (proyectoSnap.exists) {
+        nombreProyecto = proyectoSnap.data().nombre || "tu proyecto";
+      }
+    } catch (e) {
+      logger.warn("No se pudo obtener nombre del proyecto:", e);
+    }
+
+    const titulo = despues.titulo || despues.nombre || "Tarea";
+    const notificacionesArray = []; // { uid, tipo, tituloNotif, cuerpo }
+
+    // ─── 1. Tarea recién creada y asignada ──────────────────────────────
+    if (!antes && despues.responsables && despues.responsables.length > 0) {
+      const creadoPor = despues.creadoPor || null;
+      for (const uid of despues.responsables) {
+        if (uid === creadoPor) continue;
+        notificacionesArray.push({
+          uid,
+          tipo: "tarea_asignada",
+          tituloNotif: `📋 Nueva tarea asignada`,
+          cuerpo: `"${titulo}" fue asignada a ti en ${nombreProyecto}.`,
+        });
+      }
+    }
+
+    // ─── 2. Nuevos responsables añadidos ────────────────────────────────
+    if (antes && despues.responsables) {
+      const responsablesAntes = antes.responsables || [];
+      const responsablesDespues = despues.responsables || [];
+      const nuevos = responsablesDespues.filter((uid) => !responsablesAntes.includes(uid));
+      for (const uid of nuevos) {
+        notificacionesArray.push({
+          uid,
+          tipo: "tarea_asignada",
+          tituloNotif: `📋 Te asignaron una tarea`,
+          cuerpo: `"${titulo}" en ${nombreProyecto}.`,
+        });
+      }
+    }
+
+    // ─── 3. Cambio de fecha límite o programada ──────────────────────────
+    if (antes && despues.responsables && despues.responsables.length > 0) {
+      const fechaAntes = antes.fechaLimite || antes.fechaProgramada;
+      const fechaDespues = despues.fechaLimite || despues.fechaProgramada;
+      const fechaCambia = JSON.stringify(fechaAntes) !== JSON.stringify(fechaDespues);
+      if (fechaCambia) {
+        let nuevaFechaStr = "";
+        if (fechaDespues) {
+          try {
+            const d = fechaDespues.toDate ? fechaDespues.toDate() : new Date(fechaDespues);
+            nuevaFechaStr = ` Nueva fecha: ${d.toLocaleDateString("es-PE")}.`;
+          } catch (_) {}
+        }
+        for (const uid of despues.responsables) {
+          notificacionesArray.push({
+            uid,
+            tipo: "fecha_cambiada",
+            tituloNotif: `📅 Fecha actualizada`,
+            cuerpo: `"${titulo}" en ${nombreProyecto} tiene nueva fecha.${nuevaFechaStr}`,
+          });
+        }
+      }
+    }
+
+    // ─── 4. Cambio de estado ─────────────────────────────────────────────
+    if (antes && despues.responsables && despues.responsables.length > 0) {
+      const estadoAntes = antes.estado || "";
+      const estadoDespues = despues.estado || "";
+      if (estadoAntes && estadoDespues && estadoAntes !== estadoDespues) {
+        const estadoLabel = estadoDespues === "completada" ? "completada ✅"
+          : estadoDespues === "en_progreso" ? "en progreso 🔄"
+          : "pendiente ⏳";
+        for (const uid of despues.responsables) {
+          notificacionesArray.push({
+            uid,
+            tipo: "estado_cambiado",
+            tituloNotif: `🔄 Estado de tarea actualizado`,
+            cuerpo: `"${titulo}" en ${nombreProyecto} está ahora ${estadoLabel}.`,
+          });
+        }
+      }
+    }
+
+    if (notificacionesArray.length === 0) return;
+
+    // ─── Guardar en Firestore + enviar FCM push ──────────────────────────
+    const batch = db.batch();
+    const fcmPromises = [];
+
+    for (const { uid, tipo, tituloNotif, cuerpo } of notificacionesArray) {
+      const ref = db
+        .collection("notificaciones")
+        .doc(uid)
+        .collection("items")
+        .doc();
+      batch.set(ref, {
+        titulo: tituloNotif,
+        cuerpo,
+        tipo,
+        fecha: admin.firestore.FieldValue.serverTimestamp(),
+        leida: false,
+        proyectoId,
+        tareaId,
+        proyectoNombre: nombreProyecto,
+      });
+
+      fcmPromises.push(
+        db.collection("users").doc(uid).get().then((snap) => {
+          if (!snap.exists) return;
+          const token = snap.data().fcmToken;
+          if (!token) return;
+          return admin.messaging().send({
+            token,
+            notification: { title: tituloNotif, body: cuerpo },
+            android: { priority: "high" },
+            apns: { payload: { aps: { sound: "default", badge: 1 } } },
+            data: { proyectoId, tareaId, tipo },
+          }).catch((err) => logger.warn(`FCM push failed for ${uid}:`, err.message));
+        }).catch((err) => logger.warn(`User fetch failed for ${uid}:`, err.message))
+      );
+    }
+
+    await batch.commit();
+    await Promise.allSettled(fcmPromises);
+
+    logger.info(
+      `✅ [notificarCambioTarea] ${notificacionesArray.length} notifs para tarea ${tareaId}`
+    );
+  }
+);
+

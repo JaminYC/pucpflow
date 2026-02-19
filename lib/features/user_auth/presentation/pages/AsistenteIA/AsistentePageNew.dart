@@ -14,8 +14,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:pucpflow/services/wake_word_service.dart';
+import 'package:pucpflow/utils/file_bytes_loader.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/pmi_ia_service_web.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/pmi_service.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectoDetalleKanbanPage.dart';
 
 /// Voice Console - Interfaz Profesional para ADAN
 /// Estados visuales claros y panel de control premium
@@ -31,6 +37,20 @@ enum AssistantState {
   recording,     // 🔴 Grabando voz
   processing,    // 🔵 Procesando / pensando
   speaking,      // 🟣 Hablando / reproduciendo voz
+}
+
+class _LocalAttachment {
+  final String name;
+  final String? extension;
+  final Uint8List bytes;
+
+  const _LocalAttachment({
+    required this.name,
+    required this.bytes,
+    this.extension,
+  });
+
+  int get size => bytes.length;
 }
 
 class AsistentePageNew extends StatefulWidget {
@@ -83,7 +103,7 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
   // ===== TTS =====
   List<Map<String, String>> _voiceList = [];
   Map<String, String>? _selectedVoice;
-  double _rate = 0.9;
+  double _rate = 1.0;
   double _pitch = 1.02;
 
   // ===== ElevenLabs =====
@@ -110,6 +130,13 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
 
   // ===== Input de texto =====
   final TextEditingController _textInputController = TextEditingController();
+  final List<_LocalAttachment> _attachedFiles = [];
+  static const int _maxAttachmentCount = 4;
+  static const int _maxAttachmentBytes = 2 * 1024 * 1024;
+  static const int _maxTotalAttachmentBytes = 6 * 1024 * 1024;
+
+  // ===== Servicio PMI =====
+  final PMIIAServiceWeb _pmiIAService = PMIIAServiceWeb();
 
   @override
   void initState() {
@@ -436,8 +463,13 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
 
   Future<void> _initTTS() async {
     final prefs = await SharedPreferences.getInstance();
-    _rate = prefs.getDouble('tts.rate') ?? 0.52; // Velocidad optimizada (antes 0.9)
-    _pitch = prefs.getDouble('tts.pitch') ?? 1.08; // Tono más natural (antes 1.02)
+    final storedRate = prefs.getDouble('tts.rate');
+    _rate = storedRate ?? 0.7; // Velocidad más lenta y pausada (antes 0.85)
+    if (storedRate == null || storedRate < 0.5 || storedRate > 1.5) {
+      _rate = 0.7;
+      await prefs.setDouble('tts.rate', _rate);
+    }
+    _pitch = prefs.getDouble('tts.pitch') ?? 1.0; // Tono natural sin modificación (antes 1.05)
     _elevenLabsVoiceId = prefs.getString('elevenlabs.voice.id') ?? 'pNInz6obpgDQGcFmaJgB';
 
     // Configuración mejorada de TTS local
@@ -655,12 +687,14 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
       return;
     }
 
+    final attachmentsPayload = await _buildAttachmentPayload();
     _lastProcessedPrompt = _spokenText;
 
     await _pauseWakeWordDetectionIfNeeded();
     _setWakeWordProcessing(true);
 
     setState(() {
+      _attachedFiles.clear();
       _currentState = AssistantState.processing;
       _messages.add({
         'role': 'user',
@@ -676,12 +710,16 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
 
     try {
       final callable = functions.httpsCallable('adanChat');
-      final result = await callable.call({
+      final payload = <String, dynamic>{
         'text': _spokenText,
         'userId': _userId,
         'history': _conversationHistory,
         'conversationId': _currentConversationId,
-      });
+      };
+      if (attachmentsPayload.isNotEmpty) {
+        payload['attachments'] = attachmentsPayload;
+      }
+      final result = await callable.call(payload);
 
       final data = result.data;
       final reply = data['reply'] ?? 'No obtuve respuesta.';
@@ -752,6 +790,42 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
     }
   }
 
+  /// Eliminar formato Markdown del texto para TTS
+  /// Convierte Markdown a texto plano que suena natural
+  String _stripMarkdown(String text) {
+    String cleaned = text;
+
+    // Eliminar headers (# ## ###)
+    cleaned = cleaned.replaceAll(RegExp(r'^#{1,6}\s+', multiLine: true), '');
+
+    // Eliminar bold/italic (**text** o __text__ o *text* o _text_)
+    cleaned = cleaned.replaceAllMapped(RegExp(r'\*\*([^\*]+)\*\*'), (match) => match.group(1) ?? '');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'__([^_]+)__'), (match) => match.group(1) ?? '');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'\*([^\*]+)\*'), (match) => match.group(1) ?? '');
+    cleaned = cleaned.replaceAllMapped(RegExp(r'_([^_]+)_'), (match) => match.group(1) ?? '');
+
+    // Eliminar code blocks (```code```)
+    cleaned = cleaned.replaceAll(RegExp(r'```[^`]*```'), ' código ');
+
+    // Eliminar inline code (`code`)
+    cleaned = cleaned.replaceAllMapped(RegExp(r'`([^`]+)`'), (match) => match.group(1) ?? '');
+
+    // Eliminar links [text](url) -> solo text
+    cleaned = cleaned.replaceAllMapped(RegExp(r'\[([^\]]+)\]\([^\)]+\)'), (match) => match.group(1) ?? '');
+
+    // Eliminar bullets/listas (-, *, +)
+    cleaned = cleaned.replaceAll(RegExp(r'^[\-\*\+]\s+', multiLine: true), '');
+
+    // Eliminar blockquotes (>)
+    cleaned = cleaned.replaceAll(RegExp(r'^>\s+', multiLine: true), '');
+
+    // Limpiar múltiples espacios/saltos de línea
+    cleaned = cleaned.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+    cleaned = cleaned.replaceAll(RegExp(r'\s{2,}'), ' ');
+
+    return cleaned.trim();
+  }
+
   Future<void> _speakResponse(String text) async {
     setState(() => _currentState = AssistantState.speaking);
     _lastAudioResponse = text; // Guardar para repetir
@@ -763,7 +837,10 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
     debugPrint('🎵 Reproduciendo con TTS local optimizado');
 
     try {
-      await _tts.speak(text);
+      // Limpiar Markdown antes de hablar
+      final cleanText = _stripMarkdown(text);
+      debugPrint('🔊 TTS texto limpio: ${cleanText.substring(0, cleanText.length > 100 ? 100 : cleanText.length)}...');
+      await _tts.speak(cleanText);
       setState(() => _currentState = AssistantState.inactive);
     } catch (e) {
       debugPrint('❌ Error en TTS local: $e');
@@ -801,7 +878,8 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
             );
           }
           // Usar TTS local
-          await _tts.speak(text);
+          final cleanText = _stripMarkdown(text);
+          await _tts.speak(cleanText);
           setState(() => _currentState = AssistantState.inactive);
           return;
         }
@@ -832,7 +910,8 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
     }
 
     // Fallback a TTS local
-    await _tts.speak(text);
+    final cleanText = _stripMarkdown(text);
+    await _tts.speak(cleanText);
     setState(() => _currentState = AssistantState.inactive);
     */
   }
@@ -975,6 +1054,16 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
           ],
 
           // Botones de acción
+          // Botón Generar Proyecto
+          if (_messages.isNotEmpty) ...[
+            _buildActionButton(
+              icon: Icons.auto_awesome,
+              label: isMobile ? '' : 'Generar Proyecto',
+              onPressed: _generarProyectoDesdeConversacion,
+              tooltip: 'Generar proyecto desde conversación',
+            ),
+            const SizedBox(width: 8),
+          ],
           _buildIconButton(
             Icons.history,
             _showHistory,
@@ -1026,37 +1115,70 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
     );
   }
 
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: Colors.white, size: 18),
+                if (label.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // ===== CONSOLE PRINCIPAL =====
   Widget _buildMainConsole(bool isMobile) {
     return Container(
-      padding: EdgeInsets.all(isMobile ? 16 : 32),
+      padding: EdgeInsets.all(isMobile ? 8 : 12),
       child: Column(
         children: [
-          // Estado Visual del Asistente
-          _buildStateIndicator(isMobile),
-
-          SizedBox(height: isMobile ? 24 : 32),
-
-          // Botón Central de Micrófono
-          _buildMicrophoneButton(isMobile),
-
-          SizedBox(height: isMobile ? 16 : 20),
-
-          // Input de texto para escribir
-          _buildTextInput(isMobile),
-
-          SizedBox(height: isMobile ? 16 : 20),
+          // Conversacion (scroll grande)
+          Expanded(
+            child: _buildConversationDisplay(isMobile),
+          ),
+          SizedBox(height: isMobile ? 8 : 12),
 
           // Controles de Audio (Pause/Play, Stop, Repetir)
           if (_currentState == AssistantState.speaking || _lastAudioResponse.isNotEmpty)
             _buildAudioControls(isMobile),
 
-          SizedBox(height: isMobile ? 24 : 32),
+          SizedBox(height: isMobile ? 8 : 12),
 
-          // Visualización de Audio/Texto
-          Expanded(
-            child: _buildConversationDisplay(isMobile),
-          ),
+          // Barra de texto tipo ChatGPT
+          _buildTextInput(isMobile),
         ],
       ),
     );
@@ -1103,7 +1225,7 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
     }
 
     return Container(
-      padding: EdgeInsets.all(isMobile ? 16 : 24),
+      padding: EdgeInsets.all(isMobile ? 10 : 12),
       decoration: BoxDecoration(
         color: const Color(0xFF0D1229),
         borderRadius: BorderRadius.circular(16),
@@ -1122,7 +1244,7 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
               return Transform.scale(
                 scale: shouldPulse ? _pulseAnimation.value : 1.0,
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: stateColor.withOpacity(0.2),
                     shape: BoxShape.circle,
@@ -1131,7 +1253,7 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
                   child: Icon(
                     stateIcon,
                     color: stateColor,
-                    size: isMobile ? 24 : 32,
+                    size: isMobile ? 18 : 22,
                   ),
                 ),
               );
@@ -1149,7 +1271,7 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
                   stateText,
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: isMobile ? 18 : 24,
+                    fontSize: isMobile ? 15 : 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -1158,7 +1280,7 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
                   stateSubtext,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.6),
-                    fontSize: isMobile ? 12 : 14,
+                    fontSize: isMobile ? 10 : 11,
                   ),
                 ),
               ],
@@ -1294,8 +1416,8 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
           return Transform.scale(
             scale: isActive ? _pulseAnimation.value * 0.9 + 0.1 : 1.0,
             child: Container(
-              width: isMobile ? 120 : 160,
-              height: isMobile ? 120 : 160,
+              width: isMobile ? 68 : 84,
+              height: isMobile ? 68 : 84,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
@@ -1309,15 +1431,15 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
                   BoxShadow(
                     color: (isActive ? Color(0xFFEF4444) : Color(0xFF6366F1))
                         .withOpacity(0.5),
-                    blurRadius: 30,
-                    spreadRadius: 5,
+                    blurRadius: 14,
+                    spreadRadius: 2,
                   ),
                 ],
               ),
               child: Icon(
                 isActive ? Icons.mic : Icons.mic_none,
                 color: Colors.white,
-                size: isMobile ? 48 : 64,
+                size: isMobile ? 24 : 32,
               ),
             ),
           );
@@ -1326,81 +1448,332 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
     );
   }
 
+  Future<void> _pickFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.any,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final newAttachments = <_LocalAttachment>[];
+      final warnings = <String>[];
+      int totalBytes = _attachedFiles.fold(0, (sum, file) => sum + file.size);
+
+      for (final file in result.files) {
+        if (_attachedFiles.length + newAttachments.length >= _maxAttachmentCount) {
+          warnings.add('Solo se pueden adjuntar $_maxAttachmentCount archivos.');
+          break;
+        }
+
+        Uint8List? bytes = file.bytes;
+        if (bytes == null && file.path != null) {
+          bytes = await loadFileBytes(file.path!);
+        }
+
+        if (bytes == null || bytes.isEmpty) {
+          warnings.add('No se pudo leer ${file.name}.');
+          continue;
+        }
+
+        if (bytes.length > _maxAttachmentBytes) {
+          warnings.add('${file.name} supera el limite de 2MB.');
+          continue;
+        }
+
+        if (totalBytes + bytes.length > _maxTotalAttachmentBytes) {
+          warnings.add('El total de adjuntos supera 6MB.');
+          continue;
+        }
+
+        newAttachments.add(
+          _LocalAttachment(
+            name: file.name,
+            extension: file.extension,
+            bytes: bytes,
+          ),
+        );
+        totalBytes += bytes.length;
+      }
+
+      if (newAttachments.isNotEmpty) {
+        setState(() {
+          _attachedFiles.addAll(newAttachments);
+        });
+      }
+
+      if (warnings.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(warnings.join(' ')),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error al adjuntar archivos: $e');
+    }
+  }
+
+  void _removeAttachment(int index) {
+    if (index < 0 || index >= _attachedFiles.length) return;
+    setState(() {
+      _attachedFiles.removeAt(index);
+    });
+  }
+
+  String _guessMimeType(String name, String? extension) {
+    final ext = (extension ?? name.split('.').last).toLowerCase();
+    switch (ext) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'txt':
+        return 'text/plain';
+      case 'md':
+      case 'markdown':
+        return 'text/markdown';
+      case 'json':
+        return 'application/json';
+      case 'csv':
+        return 'text/csv';
+      case 'xml':
+        return 'text/xml';
+      case 'yml':
+      case 'yaml':
+        return 'text/yaml';
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _buildAttachmentPayload() async {
+    if (_attachedFiles.isEmpty) return [];
+    final payload = <Map<String, dynamic>>[];
+    final files = _attachedFiles.take(_maxAttachmentCount).toList();
+
+    for (final file in files) {
+      final bytes = file.bytes;
+      if (bytes.isEmpty) {
+        continue;
+      }
+      payload.add({
+        'name': file.name,
+        'extension': file.extension,
+        'mimeType': _guessMimeType(file.name, file.extension),
+        'size': bytes.length,
+        'dataBase64': base64Encode(bytes),
+      });
+    }
+    return payload;
+  }
+
   // ===== INPUT DE TEXTO =====
   Widget _buildTextInput(bool isMobile) {
+    final isListening = _currentState == AssistantState.listening ||
+        _currentState == AssistantState.recording;
+
     return Container(
-      constraints: BoxConstraints(maxWidth: isMobile ? double.infinity : 600),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
+      constraints: BoxConstraints(maxWidth: isMobile ? double.infinity : 760),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  width: 1,
-                ),
-              ),
-              child: TextField(
-                controller: _textInputController,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: 'Escribe tu pregunta aquí...',
-                  hintStyle: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.3),
-                    fontSize: 14,
-                  ),
-                  prefixIcon: Icon(
-                    Icons.edit,
-                    color: Colors.white.withValues(alpha: 0.4),
-                    size: 20,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 14,
-                  ),
-                ),
-                maxLines: null,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (text) => _sendTextMessage(text),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Botón de enviar
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => _sendTextMessage(_textInputController.text),
-              borderRadius: BorderRadius.circular(50),
-              child: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF6366F1).withValues(alpha: 0.3),
-                      blurRadius: 15,
-                      spreadRadius: 2,
+          if (_attachedFiles.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: List.generate(_attachedFiles.length, (index) {
+                  final file = _attachedFiles[index];
+                  return ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 220),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E293B),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.insert_drive_file,
+                            color: Colors.white.withValues(alpha: 0.7),
+                            size: 14,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              file.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: () => _removeAttachment(index),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Icon(
+                              Icons.close,
+                              color: Colors.white.withValues(alpha: 0.6),
+                              size: 14,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.send,
-                  color: Colors.white,
-                  size: 20,
-                ),
+                  );
+                }),
               ),
             ),
+          Row(
+            children: [
+              // Boton agregar archivos
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _pickFiles,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 1,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.add,
+                      color: Colors.white.withValues(alpha: 0.7),
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _textInputController,
+                          style: const TextStyle(color: Colors.white, fontSize: 14),
+                          decoration: InputDecoration(
+                            hintText: 'Escribe tu pregunta aqui...',
+                            hintStyle: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.3),
+                              fontSize: 14,
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 10,
+                            ),
+                          ),
+                          maxLines: null,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (text) => _sendTextMessage(text),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      AnimatedBuilder(
+                        animation: _pulseAnimation,
+                        builder: (context, child) {
+                          final scale = isListening ? _pulseAnimation.value * 0.08 + 0.96 : 1.0;
+                          return Transform.scale(
+                            scale: scale,
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: isListening ? _stopListening : _startListening,
+                                borderRadius: BorderRadius.circular(18),
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: isListening
+                                        ? const Color(0xFFEF4444).withValues(alpha: 0.2)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: isListening
+                                          ? const Color(0xFFEF4444)
+                                          : Colors.white.withValues(alpha: 0.15),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    isListening ? Icons.mic : Icons.mic_none,
+                                    color: isListening ? const Color(0xFFEF4444) : Colors.white.withValues(alpha: 0.7),
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => _sendTextMessage(_textInputController.text),
+                          borderRadius: BorderRadius.circular(18),
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: const Icon(
+                              Icons.send,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1411,11 +1784,13 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
   Future<void> _sendTextMessage(String text) async {
     if (text.trim().isEmpty) return;
 
+    final attachmentsPayload = await _buildAttachmentPayload();
     // Limpiar el campo de texto
     _textInputController.clear();
 
     // Agregar mensaje del usuario
     setState(() {
+      _attachedFiles.clear();
       _messages.add({
         'role': 'user',
         'content': text,
@@ -1431,12 +1806,16 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
 
     try {
       final callable = functions.httpsCallable('adanChat');
-      final result = await callable.call({
+      final payload = <String, dynamic>{
         'text': text,
         'userId': _userId,
         'history': _conversationHistory,
         'conversationId': _currentConversationId,
-      });
+      };
+      if (attachmentsPayload.isNotEmpty) {
+        payload['attachments'] = attachmentsPayload;
+      }
+      final result = await callable.call(payload);
 
       final data = result.data;
       final reply = data['reply'] ?? 'No obtuve respuesta.';
@@ -1483,7 +1862,7 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
   // ===== DISPLAY DE CONVERSACIÓN =====
   Widget _buildConversationDisplay(bool isMobile) {
     return Container(
-      padding: EdgeInsets.all(isMobile ? 16 : 24),
+      padding: EdgeInsets.all(isMobile ? 10 : 12),
       decoration: BoxDecoration(
         color: const Color(0xFF0D1229),
         borderRadius: BorderRadius.circular(16),
@@ -1495,49 +1874,6 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Encabezado
-          Row(
-            children: [
-              Icon(
-                Icons.chat_bubble_outline,
-                color: Color(0xFF6366F1),
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'Conversación',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Spacer(),
-              if (_messages.isNotEmpty)
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _messages.clear();
-                      _conversationHistory.clear();
-                      _currentConversationId = null;
-                      _spokenText = '';
-                      _transcribedText = '';
-                      _currentResponse = '';
-                    });
-                  },
-                  icon: const Icon(Icons.refresh, size: 16, color: Color(0xFF6366F1)),
-                  label: const Text(
-                    'Nueva',
-                    style: TextStyle(color: Color(0xFF6366F1), fontSize: 12),
-                  ),
-                ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-          const Divider(color: Color(0xFF1E293B), height: 1),
-          const SizedBox(height: 16),
-
           // Lista de mensajes
           Expanded(
             child: _messages.isEmpty
@@ -1545,17 +1881,19 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.mic_none,
-                          size: isMobile ? 48 : 64,
-                          color: Colors.white.withOpacity(0.2),
-                        ),
-                        const SizedBox(height: 16),
                         Text(
-                          'Presiona el micrófono para hablar',
+                          'Escribe un mensaje para comenzar',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.4),
                             fontSize: isMobile ? 14 : 16,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'o toca el microfono',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.35),
+                            fontSize: isMobile ? 12 : 13,
                           ),
                         ),
                       ],
@@ -1592,7 +1930,7 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
                             ],
                             Expanded(
                               child: Container(
-                                padding: const EdgeInsets.all(16),
+                                padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
                                   color: isUser
                                       ? Color(0xFF6366F1).withOpacity(0.1)
@@ -1625,26 +1963,82 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
                                       ),
                                     ),
                                     const SizedBox(height: 8),
-                                    Linkify(
-                                      text: message['content'],
-                                      onOpen: (link) async {
-                                        final uri = Uri.parse(link.url);
-                                        if (await canLaunchUrl(uri)) {
-                                          await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                        }
-                                      },
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.9),
-                                        fontSize: 14,
-                                        height: 1.5,
-                                      ),
-                                      linkStyle: TextStyle(
-                                        color: Color(0xFF6366F1),
-                                        fontSize: 14,
-                                        decoration: TextDecoration.underline,
-                                        decorationColor: Color(0xFF6366F1),
-                                      ),
-                                    ),
+                                    // Usar Markdown para respuestas del asistente, Linkify para usuario
+                                    isUser || isError
+                                        ? Linkify(
+                                            text: message['content'],
+                                            onOpen: (link) async {
+                                              final uri = Uri.parse(link.url);
+                                              if (await canLaunchUrl(uri)) {
+                                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                              }
+                                            },
+                                            style: TextStyle(
+                                              color: Colors.white.withOpacity(0.9),
+                                              fontSize: 14,
+                                              height: 1.5,
+                                            ),
+                                            linkStyle: TextStyle(
+                                              color: Color(0xFF6366F1),
+                                              fontSize: 14,
+                                              decoration: TextDecoration.underline,
+                                              decorationColor: Color(0xFF6366F1),
+                                            ),
+                                          )
+                                        : MarkdownBody(
+                                            data: message['content'],
+                                            styleSheet: MarkdownStyleSheet(
+                                              p: TextStyle(
+                                                color: Colors.white.withOpacity(0.9),
+                                                fontSize: 14,
+                                                height: 1.5,
+                                              ),
+                                              h1: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                              h2: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                              h3: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                              strong: const TextStyle(
+                                                color: Color(0xFF8B5CF6),
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                              em: TextStyle(
+                                                color: Colors.white.withOpacity(0.7),
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                              code: TextStyle(
+                                                color: const Color(0xFF10B981),
+                                                backgroundColor: Colors.white.withOpacity(0.1),
+                                                fontFamily: 'monospace',
+                                              ),
+                                              listBullet: const TextStyle(
+                                                color: Color(0xFF8B5CF6),
+                                                fontSize: 14,
+                                              ),
+                                              a: const TextStyle(
+                                                color: Color(0xFF6366F1),
+                                                decoration: TextDecoration.underline,
+                                              ),
+                                            ),
+                                            onTapLink: (text, url, title) async {
+                                              if (url != null) {
+                                                final uri = Uri.parse(url);
+                                                if (await canLaunchUrl(uri)) {
+                                                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                                }
+                                              }
+                                            },
+                                          ),
                                   ],
                                 ),
                               ),
@@ -2155,14 +2549,20 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
               [
                 _buildVoiceSelector(),
                 const SizedBox(height: 16),
-                _buildSlider('Velocidad', _rate, 0.5, 1.5, (val) {
+                _buildSlider('Velocidad', _rate, 0.5, 1.5, (val) async {
                   setState(() => _rate = val);
-                  _tts.setSpeechRate(val);
+                  await _tts.setSpeechRate(val);
+                  // Guardar preferencia
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setDouble('tts.rate', val);
                 }),
                 const SizedBox(height: 8),
-                _buildSlider('Tono', _pitch, 0.5, 2.0, (val) {
+                _buildSlider('Tono', _pitch, 0.5, 2.0, (val) async {
                   setState(() => _pitch = val);
-                  _tts.setPitch(val);
+                  await _tts.setPitch(val);
+                  // Guardar preferencia
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setDouble('tts.pitch', val);
                 }),
               ],
             ),
@@ -2473,14 +2873,20 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
                         [
                           _buildVoiceSelector(),
                           const SizedBox(height: 16),
-                          _buildSlider('Velocidad', _rate, 0.5, 1.5, (val) {
+                          _buildSlider('Velocidad', _rate, 0.5, 1.5, (val) async {
                             setState(() => _rate = val);
-                            _tts.setSpeechRate(val);
+                            await _tts.setSpeechRate(val);
+                            // Guardar preferencia
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setDouble('tts.rate', val);
                           }),
                           const SizedBox(height: 8),
-                          _buildSlider('Tono', _pitch, 0.5, 2.0, (val) {
+                          _buildSlider('Tono', _pitch, 0.5, 2.0, (val) async {
                             setState(() => _pitch = val);
-                            _tts.setPitch(val);
+                            await _tts.setPitch(val);
+                            // Guardar preferencia
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setDouble('tts.pitch', val);
                           }),
                         ],
                       ),
@@ -2585,4 +2991,318 @@ class _AsistentePageNewState extends State<AsistentePageNew> with SingleTickerPr
       ),
     );
   }
+
+  // ===== GENERACIÓN DE PROYECTO DESDE CONVERSACIÓN =====
+  Future<void> _generarProyectoDesdeConversacion() async {
+    if (_messages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ No hay suficiente contexto para generar un proyecto'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Paso 1: Preguntar metodología
+    final metodologia = await _mostrarDialogoMetodologia();
+    if (metodologia == null) return; // Usuario canceló
+
+    if (!mounted) return;
+
+    // Mostrar diálogo de carga
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          color: Color(0xFF0D1229),
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Color(0xFF6366F1)),
+                SizedBox(height: 16),
+                Text(
+                  '🤖 Generando proyecto desde conversación...',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Esto puede tomar 2-3 minutos',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // Paso 2: Preparar contexto de conversación
+      final contextoConversacion = _prepararContextoConversacion();
+
+      // Paso 3: Convertir archivos adjuntos a base64 (si hay)
+      List<String> documentosBase64 = [];
+      if (_attachedFiles.isNotEmpty) {
+        for (var file in _attachedFiles) {
+          documentosBase64.add(base64Encode(file.bytes));
+        }
+      }
+
+      // Paso 4: Generar nombre del proyecto basado en conversación
+      final nombreProyecto = await _generarNombreProyecto(contextoConversacion);
+
+      // Paso 5: Llamar al servicio de IA para generar proyecto
+      final proyectoIA = await _pmiIAService.generarProyectoPMIConIA(
+        documentosBase64: documentosBase64,
+        nombreProyecto: nombreProyecto,
+        descripcionBreve: contextoConversacion,
+      );
+
+      if (proyectoIA == null) {
+        throw Exception('Error generando estructura PMI');
+      }
+
+      // Paso 6: Crear proyecto en Firestore
+      final pmiService = _pmiIAService.pmiService;
+      final proyectoId = await pmiService.crearProyectoPMI(
+        nombre: nombreProyecto,
+        descripcion: proyectoIA['descripcion'] ?? contextoConversacion,
+        fechaInicio: DateTime.now(),
+        fechaFin: null,
+        objetivo: proyectoIA['objetivo'],
+        alcance: proyectoIA['alcance'],
+        presupuesto: proyectoIA['presupuestoEstimado']?.toDouble(),
+        categoria: metodologia,
+        vision: '',
+      );
+
+      if (proyectoId == null) {
+        throw Exception('Error creando proyecto en Firestore');
+      }
+
+      // Paso 7: Guardar tareas generadas por IA
+      final user = FirebaseAuth.instance.currentUser;
+      await _guardarTareasEnProyecto(proyectoId, proyectoIA, user?.uid);
+
+      if (!mounted) return;
+      Navigator.pop(context); // Cerrar diálogo de carga
+
+      // Mostrar éxito
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Proyecto generado exitosamente'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Navegar al proyecto
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => ProyectoDetalleKanbanPage(
+            proyectoId: proyectoId,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Cerrar diálogo de carga
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error generando proyecto: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Mostrar diálogo para seleccionar metodología
+  Future<String?> _mostrarDialogoMetodologia() async {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF0D1229),
+        title: const Text(
+          '🎯 Seleccionar Metodología',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              '¿Qué metodología deseas usar para este proyecto?',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 16),
+            _buildMetodologiaOption(
+              context,
+              'Proyecto Flexible',
+              'Adaptable a cambios, ideal para proyectos dinámicos',
+              Icons.widgets_outlined,
+            ),
+            const SizedBox(height: 8),
+            _buildMetodologiaOption(
+              context,
+              'PMI',
+              'Metodología tradicional con fases definidas',
+              Icons.architecture,
+            ),
+            const SizedBox(height: 8),
+            _buildMetodologiaOption(
+              context,
+              'Agile',
+              'Desarrollo iterativo y entrega continua',
+              Icons.speed,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetodologiaOption(
+    BuildContext context,
+    String nombre,
+    String descripcion,
+    IconData icono,
+  ) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.pop(context, nombre),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF6366F1).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(icono, color: const Color(0xFF6366F1), size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      nombre,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      descripcion,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Preparar contexto de conversación para enviar a IA
+  String _prepararContextoConversacion() {
+    final buffer = StringBuffer();
+    buffer.writeln('Contexto de la conversación:\n');
+
+    for (var msg in _messages) {
+      final role = msg['role'] == 'user' ? 'Usuario' : 'Asistente';
+      final content = msg['content'] ?? '';
+      buffer.writeln('$role: $content\n');
+    }
+
+    return buffer.toString();
+  }
+
+  /// Generar nombre de proyecto basado en conversación
+  Future<String> _generarNombreProyecto(String contexto) async {
+    // Tomar los primeros mensajes del usuario para inferir el nombre
+    final mensajesUsuario = _messages
+        .where((m) => m['role'] == 'user')
+        .take(3)
+        .map((m) => m['content'] as String?)
+        .where((c) => c != null && c.isNotEmpty)
+        .toList();
+
+    if (mensajesUsuario.isEmpty) {
+      return 'Proyecto ${DateTime.now().toString().substring(0, 10)}';
+    }
+
+    // Usar las primeras palabras del primer mensaje
+    final primerMensaje = mensajesUsuario.first!;
+    final palabras = primerMensaje.split(' ').take(5).join(' ');
+    return palabras.length > 50 ? '${palabras.substring(0, 47)}...' : palabras;
+  }
+
+  /// Guardar tareas del proyecto generado por IA
+  Future<void> _guardarTareasEnProyecto(
+    String proyectoId,
+    Map<String, dynamic> proyectoIA,
+    String? userId,
+  ) async {
+    final fases = proyectoIA['fases'] as List?;
+    if (fases == null || fases.isEmpty) return;
+
+    final db = FirebaseFirestore.instance;
+    final batch = db.batch();
+
+    for (var fase in fases) {
+      final tareas = fase['tareas'] as List?;
+      if (tareas == null) continue;
+
+      for (var tarea in tareas) {
+        final tareaRef = db
+            .collection('proyectos')
+            .doc(proyectoId)
+            .collection('tareas')
+            .doc();
+
+        batch.set(tareaRef, {
+          'titulo': tarea['titulo'] ?? '',
+          'descripcion': tarea['descripcion'] ?? '',
+          'duracion': tarea['duracion'] ?? 60,
+          'dificultad': tarea['dificultad'] ?? 'Media',
+          'tipoTarea': 'Libre',
+          'requisitos': tarea['requisitos'] ?? '',
+          'responsables': userId != null ? [userId] : [],
+          'completado': false,
+          'prioridad': tarea['prioridad'] ?? 2,
+          'colorId': 0,
+          'fasePMI': fase['nombre'] ?? '',
+          'entregable': tarea['entregable'] ?? '',
+          'paqueteTrabajo': tarea['paqueteTrabajo'] ?? '',
+          'area': '',
+          'habilidadesRequeridas': tarea['habilidadesRequeridas'] ?? [],
+          'tareasPrevias': [],
+          'fechaCreacion': FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    await batch.commit();
+  }
 }
+
+

@@ -135,15 +135,15 @@ Future<void> _marcarTareaCompletada(Tarea tarea, bool completado) async {
     final querySnapshot = await _firestore.collection("proyectos").get();
 
     for (var doc in querySnapshot.docs) {
-      final data = doc.data();
-      List<dynamic> tareas = data["tareas"] ?? [];
-
-      for (int i = 0; i < tareas.length; i++) {
-        if (tareas[i]["titulo"] == tarea.titulo) {
-          tareas[i]["completado"] = true;
-        }
+      final tareasSnapshot = await _firestore.collection("proyectos").doc(doc.id).collection("tareas")
+          .where("titulo", isEqualTo: tarea.titulo).get();
+      for (var tareaDoc in tareasSnapshot.docs) {
+        await tareaDoc.reference.update({
+          "completado": true,
+          "estado": "completada",
+          "fechaCompletada": DateTime.now().toIso8601String(),
+        });
       }
-      await _firestore.collection("proyectos").doc(doc.id).update({"tareas": tareas});
     }
 
     await _actualizarPuntosUsuario(userId, tarea);

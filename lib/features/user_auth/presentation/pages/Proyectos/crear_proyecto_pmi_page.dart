@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'pmi_ia_service_web.dart';
 import 'ProyectoDetalleKanbanPage.dart';
 import 'tarea_model.dart';
@@ -102,10 +103,12 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
   Future<void> _guardarTareasEnProyecto(
     String proyectoId,
     Map<String, dynamic> proyectoIA,
+    String? userId, // ✅ UID del usuario para auto-asignar
   ) async {
     try {
       final fasesData = proyectoIA['fases'] as List<dynamic>? ?? [];
       List<Tarea> todasLasTareas = [];
+      Set<String> areasUnicas = {}; // ✅ Recopilar áreas únicas
       int totalEntregables = 0;
       int totalPaquetes = 0;
 
@@ -127,6 +130,14 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
             final tareasData = paqueteData['tareas'] as List<dynamic>? ?? [];
 
             for (var tareaData in tareasData) {
+              // Normalizar área recomendada por IA
+              String areaRecomendada = tareaData['areaRecomendada'] ?? 'Sin asignar';
+              areaRecomendada = areaRecomendada.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+              if (areaRecomendada.isEmpty) {
+                areaRecomendada = 'Sin asignar';
+              }
+              areasUnicas.add(areaRecomendada); // ✅ Recopilar área única
+
               // Crear objeto Tarea con jerarquía PMI completa
               final tarea = Tarea(
                 titulo: tareaData['titulo'] ?? 'Tarea sin título',
@@ -138,12 +149,12 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
                 prioridad: tareaData['prioridad'] ?? 3,
                 completado: false,
                 colorId: _obtenerColorPorFase(nombreFase),
-                responsables: [], // Sin asignar inicialmente
-                tipoTarea: 'Automática',
+                responsables: userId != null ? [userId] : [], // ✅ Auto-asignar al creador
+                tipoTarea: 'Automática', // ✅ PMI siempre usa 'Automática'
                 requisitos: {},
                 dificultad: _calcularDificultad(tareaData['prioridad'] ?? 3),
                 tareasPrevias: [],
-                area: tareaData['areaRecomendada'] ?? 'Sin asignar', // ✅ Recurso recomendado por IA
+                area: areaRecomendada, // ✅ Área normalizada y sin duplicados
                 habilidadesRequeridas: List<String>.from(
                   tareaData['habilidadesRequeridas'] ?? [],
                 ),
@@ -164,17 +175,35 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
       print('   - $totalEntregables entregables');
       print('   - $totalPaquetes paquetes de trabajo');
       print('   - ${todasLasTareas.length} tareas');
+      print('   - ${areasUnicas.length} áreas únicas: $areasUnicas');
 
-      // Guardar todas las tareas en el proyecto
+      // Crear Map de áreas (recursos) para el proyecto PMI
+      Map<String, List<String>> areasMap = {};
+      for (var area in areasUnicas) {
+        areasMap[area] = []; // Inicialmente sin participantes asignados
+      }
+      print('   📁 Creando ${areasMap.length} áreas para recursos: ${areasMap.keys}');
+
+      // Guardar todas las tareas en subcolección y áreas en el proyecto
       if (todasLasTareas.isNotEmpty) {
+        final tareasRef = FirebaseFirestore.instance
+            .collection('proyectos')
+            .doc(proyectoId)
+            .collection('tareas');
+        final batch = FirebaseFirestore.instance.batch();
+        for (var tarea in todasLasTareas) {
+          batch.set(tareasRef.doc(), tarea.toJson());
+        }
+        await batch.commit();
+
         await FirebaseFirestore.instance
             .collection('proyectos')
             .doc(proyectoId)
             .update({
-          'tareas': todasLasTareas.map((t) => t.toJson()).toList(),
+          'areas': areasMap, // ✅ Guardar como "areas" (el modelo usa este campo)
         });
 
-        print('✅ ${todasLasTareas.length} tareas guardadas en el proyecto');
+        print('✅ ${todasLasTareas.length} tareas en subcolección y ${areasMap.length} áreas guardados');
       }
 
       // Actualizar contadores de tareas por fase
@@ -267,12 +296,17 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
     });
 
     try {
+      print('\n🚀 ========== INICIANDO GENERACIÓN DE PROYECTO PMI ==========');
+      print('📄 PDFs seleccionados: ${_pdfFiles.length}');
+
       // Convertir PDFs a base64
+      print('🔄 [PASO 1/5] Convirtiendo PDFs a base64...');
       final documentosBase64 = await _pmiIAService.convertirPDFsABase64(_pdfFiles);
 
       if (documentosBase64.isEmpty) {
         throw Exception('Error convirtiendo documentos');
       }
+      print('✅ [PASO 1/5] ${documentosBase64.length} documentos convertidos (${documentosBase64[0].length} caracteres en base64)');
 
       setState(() {
         _progreso = 0.2;
@@ -280,6 +314,10 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
       });
 
       // Generar estructura PMI con IA
+      print('🤖 [PASO 2/5] Llamando a IA para generar estructura PMI...');
+      print('   Proyecto: ${_nombreController.text.trim()}');
+      print('   Descripción: ${_descripcionController.text.trim()}');
+
       final proyectoIA = await _pmiIAService.generarProyectoPMIConIA(
         documentosBase64: documentosBase64,
         nombreProyecto: _nombreController.text.trim(),
@@ -289,6 +327,8 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
       if (proyectoIA == null) {
         throw Exception('Error generando estructura PMI');
       }
+      print('✅ [PASO 2/5] Estructura PMI generada exitosamente');
+      print('📊 Fases generadas: ${(proyectoIA['fases'] as List?)?.length ?? 0}');
 
       setState(() {
         _progreso = 0.7;
@@ -296,6 +336,7 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
       });
 
       // Crear proyecto usando el servicio PMI directamente
+      print('💾 [PASO 3/5] Creando proyecto en Firestore...');
       final pmiService = _pmiIAService.pmiService;
       final proyectoId = await pmiService.crearProyectoPMI(
         nombre: _nombreController.text.trim(),
@@ -312,6 +353,7 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
       if (proyectoId == null) {
         throw Exception('Error creando proyecto en Firestore');
       }
+      print('✅ [PASO 3/5] Proyecto creado con ID: $proyectoId');
 
       setState(() {
         _progreso = 0.8;
@@ -319,7 +361,10 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
       });
 
       // Guardar tareas generadas por IA
-      await _guardarTareasEnProyecto(proyectoId, proyectoIA);
+      print('📝 [PASO 4/5] Guardando tareas y fases...');
+      final user = FirebaseAuth.instance.currentUser;
+      await _guardarTareasEnProyecto(proyectoId, proyectoIA, user?.uid);
+      print('✅ [PASO 4/5] Tareas guardadas exitosamente');
 
       setState(() {
         _progreso = 0.9;
@@ -329,6 +374,9 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
       // Pequeña pausa para que el usuario vea el progreso
       await Future.delayed(const Duration(milliseconds: 500));
 
+      print('🎉 [PASO 5/5] ¡Proyecto PMI completado!');
+      print('========== GENERACIÓN COMPLETADA EXITOSAMENTE ==========\n');
+
       setState(() {
         _progreso = 1.0;
         _progresoMensaje = '✅ Proyecto PMI creado exitosamente';
@@ -336,12 +384,14 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
 
       if (proyectoId != null && mounted) {
         // Navegar al proyecto creado
+        print('🚀 Navegando al proyecto...');
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) => ProyectoDetalleKanbanPage(proyectoId: proyectoId),
           ),
         );
       } else if (mounted) {
+        print('❌ proyectoId es null, no se puede navegar');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('❌ Error generando proyecto PMI'),
@@ -349,12 +399,17 @@ class _CrearProyectoPMIPageState extends State<CrearProyectoPMIPage> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ ERROR GENERANDO PROYECTO PMI:');
+      print('   Error: $e');
+      print('   Stack trace: $stackTrace');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ Error: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }

@@ -239,11 +239,12 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
         ),
       ),
       title: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Logo con efecto elegante
           Container(
-            width: 44,
-            height: 44,
+            width: MediaQuery.of(context).size.width < 600 ? 32 : 44,
+            height: MediaQuery.of(context).size.width < 600 ? 32 : 44,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: const LinearGradient(
@@ -274,25 +275,28 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                 errorBuilder: (_, __, ___) => const Icon(
                   Icons.apps,
                   color: Colors.white,
-                  size: 24,
+                  size: 20,
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 16),
-          const Text(
-            'VASTORIA',
-            style: TextStyle(
-              color: Color(0xFF1A1A1A),
-              fontWeight: FontWeight.w800,
-              fontSize: 20,
-              letterSpacing: 3.0,
-              shadows: [
-                Shadow(
-                  color: Color(0xFF133E87),
-                  blurRadius: 15,
-                ),
-              ],
+          SizedBox(width: MediaQuery.of(context).size.width < 600 ? 8 : 16),
+          Flexible(
+            child: Text(
+              'VASTORIA',
+              style: TextStyle(
+                color: const Color(0xFF1A1A1A),
+                fontWeight: FontWeight.w800,
+                fontSize: MediaQuery.of(context).size.width < 600 ? 14 : 20,
+                letterSpacing: MediaQuery.of(context).size.width < 600 ? 1.5 : 3.0,
+                shadows: const [
+                  Shadow(
+                    color: Color(0xFF133E87),
+                    blurRadius: 15,
+                  ),
+                ],
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -354,25 +358,28 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
   }
 
   Widget _buildAuthButtons() {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        TextButton(
-          onPressed: () => Navigator.pushNamed(context, '/login'),
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            foregroundColor: const Color(0xFF133E87),
-          ),
-          child: const Text(
-            'Iniciar Sesión',
-            style: TextStyle(
-              color: Color(0xFF2A2A2A),
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
+        if (!isMobile)
+          TextButton(
+            onPressed: () => Navigator.pushNamed(context, '/flow/login'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              foregroundColor: const Color(0xFF133E87),
+            ),
+            child: const Text(
+              'Iniciar Sesión',
+              style: TextStyle(
+                color: Color(0xFF2A2A2A),
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 12),
+        if (!isMobile) const SizedBox(width: 12),
         Container(
           decoration: BoxDecoration(
             gradient: const LinearGradient(
@@ -391,21 +398,24 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
             ],
           ),
           child: ElevatedButton(
-            onPressed: () => Navigator.pushNamed(context, '/login'),
+            onPressed: () => Navigator.pushNamed(context, '/flow/login'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.transparent,
               shadowColor: Colors.transparent,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              padding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 12 : 24,
+                vertical: isMobile ? 10 : 14,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-            child: const Text(
-              'Registrarse',
+            child: Text(
+              isMobile ? 'Entrar' : 'Iniciar Sesión',
               style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w700,
-                fontSize: 14,
+                fontSize: isMobile ? 12 : 14,
                 letterSpacing: 0.5,
               ),
             ),
@@ -533,7 +543,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
       onSelected: (value) async {
         switch (value) {
           case 'perfil':
-            Navigator.pushNamed(context, '/home');
+            Navigator.pushNamed(context, '/flow/home');
             break;
           case 'configuracion':
             // Ir a configuración
@@ -551,18 +561,23 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
   }
 
   Widget _buildHeroSection() {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
         position: _slideAnimation,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 80),
+          padding: EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: isMobile ? 40 : 80,
+          ),
           child: Column(
             children: [
               // Logo grande con efectos elegantes
               Container(
-                width: 160,
-                height: 160,
+                width: isMobile ? 100 : 160,
+                height: isMobile ? 100 : 160,
                 decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: LinearGradient(
@@ -604,7 +619,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
             ),
           ),
 
-          const SizedBox(height: 50),
+          SizedBox(height: isMobile ? 30 : 50),
 
           // Título principal con gradiente oscuro
           ShaderMask(
@@ -614,14 +629,14 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                 Color(0xFF3A3A3A),
               ],
             ).createShader(bounds),
-            child: const Text(
+            child: Text(
               'VASTORIA',
               style: TextStyle(
-                fontSize: 64,
+                fontSize: isMobile ? 36 : 64,
                 fontWeight: FontWeight.w900,
                 color: Colors.white,
-                letterSpacing: 8.0,
-                shadows: [
+                letterSpacing: isMobile ? 4.0 : 8.0,
+                shadows: const [
                   Shadow(
                     color: Color(0xFF133E87),
                     blurRadius: 30,
@@ -637,15 +652,15 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
             ),
           ),
 
-          const SizedBox(height: 24),
+          SizedBox(height: isMobile ? 16 : 24),
 
           // Subtítulo con estilo elegante
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: const Text(
-              'En el vasto mundo de talentos, solo algunos hacemos historia.',
+            padding: EdgeInsets.symmetric(horizontal: isMobile ? 20 : 40),
+            child: Text(
+              'En un vasto mundo de talento, crecer es escribir historia.',
               style: TextStyle(
-                fontSize: 24,
+                fontSize: isMobile ? 16 : 24,
                 fontWeight: FontWeight.w300,
                 color: Color(0xFF3A3A3A),
                 letterSpacing: 1.2,
@@ -665,7 +680,10 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
 
           // Badge con descripción
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 16 : 24,
+              vertical: isMobile ? 10 : 12,
+            ),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
@@ -690,8 +708,8 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 8,
-                  height: 8,
+                  width: isMobile ? 6 : 8,
+                  height: isMobile ? 6 : 8,
                   decoration: BoxDecoration(
                     color: const Color(0xFF4CAF50),
                     shape: BoxShape.circle,
@@ -704,21 +722,26 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Ecosistema de Talento y Proyectos Colaborativos',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1A1A1A),
-                    letterSpacing: 0.8,
+                SizedBox(width: isMobile ? 8 : 12),
+                Flexible(
+                  child: Text(
+                    'Ecosistema de Talento y Proyectos Colaborativos',
+                    style: TextStyle(
+                      fontSize: isMobile ? 12 : 15,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1A1A1A),
+                      letterSpacing: 0.8,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(height: 50),
+          SizedBox(height: isMobile ? 30 : 50),
 
           // CTA Button elegante con gradiente
           Container(
@@ -751,13 +774,16 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                 if (_currentUser != null) {
                   _scrollToSection(2);
                 } else {
-                  Navigator.pushNamed(context, '/login');
+                  Navigator.pushNamed(context, '/flow/login');
                 }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.transparent,
                 shadowColor: Colors.transparent,
-                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 20),
+                padding: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 32 : 48,
+                  vertical: isMobile ? 16 : 20,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(35),
                 ),
@@ -765,13 +791,16 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    _currentUser != null ? 'Explorar Aplicaciones' : 'Comienza Gratis',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
+                  Flexible(
+                    child: Text(
+                      _currentUser != null ? 'Explorar Aplicaciones' : 'Comienza Gratis',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: isMobile ? 15 : 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -781,10 +810,10 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                       color: Colors.white.withValues(alpha: 0.2),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.arrow_forward_rounded,
                       color: Colors.white,
-                      size: 20,
+                      size: isMobile ? 18 : 20,
                     ),
                   ),
                 ],
@@ -870,7 +899,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                     'Gestión de Proyectos con IA',
                     'Organiza proyectos, tareas y equipos con inteligencia artificial. Sistema de gamificación con 24 habilidades y análisis de rendimiento.',
                     Icons.account_tree,
-                    '/login',
+                    '/flow',
                     const Color(0xFF133E87),
                     available: true,
                     requiresLogin: true,
@@ -949,14 +978,17 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
     bool available = true,
     bool requiresLogin = true,
   }) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final isTablet = MediaQuery.of(context).size.width < 900;
+
     return MouseRegion(
       onEnter: (_) => setState(() {}),
       onExit: (_) => setState(() {}),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutCubic,
-        width: 340,
-        height: 420,
+        width: isMobile ? MediaQuery.of(context).size.width - 48 : (isTablet ? 300 : 340),
+        height: isMobile ? 360 : (isTablet ? 380 : 420),
         transform: Matrix4.identity()..translate(0.0, 0.0, 0.0),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -1006,14 +1038,14 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                 }
               : null,
           child: Padding(
-            padding: const EdgeInsets.all(32),
+            padding: EdgeInsets.all(isMobile ? 20 : 32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Icono con efecto glassmorphism
                 Container(
-                  width: 80,
-                  height: 80,
+                  width: isMobile ? 60 : 80,
+                  height: isMobile ? 60 : 80,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -1023,7 +1055,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                         accentColor.withValues(alpha: 0.1),
                       ],
                     ),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(isMobile ? 16 : 20),
                     border: Border.all(
                       color: accentColor.withValues(alpha: 0.4),
                       width: 2,
@@ -1039,20 +1071,20 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                   child: Icon(
                     icon,
                     color: accentColor,
-                    size: 40,
+                    size: isMobile ? 32 : 40,
                   ),
                 ),
 
-                const SizedBox(height: 28),
+                SizedBox(height: isMobile ? 20 : 28),
 
                 // Título con sombra
                 Text(
                   title,
                   style: TextStyle(
-                    fontSize: 28,
+                    fontSize: isMobile ? 22 : 28,
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF1A1A1A),
-                    letterSpacing: 2.5,
+                    letterSpacing: isMobile ? 1.5 : 2.5,
                     shadows: [
                       Shadow(
                         color: accentColor.withValues(alpha: 0.3),
@@ -1062,7 +1094,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                SizedBox(height: isMobile ? 6 : 10),
 
                 // Subtítulo elegante
                 Container(
@@ -1070,7 +1102,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                   child: Text(
                     subtitle,
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: isMobile ? 12 : 14,
                       fontWeight: FontWeight.w600,
                       color: accentColor,
                       letterSpacing: 0.8,
@@ -1078,22 +1110,24 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                   ),
                 ),
 
-                const SizedBox(height: 20),
+                SizedBox(height: isMobile ? 12 : 20),
 
                 // Descripción
                 Expanded(
                   child: Text(
                     description,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF4A4A4A),
+                    style: TextStyle(
+                      fontSize: isMobile ? 13 : 14,
+                      color: const Color(0xFF4A4A4A),
                       height: 1.7,
                       letterSpacing: 0.3,
                     ),
+                    maxLines: isMobile ? 4 : null,
+                    overflow: isMobile ? TextOverflow.ellipsis : null,
                   ),
                 ),
 
-                const SizedBox(height: 24),
+                SizedBox(height: isMobile ? 16 : 24),
 
                 // Botón elegante con gradiente
                 if (available)
@@ -1120,22 +1154,25 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                       ],
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 14,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isMobile ? 16 : 20,
+                        vertical: isMobile ? 12 : 14,
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(
-                            !requiresLogin
-                                ? 'Acceder Gratis'
-                                : (_currentUser != null ? 'Abrir Aplicación' : 'Iniciar Sesión'),
-                            style: TextStyle(
-                              color: accentColor,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                              letterSpacing: 0.5,
+                          Flexible(
+                            child: Text(
+                              !requiresLogin
+                                  ? 'Acceder Gratis'
+                                  : (_currentUser != null ? 'Abrir Aplicación' : 'Iniciar Sesión'),
+                              style: TextStyle(
+                                color: accentColor,
+                                fontWeight: FontWeight.w700,
+                                fontSize: isMobile ? 13 : 15,
+                                letterSpacing: 0.5,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -1150,7 +1187,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
                                   ? Icons.arrow_forward_rounded
                                   : (_currentUser != null ? Icons.launch_rounded : Icons.lock_rounded),
                               color: accentColor,
-                              size: 18,
+                              size: isMobile ? 16 : 18,
                             ),
                           ),
                         ],
@@ -1429,7 +1466,7 @@ class _VastoriaMainLandingState extends State<VastoriaMainLanding>
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pushNamed(context, '/login');
+              Navigator.pushNamed(context, '/flow/login');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF133E87),

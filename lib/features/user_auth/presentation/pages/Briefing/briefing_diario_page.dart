@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'briefing_models.dart';
 import 'briefing_service.dart';
 import '../calendar_events_page.dart';
+import 'debug_tareas_page.dart';
 
 class BriefingDiarioPage extends StatefulWidget {
   const BriefingDiarioPage({super.key});
@@ -24,6 +25,9 @@ class _BriefingDiarioPageState extends State<BriefingDiarioPage> {
   }
 
   Future<void> _cargarBriefing() async {
+    debugPrint('═══════════════════════════════════════');
+    debugPrint('🌅 INICIANDO CARGA DE BRIEFING');
+    debugPrint('═══════════════════════════════════════');
     setState(() {
       _isLoading = true;
       _error = null;
@@ -39,10 +43,18 @@ class _BriefingDiarioPageState extends State<BriefingDiarioPage> {
         return;
       }
 
+      debugPrint('👤 User ID: ${user.uid}');
+
       final briefing = await _briefingService.generarBriefing(
         userId: user.uid,
         incluirEventosGoogle: true,
       );
+
+      debugPrint('✅ Briefing generado exitosamente');
+      debugPrint('   Tareas prioritarias: ${briefing.tareasPrioritarias.length}');
+      debugPrint('   Tareas normales: ${briefing.tareasNormales.length}');
+      debugPrint('   Total: ${briefing.metrics.totalTareas}');
+      debugPrint('═══════════════════════════════════════');
 
       setState(() {
         _briefing = briefing;
@@ -65,6 +77,16 @@ class _BriefingDiarioPageState extends State<BriefingDiarioPage> {
           : _error != null
               ? _buildErrorState()
               : _buildBriefingContent(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const DebugTareasPage()),
+          );
+        },
+        backgroundColor: Colors.deepOrange,
+        child: const Icon(Icons.bug_report),
+      ),
     );
   }
 

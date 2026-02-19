@@ -307,17 +307,19 @@ class _PomodoroPageState extends State<PomodoroPage> {
     final userId = _auth.currentUser!.uid;
     final querySnapshot = await _firestore.collection("proyectos").get();
     for (var doc in querySnapshot.docs) {
-      final data = doc.data();
-      List<dynamic> tareas = data["tareas"] ?? [];
-      for (int i = 0; i < tareas.length; i++) {
-        if (tareas[i]["titulo"] == tarea.titulo && (tareas[i]["responsables"] as List).contains(userId)) {
-          tareas[i]["completado"] = true;
-
-          // Guardar la fecha y hora exacta de completado
-          tareas[i]["fechaCompletada"] = DateTime.now().toIso8601String();
+      final tareasSnapshot = await _firestore.collection("proyectos").doc(doc.id).collection("tareas")
+          .where("titulo", isEqualTo: tarea.titulo).get();
+      for (var tareaDoc in tareasSnapshot.docs) {
+        final data = tareaDoc.data();
+        final responsables = List<String>.from(data["responsables"] ?? []);
+        if (responsables.contains(userId)) {
+          await tareaDoc.reference.update({
+            "completado": true,
+            "estado": "completada",
+            "fechaCompletada": DateTime.now().toIso8601String(),
+          });
         }
       }
-      await _firestore.collection("proyectos").doc(doc.id).update({"tareas": tareas});
     }
   }
 
@@ -331,9 +333,9 @@ class _PomodoroPageState extends State<PomodoroPage> {
     for (var doc in snapshot.docs) {
       final data = doc.data();
       final nombreProyecto = data["nombre"] ?? "Proyecto";
-      List<dynamic> tareas = data["tareas"] ?? [];
-      for (var tareaJson in tareas) {
-        Tarea tarea = Tarea.fromJson(tareaJson);
+      final tareasSnapshot = await _firestore.collection("proyectos").doc(doc.id).collection("tareas").get();
+      for (var tareaDoc in tareasSnapshot.docs) {
+        Tarea tarea = Tarea.fromJson(tareaDoc.data());
         if (tarea.responsables.contains(userId) && !tarea.completado) {
           tareasUsuario.add(tarea);
           tareaProyectos[tarea.titulo] = nombreProyecto;

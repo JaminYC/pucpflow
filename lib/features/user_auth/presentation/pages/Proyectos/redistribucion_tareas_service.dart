@@ -292,21 +292,18 @@ class RedistribucionTareasService {
     List<calendar.TimePeriod> busyTimes,
   ) async {
     DateTime fechaBusqueda = desde;
-    const horaInicio = 9; // 9 AM
-    const horaFin = 17; // 5 PM
+    const horaInicio = 8; // 8 AM
+    const horaFin = 21; // 9 PM
 
     // Buscar hasta 14 días en el futuro
     final maxDias = 14;
     int diasBuscados = 0;
 
     while (diasBuscados < maxDias && fechaBusqueda.isBefore(hasta)) {
-      // Saltar fines de semana
-      if (fechaBusqueda.weekday > 5) {
-        fechaBusqueda = _siguienteDiaLaboral(fechaBusqueda);
-        continue;
-      }
+      // ✅ INCLUIR TODOS LOS DÍAS (lunes a domingo)
+      // No saltar fines de semana
 
-      // Probar slots cada 30 minutos dentro del horario laboral
+      // Probar slots cada 30 minutos dentro del horario extendido
       for (int hora = horaInicio; hora < horaFin; hora++) {
         for (int minuto = 0; minuto < 60; minuto += 30) {
           final slotInicio = DateTime(
@@ -319,7 +316,7 @@ class RedistribucionTareasService {
 
           final slotFin = slotInicio.add(Duration(minutes: duracionMinutos));
 
-          // Verificar que el slot termine antes de las 5 PM
+          // Verificar que el slot termine antes de las 9 PM
           if (slotFin.hour >= horaFin) continue;
 
           // Verificar si este slot está libre
@@ -336,8 +333,8 @@ class RedistribucionTareasService {
         }
       }
 
-      // Pasar al siguiente día laboral
-      fechaBusqueda = _siguienteDiaLaboral(fechaBusqueda);
+      // Pasar al siguiente día (todos los días)
+      fechaBusqueda = fechaBusqueda.add(const Duration(days: 1));
       diasBuscados++;
     }
 
@@ -346,19 +343,16 @@ class RedistribucionTareasService {
 
   /// Asignar slot de forma tradicional (sin Google Calendar)
   DateTime _asignarSlotTradicional(DateTime fecha, int duracion) {
-    // Asegurar que sea día laboral
+    // ✅ TODOS LOS DÍAS son válidos (lunes a domingo)
     DateTime fechaAjustada = fecha;
-    while (fechaAjustada.weekday > 5) {
-      fechaAjustada = fechaAjustada.add(const Duration(days: 1));
-    }
 
-    // Asignar a las 9 AM si no tiene hora
-    if (fechaAjustada.hour < 9 || fechaAjustada.hour >= 17) {
+    // Asignar a las 8 AM si no tiene hora o está fuera del rango
+    if (fechaAjustada.hour < 8 || fechaAjustada.hour >= 21) {
       fechaAjustada = DateTime(
         fechaAjustada.year,
         fechaAjustada.month,
         fechaAjustada.day,
-        9,
+        8,
         0,
       );
     }

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectosPageInnova.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ProyectosPage.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/categoria_migration.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Innova/ProponerIdeaPage.dart';
@@ -204,14 +204,12 @@ void _cambiarFondo() async {
     List<Tarea> libres = [];
 
     for (var proyectoDoc in proyectosSnapshot.docs) {
-      final data = proyectoDoc.data();
-      final tareasData = data["tareas"] as List<dynamic>? ?? [];
-      for (var tareaJson in tareasData) {
-        final tarea = Tarea.fromJson(tareaJson);
-        if (tarea.responsables == uid) {
+      final tareasSnapshot = await _firestore.collection("proyectos").doc(proyectoDoc.id).collection("tareas").get();
+      for (var tareaDoc in tareasSnapshot.docs) {
+        final tarea = Tarea.fromJson(tareaDoc.data());
+        if (tarea.responsables.contains(uid)) {
           asignadas.add(tarea);
-        // ignore: unnecessary_null_comparison
-        } else if (tarea.responsables == null) {
+        } else if (tarea.responsables.isEmpty) {
           libres.add(tarea);
         }
       }
@@ -319,7 +317,7 @@ void _cambiarFondo() async {
       {'texto': "HISTÓRICO DE IDEAS", 'onTap': () => Navigator.push(context,
               MaterialPageRoute(builder: (_) => HistoricoDeIdeasPage()))},
       {'texto': "PROYECTOS EN PROCESO", 'onTap': () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => ProyectosPageInnova()))},
+              MaterialPageRoute(builder: (_) => ProyectosPage()))},
       {'texto': "PONLO A PRUEBA", 'onTap': () {/* … */}},
       // {'texto': "MAPA", …}  ⟵  fuera del grid
     ];
@@ -414,7 +412,7 @@ Widget _buildCarruselDeVideos() {
             ListTile(
               leading: const Icon(Icons.folder_open),
               title: const Text('Mis Proyectos'),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProyectosPageInnova())),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProyectosPage())),
             ),
             ListTile(
               leading: const Icon(Icons.lightbulb),

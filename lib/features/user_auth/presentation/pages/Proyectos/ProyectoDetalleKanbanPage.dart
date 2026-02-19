@@ -15,6 +15,12 @@ import 'widgets/kanban_draggable_column.dart';
 import 'widgets/pmi_tree_view.dart';
 import 'widgets/timeline_calendar_view.dart';
 import 'widgets/personal_stats_view.dart';
+import 'widgets/proyecto_asistente_chat_widget.dart';
+import 'widgets/inventario_view.dart';
+import 'widgets/repositorio_conocimiento_view.dart';
+import 'widgets/informes_view.dart';
+import 'widgets/correos_view.dart';
+import 'widgets/calendario_proyecto_view.dart';
 
 /// Dashboard mejorado con Kanban drag&drop, Timeline y Vista PMI
 class ProyectoDetalleKanbanPage extends StatefulWidget {
@@ -34,6 +40,7 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
   final AsignacionInteligenteService _asignacionService = AsignacionInteligenteService();
   final RedistribucionTareasService _redistribucionService = RedistribucionTareasService();
   final TextEditingController _searchController = TextEditingController();
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   late TabController _tabController;
 
@@ -143,18 +150,19 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
       final List<dynamic> uids = data["participantes"] ?? [];
       final List<Map<String, String>> temp = [];
 
-      for (String uid in uids) {
+      for (String uid in uids.cast<String>()) {
         final userDoc = await _firestore.collection("users").doc(uid).get();
         if (userDoc.exists) {
+          final uData = userDoc.data()!;
           temp.add({
             "uid": uid,
-            "nombre": userDoc["full_name"] ?? "Usuario",
-            "email": userDoc["email"] ?? "",
+            "nombre": _resolverNombreUsuario(uData),
+            "email": uData["email"]?.toString() ?? "",
           });
         }
       }
 
-      participantes = temp;
+      if (mounted) setState(() => participantes = temp);
     }
   }
 
@@ -185,123 +193,297 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
   Map<String, List<Tarea>> get tareasKanban {
     final filtradas = tareasFiltradas;
     return {
-      'pendiente': filtradas.where((t) => !t.completado && t.prioridad < 3).toList(),
-      'en_progreso': filtradas.where((t) => !t.completado && t.prioridad >= 3).toList(),
-      'completada': filtradas.where((t) => t.completado).toList(),
+      'pendiente': filtradas.where((t) => t.estado == 'pendiente').toList(),
+      'en_progreso': filtradas.where((t) => t.estado == 'en_progreso').toList(),
+      'completada': filtradas.where((t) => t.estado == 'completada').toList(),
     };
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: const Color(0xFF0A0E27),
       appBar: _buildAppBar(),
       drawer: _buildProjectInfoDrawer(),
+      endDrawer: _buildEndDrawer(),
       body: loading ? _buildLoadingState() : _buildTabView(),
       floatingActionButton: _buildFAB(),
     );
   }
 
   PreferredSizeWidget _buildAppBar() {
+    final completadas = todasLasTareas.where((t) => t.completado).length;
+    final total = todasLasTareas.length;
+    final progreso = total > 0 ? completadas / total : 0.0;
+
     return AppBar(
       backgroundColor: const Color(0xFF0A0E27),
       elevation: 0,
+      toolbarHeight: 60,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.white),
+        onPressed: () => Navigator.pop(context),
+      ),
       title: StreamBuilder<DocumentSnapshot>(
         stream: _firestore.collection("proyectos").doc(widget.proyectoId).snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Text('Proyecto');
+          if (!snapshot.hasData) return const Text('Proyecto', style: TextStyle(color: Colors.white));
           final proyecto = Proyecto.fromFirestore(snapshot.data!);
           return Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 proyecto.nombre,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
               ),
-              Text(
-                '${todasLasTareas.where((t) => t.completado).length}/${todasLasTareas.length} completadas',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.6),
-                  fontSize: 12,
-                ),
+              const SizedBox(height: 3),
+              // Mini barra de progreso
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: progreso,
+                        backgroundColor: Colors.white.withOpacity(0.1),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          progreso >= 1.0 ? const Color(0xFF10B981) : const Color(0xFF8B5CF6),
+                        ),
+                        minHeight: 3,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$completadas/$total',
+                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 11),
+                  ),
+                ],
               ),
             ],
           );
         },
       ),
       actions: [
+        // Botón Participantes (visible)
         IconButton(
-          icon: const Icon(Icons.psychology, color: Color(0xFF8B5CF6)),
-          tooltip: 'Asignación automática IA',
-          onPressed: _asignarTareasConIA,
+          icon: const Icon(Icons.group, color: Colors.white70, size: 22),
+          tooltip: 'Participantes',
+          onPressed: _mostrarGestionParticipantes,
         ),
+        // Botón Asistente IA (visible)
+        IconButton(
+          icon: const Icon(Icons.smart_toy, color: Color(0xFF8B5CF6), size: 22),
+          tooltip: 'Asistente IA',
+          onPressed: _abrirAsistenteProyecto,
+        ),
+        // Botón panel lateral: Inventario + Recursos
+        Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.folder_special, color: Color(0xFF10B981), size: 22),
+            tooltip: 'Inventario y Recursos',
+            onPressed: () {
+              Scaffold.of(ctx).openEndDrawer();
+            },
+          ),
+        ),
+        // Menú con opciones secundarias
         PopupMenuButton<String>(
           icon: Icon(
-            Icons.filter_list,
+            Icons.more_vert,
             color: (filtroResponsable != null || filtroPrioridad != null)
                 ? const Color(0xFF8B5CF6)
-                : Colors.white,
+                : Colors.white70,
+            size: 22,
           ),
+          tooltip: 'Más opciones',
+          onSelected: (value) {
+            if (value == 'asignar_ia') {
+              _asignarTareasConIA();
+            } else if (value == 'redistribuir') {
+              _redistribuirTareasPendientes();
+            } else if (value == 'reunion') {
+              _navegarAReunion();
+            } else if (value == 'info') {
+              _scaffoldKey.currentState?.openDrawer();
+            } else if (value == 'diagnostico') {
+              _mostrarDiagnosticoTareas();
+            } else if (value == 'limpiar_filtros') {
+              setState(() {
+                filtroResponsable = null;
+                filtroPrioridad = null;
+              });
+            }
+          },
           itemBuilder: (context) => [
             const PopupMenuItem(
-              enabled: false,
-              child: Text('Filtrar por:', style: TextStyle(fontWeight: FontWeight.bold)),
+              value: 'asignar_ia',
+              child: Row(
+                children: [
+                  Icon(Icons.psychology, color: Color(0xFF8B5CF6), size: 20),
+                  SizedBox(width: 12),
+                  Text('Asignación Automática'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'redistribuir',
+              child: Row(
+                children: [
+                  Icon(Icons.swap_horiz, color: Colors.blue, size: 20),
+                  SizedBox(width: 12),
+                  Text('Redistribuir Tareas'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'reunion',
+              child: Row(
+                children: [
+                  Icon(Icons.video_call, color: Colors.blue, size: 20),
+                  SizedBox(width: 12),
+                  Text('Reunión Presencial'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'info',
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.white54, size: 20),
+                  SizedBox(width: 12),
+                  Text('Info del Proyecto'),
+                ],
+              ),
             ),
             const PopupMenuDivider(),
+            // Filtros inline
             ..._buildFiltroResponsables(),
-            const PopupMenuDivider(),
+            if (nombreResponsables.isNotEmpty) const PopupMenuDivider(),
             ..._buildFiltroPrioridad(),
             if (filtroResponsable != null || filtroPrioridad != null) ...[
               const PopupMenuDivider(),
-              PopupMenuItem(
-                child: const Text('Limpiar filtros'),
-                onTap: () => setState(() {
-                  filtroResponsable = null;
-                  filtroPrioridad = null;
-                }),
+              const PopupMenuItem(
+                value: 'limpiar_filtros',
+                child: Row(
+                  children: [
+                    Icon(Icons.clear_all, color: Colors.red, size: 20),
+                    SizedBox(width: 12),
+                    Text('Limpiar Filtros'),
+                  ],
+                ),
               ),
             ],
           ],
         ),
       ],
       bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(110),
+        preferredSize: Size.fromHeight(participantes.length > 1 ? 96 : 96),
         child: Column(
           children: [
-            // Barra de búsqueda
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: TextField(
-                controller: _searchController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Buscar tareas...',
-                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
-                  prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.6)),
-                  suffixIcon: searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, color: Colors.white54),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => searchQuery = '');
-                          },
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: const Color(0xFF1A1F3A).withOpacity(0.6),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            // Avatares de participantes (si hay más de 1)
+            if (participantes.length > 1)
+              Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    // Avatares apilados
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: participantes.take(8).map((p) {
+                            final nombre = p['nombre'] ?? '?';
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: Tooltip(
+                                message: nombre,
+                                child: CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: _colorDesdeUID(p['uid']!),
+                                  child: Text(
+                                    nombre[0].toUpperCase(),
+                                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                    if (participantes.length > 8)
+                      Text(
+                        '+${participantes.length - 8}',
+                        style: const TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    // Barra de búsqueda compacta
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 160,
+                      height: 32,
+                      child: TextField(
+                        controller: _searchController,
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: 'Buscar...',
+                          hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
+                          prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.4), size: 16),
+                          prefixIconConstraints: const BoxConstraints(minWidth: 32),
+                          suffixIcon: searchQuery.isNotEmpty
+                              ? GestureDetector(
+                                  onTap: () {
+                                    _searchController.clear();
+                                    setState(() => searchQuery = '');
+                                  },
+                                  child: const Icon(Icons.clear, color: Colors.white38, size: 14),
+                                )
+                              : null,
+                          suffixIconConstraints: const BoxConstraints(minWidth: 28),
+                          filled: true,
+                          fillColor: const Color(0xFF1A1F3A),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                        ),
+                        onChanged: (value) => setState(() => searchQuery = value),
+                      ),
+                    ),
+                  ],
                 ),
-                onChanged: (value) => setState(() => searchQuery = value),
+              )
+            else
+              // Sin participantes múltiples: barra de búsqueda completa
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                height: 44,
+                child: TextField(
+                  controller: _searchController,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'Buscar tareas...',
+                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13),
+                    prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.5), size: 18),
+                    suffixIcon: searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.white54, size: 16),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => searchQuery = '');
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: const Color(0xFF1A1F3A),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                  ),
+                  onChanged: (value) => setState(() => searchQuery = value),
+                ),
               ),
-            ),
 
             // Tabs
             TabBar(
@@ -309,26 +491,13 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
               indicatorColor: const Color(0xFF8B5CF6),
               indicatorWeight: 3,
               labelColor: const Color(0xFF8B5CF6),
-              unselectedLabelColor: Colors.white.withOpacity(0.6),
+              unselectedLabelColor: Colors.white.withOpacity(0.5),
+              labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              unselectedLabelStyle: const TextStyle(fontSize: 12),
               tabs: [
-                const Tab(
-                  icon: Icon(Icons.view_kanban, size: 20),
-                  text: 'Kanban',
-                ),
-                Tab(
-                  icon: const Icon(Icons.calendar_month, size: 20),
-                  text: 'Timeline',
-                ),
-                if (esPMI)
-                  const Tab(
-                    icon: Icon(Icons.account_tree, size: 20),
-                    text: 'Vista PMI',
-                  )
-                else
-                  const Tab(
-                    icon: Icon(Icons.bar_chart, size: 20),
-                    text: 'Stats',
-                  ),
+                const Tab(icon: Icon(Icons.view_kanban, size: 18), text: 'Kanban'),
+                const Tab(icon: Icon(Icons.calendar_month, size: 18), text: 'Timeline'),
+                Tab(icon: Icon(esPMI ? Icons.account_tree : Icons.bar_chart, size: 18), text: esPMI ? 'PMI' : 'Stats'),
               ],
             ),
           ],
@@ -398,16 +567,15 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
         ),
 
         // Tab 3: Vista PMI o Stats Personales
-        if (esPMI)
-          PMITreeView(
-            tareas: tareasFiltradas,
-            onTareaTapped: _mostrarDetalleTarea,
-            onCheckboxChanged: _onCheckboxChanged,
-            nombreResponsables: nombreResponsables,
-            userId: _auth.currentUser!.uid,
-          )
-        else
-          PersonalStatsView(tareas: tareasFiltradas),
+        esPMI
+          ? PMITreeView(
+              tareas: tareasFiltradas,
+              onTareaTapped: _mostrarDetalleTarea,
+              onCheckboxChanged: _onCheckboxChanged,
+              nombreResponsables: nombreResponsables,
+              userId: _auth.currentUser!.uid,
+            )
+          : PersonalStatsView(tareas: tareasFiltradas),
       ],
     );
   }
@@ -719,6 +887,79 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
     );
   }
 
+  /// Panel lateral derecho con Inventario y Recursos
+  Widget _buildEndDrawer() {
+    return SizedBox(
+      width: MediaQuery.of(context).size.width * 0.85,
+      child: Drawer(
+        backgroundColor: const Color(0xFF0A0E27),
+        child: SafeArea(
+          child: DefaultTabController(
+            length: 5,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF8B5CF6), Color(0xFF3B82F6)],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.folder_special, color: Colors.white, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Recursos del Proyecto',
+                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white54),
+                        onPressed: () => _scaffoldKey.currentState?.closeEndDrawer(),
+                      ),
+                    ],
+                  ),
+                ),
+                TabBar(
+                  indicatorColor: const Color(0xFF8B5CF6),
+                  indicatorWeight: 3,
+                  labelColor: const Color(0xFF8B5CF6),
+                  unselectedLabelColor: Colors.white54,
+                  labelStyle: const TextStyle(fontSize: 11),
+                  unselectedLabelStyle: const TextStyle(fontSize: 11),
+                  tabs: const [
+                    Tab(icon: Icon(Icons.calendar_month, size: 16), text: 'Calendario'),
+                    Tab(icon: Icon(Icons.inventory_2, size: 16), text: 'Inventario'),
+                    Tab(icon: Icon(Icons.menu_book, size: 16), text: 'Recursos'),
+                    Tab(icon: Icon(Icons.folder_copy, size: 16), text: 'Informes'),
+                    Tab(icon: Icon(Icons.email, size: 16), text: 'Correos'),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      CalendarioProyectoView(proyectoId: widget.proyectoId),
+                      InventarioView(proyectoId: widget.proyectoId),
+                      RepositorioConocimientoView(proyectoId: widget.proyectoId),
+                      InformesView(proyectoId: widget.proyectoId),
+                      CorreosView(proyectoId: widget.proyectoId),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildLoadingState() {
     return const Center(
       child: CircularProgressIndicator(color: Color(0xFF8B5CF6)),
@@ -726,127 +967,13 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
   }
 
   Widget _buildFAB() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        // Botón principal: Nueva tarea
-        FloatingActionButton.extended(
-          heroTag: "nuevaTareaKanban",
-          backgroundColor: const Color(0xFF8B5CF6),
-          label: const Text("Nueva tarea", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-          icon: const Icon(Icons.add, color: Colors.white, size: 18),
-          onPressed: _crearNuevaTarea,
-          elevation: 4,
-        ),
-        const SizedBox(height: 12),
-        // Menú de opciones (tres puntos)
-        FloatingActionButton(
-          heroTag: "menuBtnKanban",
-          backgroundColor: Colors.white,
-          onPressed: _mostrarMenuOpciones,
-          elevation: 4,
-          child: const Icon(Icons.more_vert, color: Colors.black87),
-        ),
-      ],
-    );
-  }
-
-  void _mostrarMenuOpciones() {
-    final isMobile = MediaQuery.of(context).size.width < 600;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 10,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text(
-                "Opciones de Proyecto",
-                style: TextStyle(
-                  fontSize: isMobile ? 16 : 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.calendar_today, color: Colors.blue),
-              ),
-              title: const Text("Redistribuir Tareas", style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text("Reorganizar tareas pendientes", style: TextStyle(fontSize: 12)),
-              onTap: () {
-                Navigator.pop(context);
-                _redistribuirTareasPendientes();
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.auto_awesome, color: Colors.orange),
-              ),
-              title: const Text("Auto-asignar Tareas", style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text("Asignar automáticamente", style: TextStyle(fontSize: 12)),
-              onTap: () {
-                Navigator.pop(context);
-                _asignarTareasConIA();
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.mic, color: Colors.black87),
-              ),
-              title: const Text("Iniciar Reunión", style: TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: const Text("Reunión presencial con IA", style: TextStyle(fontSize: 12)),
-              onTap: () {
-                Navigator.pop(context);
-                _abrirReunion();
-              },
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
+    return FloatingActionButton.extended(
+      heroTag: "nuevaTareaKanban",
+      backgroundColor: const Color(0xFF8B5CF6),
+      label: const Text("Nueva tarea", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+      icon: const Icon(Icons.add, color: Colors.white, size: 18),
+      onPressed: _crearNuevaTarea,
+      elevation: 4,
     );
   }
 
@@ -855,30 +982,14 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
   // ========================================
 
   Future<void> _moverTarea(Tarea tarea, String nuevoEstado) async {
-    // Actualizar prioridad según la columna
-    int nuevaPrioridad = tarea.prioridad;
-    bool nuevoCompletado = tarea.completado;
-
-    switch (nuevoEstado) {
-      case 'pendiente':
-        nuevaPrioridad = tarea.prioridad < 3 ? tarea.prioridad : 2;
-        nuevoCompletado = false;
-        break;
-      case 'en_progreso':
-        nuevaPrioridad = 3; // Alta prioridad
-        nuevoCompletado = false;
-        break;
-      case 'completada':
-        nuevoCompletado = true;
-        break;
-    }
+    bool nuevoCompletado = nuevoEstado == 'completada';
 
     // Crear tarea actualizada
     final tareaActualizada = Tarea(
       titulo: tarea.titulo,
       fecha: tarea.fecha,
       duracion: tarea.duracion,
-      prioridad: nuevaPrioridad,
+      prioridad: tarea.prioridad,
       completado: nuevoCompletado,
       colorId: tarea.colorId,
       responsables: tarea.responsables,
@@ -892,6 +1003,11 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
       fasePMI: tarea.fasePMI,
       entregable: tarea.entregable,
       paqueteTrabajo: tarea.paqueteTrabajo,
+      fechaLimite: tarea.fechaLimite,
+      fechaProgramada: tarea.fechaProgramada,
+      fechaCompletada: nuevoCompletado ? (tarea.fechaCompletada ?? DateTime.now()) : null,
+      googleCalendarEventId: tarea.googleCalendarEventId,
+      estado: nuevoEstado,
     );
 
     await _tareaService.actualizarTareaEnProyecto(
@@ -952,7 +1068,7 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
 
     try {
       // Ejecutar redistribución
-      final resultado = _redistribucionService.redistribuirTareas(
+      final resultado = await _redistribucionService.redistribuirTareas(
         proyecto: proyecto,
         tareas: todasLasTareas,
       );
@@ -1159,20 +1275,6 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
   // ========================================
   //  ABRIR REUNIÓN
   // ========================================
-  Future<void> _abrirReunion() async {
-    // Obtener el proyecto actual
-    final proyectoDoc = await _firestore.collection('proyectos').doc(widget.proyectoId).get();
-    if (!proyectoDoc.exists || !mounted) return;
-
-    final proyecto = Proyecto.fromFirestore(proyectoDoc);
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ReunionPresencialPage(proyecto: proyecto),
-      ),
-    );
-  }
 
   Future<void> _crearNuevaTarea() async {
     showDialog(
@@ -1306,5 +1408,530 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
     final int hash = uid.hashCode;
     final double hue = 40 + (hash % 280);
     return HSLColor.fromAHSL(1.0, hue, 0.7, 0.7).toColor();
+  }
+
+  /// Abrir asistente conversacional del proyecto
+  void _abrirAsistenteProyecto() async {
+    try {
+      // DIAGNÓSTICO: Verificar tareas antes de abrir el asistente
+      print('🔍 [DEBUG] Verificando tareas del proyecto ${widget.proyectoId}');
+      final tareasSnapshot = await _firestore
+          .collection('proyectos')
+          .doc(widget.proyectoId)
+          .collection('tareas')
+          .get();
+
+      print('🔍 [DEBUG] Tareas encontradas en Firestore: ${tareasSnapshot.docs.length}');
+      for (var doc in tareasSnapshot.docs.take(5)) {
+        print('🔍 [DEBUG] - Tarea: ${doc.data()['titulo']} (ID: ${doc.id})');
+      }
+      print('🔍 [DEBUG] todasLasTareas en memoria: ${todasLasTareas.length}');
+
+      // Obtener nombre del proyecto
+      final proyectoDoc = await _firestore.collection('proyectos').doc(widget.proyectoId).get();
+      final proyectoNombre = proyectoDoc.data()?['nombre'] ?? 'Proyecto';
+
+      if (!mounted) return;
+
+      // Abrir modal con el asistente
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (context) => ProyectoAsistenteChatWidget(
+          proyectoId: widget.proyectoId,
+          proyectoNombre: proyectoNombre,
+          modoPanel: false, // Modo modal
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error abriendo asistente: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Mostrar diagnóstico de tareas
+  void _mostrarDiagnosticoTareas() async {
+    try {
+      // Consultar directamente Firestore
+      final tareasSnapshot = await _firestore
+          .collection('proyectos')
+          .doc(widget.proyectoId)
+          .collection('tareas')
+          .get();
+
+      final mensaje = StringBuffer();
+      mensaje.writeln('📊 DIAGNÓSTICO DE TAREAS\n');
+      mensaje.writeln('Proyecto ID: ${widget.proyectoId}\n');
+      mensaje.writeln('Tareas en Firestore: ${tareasSnapshot.docs.length}');
+      mensaje.writeln('Tareas en memoria: ${todasLasTareas.length}\n');
+
+      if (tareasSnapshot.docs.isEmpty) {
+        mensaje.writeln('⚠️ No hay tareas en Firestore para este proyecto.');
+        mensaje.writeln('\nVerifica en Firebase Console:');
+        mensaje.writeln('proyectos/${widget.proyectoId}/tareas');
+      } else {
+        mensaje.writeln('\n📋 Primeras 10 tareas en Firestore:');
+        for (var doc in tareasSnapshot.docs.take(10)) {
+          final data = doc.data();
+          mensaje.writeln('- ${data['titulo'] ?? 'Sin título'} (${doc.id})');
+        }
+      }
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF0D1229),
+          title: const Row(
+            children: [
+              Icon(Icons.bug_report, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('Diagnóstico', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Text(
+              mensaje.toString(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontFamily: 'monospace',
+                fontSize: 12,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error en diagnóstico: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Navegar a reunión presencial
+  void _navegarAReunion() async {
+    try {
+      // Obtener proyecto completo
+      final proyectoDoc = await _firestore.collection('proyectos').doc(widget.proyectoId).get();
+      if (!proyectoDoc.exists || !mounted) return;
+
+      final proyecto = Proyecto.fromFirestore(proyectoDoc);
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ReunionPresencialPage(proyecto: proyecto),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Buscar usuarios por nombre o email (busca en múltiples campos)
+  Future<List<Map<String, String>>> _buscarUsuarios(String query) async {
+    if (query.trim().length < 2) return [];
+    final queryLower = query.trim().toLowerCase();
+    final uidsActuales = participantes.map((p) => p['uid']).toSet();
+
+    final resultados = <Map<String, String>>[];
+    final idsAgregados = <String>{};
+
+    // Estrategia 1: Firestore range query por full_name (más eficiente)
+    try {
+      final queryUpper = queryLower.substring(0, queryLower.length - 1) +
+          String.fromCharCode(queryLower.codeUnitAt(queryLower.length - 1) + 1);
+      final snapshotNombre = await _firestore
+          .collection("users")
+          .where('full_name', isGreaterThanOrEqualTo: query.trim())
+          .where('full_name', isLessThan: queryUpper)
+          .limit(10)
+          .get();
+
+      for (var doc in snapshotNombre.docs) {
+        if (uidsActuales.contains(doc.id) || idsAgregados.contains(doc.id)) continue;
+        final data = doc.data();
+        final nombre = data['full_name']?.toString() ?? data['email']?.toString() ?? 'Usuario';
+        resultados.add({'uid': doc.id, 'nombre': nombre, 'email': data['email']?.toString() ?? ''});
+        idsAgregados.add(doc.id);
+      }
+    } catch (_) {}
+
+    // Estrategia 2: carga local y filtra (fallback amplio)
+    final snapshot = await _firestore.collection("users").limit(300).get();
+    debugPrint('🔍 Total usuarios en Firestore: ${snapshot.docs.length}, query: "$queryLower"');
+
+    for (var doc in snapshot.docs) {
+      if (uidsActuales.contains(doc.id) || idsAgregados.contains(doc.id)) continue;
+      final data = doc.data();
+
+      // Buscar en todos los campos posibles
+      final fullName = (data['full_name'] ?? '').toString().toLowerCase();
+      final displayName = (data['displayName'] ?? '').toString().toLowerCase();
+      final nombre = (data['nombre'] ?? '').toString().toLowerCase();
+      final name = (data['name'] ?? '').toString().toLowerCase();
+      final email = (data['email'] ?? '').toString().toLowerCase();
+      final uid = doc.id.toLowerCase();
+
+      final matchesQuery = fullName.contains(queryLower) ||
+          displayName.contains(queryLower) ||
+          nombre.contains(queryLower) ||
+          name.contains(queryLower) ||
+          email.contains(queryLower) ||
+          uid.contains(queryLower);
+
+      if (matchesQuery) {
+        final nombreMostrar = _resolverNombreUsuario(data);
+        resultados.add({
+          'uid': doc.id,
+          'nombre': nombreMostrar,
+          'email': data['email']?.toString() ?? '',
+        });
+        idsAgregados.add(doc.id);
+        debugPrint('✅ Usuario encontrado: $nombreMostrar (${data['email']})');
+      }
+    }
+
+    debugPrint('🔍 Resultados totales: ${resultados.length}');
+    return resultados;
+  }
+
+  /// Resolver el mejor nombre disponible de un usuario
+  String _resolverNombreUsuario(Map<String, dynamic> data) {
+    final candidatos = [
+      data['full_name']?.toString(),
+      data['displayName']?.toString(),
+      data['nombre']?.toString(),
+      data['name']?.toString(),
+      data['email']?.toString(),
+    ];
+    for (final c in candidatos) {
+      if (c != null && c.isNotEmpty && c != 'No name') return c;
+    }
+    return 'Usuario';
+  }
+
+  /// Agregar participante por UID
+  Future<void> _agregarParticipantePorUID(String uid) async {
+    try {
+      await _firestore.collection("proyectos").doc(widget.proyectoId).update({
+        "participantes": FieldValue.arrayUnion([uid])
+      });
+
+      await _cargarParticipantes();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Participante agregado exitosamente"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error al agregar participante: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Eliminar participante del proyecto
+  Future<void> _eliminarParticipante(String uid) async {
+    try {
+      await _firestore.collection("proyectos").doc(widget.proyectoId).update({
+        "participantes": FieldValue.arrayRemove([uid])
+      });
+
+      await _cargarParticipantes();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Participante eliminado"),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error al eliminar participante: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Mostrar diálogo de gestión de participantes
+  void _mostrarGestionParticipantes() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final TextEditingController searchController = TextEditingController();
+        List<Map<String, String>> resultadosBusqueda = [];
+        bool buscando = false;
+
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF0D1229),
+              title: const Row(
+                children: [
+                  Icon(Icons.group, color: Color(0xFF8B5CF6)),
+                  SizedBox(width: 12),
+                  Text(
+                    'Gestionar Participantes',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 500,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Buscar por nombre o email
+                    Text(
+                      'Agregar Participante',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: searchController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar por nombre o email...',
+                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
+                        prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.4)),
+                        suffixIcon: buscando
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF8B5CF6))),
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.05),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onChanged: (value) async {
+                        if (value.trim().length < 2) {
+                          setDialogState(() => resultadosBusqueda = []);
+                          return;
+                        }
+                        setDialogState(() => buscando = true);
+                        final resultados = await _buscarUsuarios(value);
+                        setDialogState(() {
+                          resultadosBusqueda = resultados;
+                          buscando = false;
+                        });
+                      },
+                    ),
+
+                    // Resultados de búsqueda
+                    if (resultadosBusqueda.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 150),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.03),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.3)),
+                        ),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: resultadosBusqueda.length,
+                          itemBuilder: (context, index) {
+                            final r = resultadosBusqueda[index];
+                            return ListTile(
+                              dense: true,
+                              leading: CircleAvatar(
+                                radius: 14,
+                                backgroundColor: const Color(0xFF8B5CF6).withOpacity(0.3),
+                                child: Text(
+                                  (r['nombre'] ?? '?')[0].toUpperCase(),
+                                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                                ),
+                              ),
+                              title: Text(r['nombre'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                              subtitle: Text(r['email'] ?? '', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
+                              trailing: const Icon(Icons.person_add, color: Color(0xFF10B981), size: 20),
+                              onTap: () async {
+                                // Agregar sin cerrar el dialog - actualizar en vivo
+                                setDialogState(() {
+                                  resultadosBusqueda.removeWhere((u) => u['uid'] == r['uid']);
+                                });
+                                await _agregarParticipantePorUID(r['uid']!);
+                                if (mounted) setDialogState(() {
+                                  searchController.clear();
+                                  resultadosBusqueda = [];
+                                });
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                    if (searchController.text.trim().length >= 2 && resultadosBusqueda.isEmpty && !buscando) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.info_outline, color: Colors.white38, size: 14),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'No se encontraron usuarios con ese nombre o email. El usuario debe estar registrado en la app.',
+                              style: const TextStyle(color: Colors.white38, fontSize: 11),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    const SizedBox(height: 20),
+                    // Lista de participantes actuales
+                    Text(
+                      'Participantes Actuales (${participantes.length})',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 250,
+                      child: participantes.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No hay participantes',
+                                style: TextStyle(color: Colors.white.withOpacity(0.4)),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: participantes.length,
+                              itemBuilder: (context, index) {
+                                final p = participantes[index];
+                                final uid = p["uid"]!;
+                                final nombre = p["nombre"] ?? "Usuario";
+                                final email = p["email"] ?? "";
+                                final esCreador = uid == _auth.currentUser?.uid;
+
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.1),
+                                    ),
+                                  ),
+                                  child: ListTile(
+                                    leading: CircleAvatar(
+                                      backgroundColor: _colorDesdeUID(uid),
+                                      child: Text(
+                                        nombre.isNotEmpty ? nombre[0].toUpperCase() : "?",
+                                        style: const TextStyle(color: Colors.white),
+                                      ),
+                                    ),
+                                    title: Text(
+                                      nombre,
+                                      style: const TextStyle(color: Colors.white),
+                                    ),
+                                    subtitle: Text(
+                                      email,
+                                      style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                                    ),
+                                    trailing: esCreador
+                                        ? const Chip(
+                                            label: Text(
+                                              'Tú',
+                                              style: TextStyle(fontSize: 11),
+                                            ),
+                                            backgroundColor: Color(0xFF10B981),
+                                          )
+                                        : IconButton(
+                                            icon: const Icon(Icons.delete, color: Colors.red),
+                                            onPressed: () async {
+                                              final confirmar = await showDialog<bool>(
+                                                context: context,
+                                                builder: (ctx) => AlertDialog(
+                                                  backgroundColor: const Color(0xFF0D1229),
+                                                  title: const Text(
+                                                    '¿Eliminar participante?',
+                                                    style: TextStyle(color: Colors.white),
+                                                  ),
+                                                  content: Text(
+                                                    '¿Estás seguro de eliminar a $nombre del proyecto?',
+                                                    style: const TextStyle(color: Colors.white70),
+                                                  ),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: () => Navigator.pop(ctx, false),
+                                                      child: const Text('Cancelar'),
+                                                    ),
+                                                    ElevatedButton(
+                                                      style: ElevatedButton.styleFrom(
+                                                        backgroundColor: Colors.red,
+                                                      ),
+                                                      onPressed: () => Navigator.pop(ctx, true),
+                                                      child: const Text('Eliminar'),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+
+                                              if (confirmar == true && mounted) {
+                                                await _eliminarParticipante(uid);
+                                                if (mounted) setDialogState(() {});
+                                              }
+                                            },
+                                          ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cerrar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 }

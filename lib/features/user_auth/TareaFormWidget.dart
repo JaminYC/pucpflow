@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/tarea_model.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Login/google_calendar_service.dart';
 
 class TareaFormWidget extends StatefulWidget {
   final Tarea? tareaInicial;
@@ -21,6 +23,7 @@ class TareaFormWidget extends StatefulWidget {
 
 class _TareaFormWidgetState extends State<TareaFormWidget> {
   final _formKey = GlobalKey<FormState>();
+  final GoogleCalendarService _calendarService = GoogleCalendarService();
   String titulo = "";
   String descripcion = "";
   String tipoTarea = "Libre";
@@ -110,6 +113,320 @@ class _TareaFormWidgetState extends State<TareaFormWidget> {
     } else {
       areaSeleccionada = "General";
       return "General";
+    }
+  }
+
+  /// 🆕 Agendar tarea manualmente - Usuario selecciona fecha/hora
+  Future<void> _agendarManualmente() async {
+    // Validar que hay título y responsables
+    if (titulo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("⚠️ Primero ingresa un título para la tarea"),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (responsables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("⚠️ Asigna al menos un responsable antes de agendar"),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Mostrar selector de fecha y hora
+    // ✅ Usar fechaProgramada existente como valor inicial si existe
+    final fechaInicial = fechaProgramada ?? DateTime.now();
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: fechaInicial,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Colors.blue,
+              onPrimary: Colors.white,
+              surface: Color(0xFF1E1E1E),
+              onSurface: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedDate == null) return;
+
+    final TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: fechaProgramada != null
+          ? TimeOfDay.fromDateTime(fechaProgramada!)
+          : TimeOfDay.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Colors.blue,
+              onPrimary: Colors.white,
+              surface: Color(0xFF1E1E1E),
+              onSurface: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedTime == null) return;
+
+    final fechaHoraSeleccionada = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+
+    // Mostrar diálogo de carga
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    // Crear tarea temporal
+    final tareaTemp = Tarea(
+      titulo: titulo,
+      descripcion: descripcion,
+      duracion: duracion,
+      responsables: responsables,
+      tipoTarea: tipoTarea,
+      prioridad: 2,
+      colorId: 0,
+    );
+
+    // Agendar
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("❌ Usuario no autenticado"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final resultado = await _calendarService.agendarTareaManualmente(
+      tarea: tareaTemp,
+      fechaHoraInicio: fechaHoraSeleccionada,
+      responsableUid: responsables.first,
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context); // Cerrar diálogo de carga
+
+    if (resultado['success']) {
+      // Actualizar fechaProgramada
+      setState(() {
+        fechaProgramada = fechaHoraSeleccionada;
+      });
+
+      final sesiones = resultado['sesiones'] as int;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            sesiones > 1
+                ? "✅ Tarea agendada en $sesiones sesiones"
+                : "✅ Tarea agendada en Google Calendar",
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("❌ ${resultado['error']}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// 🆕 Agendar tarea automáticamente - Sistema busca slot libre
+  Future<void> _agendarAutomaticamente() async {
+    // Validar que hay título y responsables
+    if (titulo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("⚠️ Primero ingresa un título para la tarea"),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (responsables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("⚠️ Asigna al menos un responsable antes de agendar"),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Mostrar diálogo de búsqueda
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text(
+              "Buscando espacio disponible...",
+              style: TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // Crear tarea temporal
+    final tareaTemp = Tarea(
+      titulo: titulo,
+      descripcion: descripcion,
+      duracion: duracion,
+      responsables: responsables,
+      tipoTarea: tipoTarea,
+      prioridad: 2,
+      colorId: 0,
+    );
+
+    // Buscar slot automático
+    final resultado = await _calendarService.buscarSlotAutomatico(
+      tarea: tareaTemp,
+      responsableUid: responsables.first,
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context); // Cerrar diálogo de búsqueda
+
+    if (!resultado['success']) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("❌ ${resultado['error']}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Mostrar confirmación al usuario
+    final slotPropuesto = resultado['slotPropuesto'] as DateTime;
+    final mensaje = resultado['mensaje'] as String;
+
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          "📅 Confirmar Agendamiento",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              mensaje,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              "¿Deseas confirmar?",
+              style: TextStyle(color: Colors.grey[400], fontSize: 14),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancelar"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Confirmar"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmado != true) return;
+
+    // Usuario confirmó - agendar
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    final resultadoFinal = await _calendarService.confirmarAgendaAutomatica(
+      tarea: tareaTemp,
+      fechaHoraInicio: slotPropuesto,
+      responsableUid: responsables.first,
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context); // Cerrar diálogo de carga
+
+    if (resultadoFinal['success']) {
+      // Actualizar fechaProgramada
+      setState(() {
+        fechaProgramada = slotPropuesto;
+      });
+
+      final sesiones = resultadoFinal['sesiones'] as int;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            sesiones > 1
+                ? "✅ Tarea agendada en $sesiones sesiones"
+                : "✅ Tarea agendada en Google Calendar",
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("❌ ${resultadoFinal['error']}"),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -379,6 +696,78 @@ class _TareaFormWidgetState extends State<TareaFormWidget> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 16),
+
+                // 🆕 BOTONES DE AGENDAMIENTO EN GOOGLE CALENDAR
+                if (responsables.isNotEmpty && duracion > 0)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[900],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.purple, width: 1),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "📅 Agendar en Google Calendar",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            // Botón 1: Agendar Manualmente
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                icon: const Icon(Icons.event, size: 18),
+                                label: const Text("Agendar Manualmente", style: TextStyle(fontSize: 12)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                                ),
+                                onPressed: () async {
+                                  await _agendarManualmente();
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // Botón 2: Agendar Automáticamente
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                icon: const Icon(Icons.auto_fix_high, size: 18),
+                                label: const Text("Agendar Automático", style: TextStyle(fontSize: 12)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                                ),
+                                onPressed: () async {
+                                  await _agendarAutomaticamente();
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          duracion > 120
+                              ? "⏱️ Tarea de $duracion min se segmentará en sesiones de máx. 2 horas"
+                              : "⏱️ Duración: $duracion minutos",
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: 16),
 
                 // ✅ MEJORADO: Sección de Asignación de Responsables (siempre visible)

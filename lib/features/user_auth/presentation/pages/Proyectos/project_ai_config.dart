@@ -1,17 +1,20 @@
 enum ProjectMethodology {
   general,
-  pmi,
+  strategic,
   agile,
+  lean,
   discovery,
 }
 
 extension ProjectMethodologyX on ProjectMethodology {
   String get apiName {
     switch (this) {
-      case ProjectMethodology.pmi:
-        return 'pmi';
+      case ProjectMethodology.strategic:
+        return 'strategic';
       case ProjectMethodology.agile:
         return 'agile';
+      case ProjectMethodology.lean:
+        return 'lean';
       case ProjectMethodology.discovery:
         return 'discovery';
       case ProjectMethodology.general:
@@ -22,19 +25,20 @@ extension ProjectMethodologyX on ProjectMethodology {
 
   String get label {
     switch (this) {
-      case ProjectMethodology.pmi:
-        return 'PMI / PMBOK';
+      case ProjectMethodology.strategic:
+        return 'Estratégico';
       case ProjectMethodology.agile:
-        return 'Agile / Sprint';
+        return 'Ágil';
+      case ProjectMethodology.lean:
+        return 'Lean';
       case ProjectMethodology.discovery:
-        return 'Discovery / Innovation';
+        return 'Innovación';
       case ProjectMethodology.general:
-      default:
-        return 'Blueprint General';
+        return 'General';
     }
   }
 
-  bool get supportsPMILayers => this == ProjectMethodology.pmi;
+  bool get supportsPMILayers => this == ProjectMethodology.strategic;
 }
 
 class ProjectBlueprintConfig {

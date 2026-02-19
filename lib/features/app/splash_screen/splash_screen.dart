@@ -71,12 +71,12 @@ class _SplashScreenState extends State<SplashScreen> {
       final isFinished = _controller!.value.position >= _controller!.value.duration;
 
       if (isFinished) {
-        _navegar(const VastoriaMainLanding()); // ⬅️ Navega a la nueva landing con SSO
+        _navegar(const CustomLoginPage()); // ⬅️ Flow app: muestra login directamente
       }
     });
   } catch (e) {
     debugPrint("❌ Error al inicializar el video: $e");
-    _navegar(const VastoriaMainLanding()); // fallback si el video falla
+    _navegar(const CustomLoginPage()); // fallback si el video falla
   }
 }
 

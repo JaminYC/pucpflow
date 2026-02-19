@@ -85,6 +85,11 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Briefing/briefing
 import '../dashboard.dart';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:pucpflow/utils/notification_service.dart';
+import 'package:pucpflow/utils/notificaciones_bell_widget.dart';
+import 'package:pucpflow/utils/notification_ticker.dart';
+import 'package:pucpflow/utils/celebration_card.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Admin/admin_cumpleanios_page.dart';
 
 
 
@@ -159,6 +164,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   bool _accesoPermitido = false;
 
+  // Mensajes dinámicos para el ticker (incluye cumpleaños del día)
+  List<TickerMessage> _tickerMessages = const [
+    TickerMessage('\u2728 Bienvenido a Vastoria Flow. Que tengas un gran dia.', 'ceo'),
+  ];
+
 
 
 
@@ -187,11 +197,17 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   _determinarUserId().then((_) {
     if (userId != null) {
       CategoriaMigration.runIfNeeded(uid: userId!);
+      // Inicializar notificaciones push después de que el usuario esté disponible
+      NotificationService().initialize();
     }
 
     _verificarAcceso();
 
-    _loadUserData();
+    _loadUserData().then((_) {
+      // Verificar cumpleanios despues de cargar datos del usuario
+      _verificarCumpleanios();
+      _cargarCumpleaniosTicker();
+    });
 
     _cargarTareasUsuario();
 
@@ -256,15 +272,12 @@ Future<void> _sincronizarTareasConCalendario() async {
 
   for (var doc in querySnapshot.docs) {
 
-    final data = doc.data();
+    // Leer tareas de subcolección
+    final tareasSnapshot = await _firestore.collection("proyectos").doc(doc.id).collection("tareas").get();
 
-    List<dynamic> tareas = data["tareas"] ?? [];
+    for (var tareaDoc in tareasSnapshot.docs) {
 
-
-
-    for (var tareaJson in tareas) {
-
-      final tarea = Tarea.fromJson(tareaJson);
+      final tarea = Tarea.fromJson(tareaDoc.data());
 
 
 
@@ -406,6 +419,76 @@ Future<void> _sincronizarTareasConCalendario() async {
 
   }
 
+// Verifica si hoy es el cumpleanios del usuario y muestra CelebrationCard
+Future<void> _verificarCumpleanios() async {
+  if (userId == null) return;
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .get();
+    final data = doc.data();
+    if (data == null) return;
+    // El campo se guarda como 'fechaNacimiento' en Firestore
+    final birthRaw = data['fechaNacimiento'] ?? data['birthDate'];
+    DateTime? bd;
+    if (birthRaw is Timestamp) {
+      bd = birthRaw.toDate();
+    } else if (birthRaw is String) {
+      bd = DateTime.tryParse(birthRaw);
+    }
+    if (bd == null) return;
+    final now = DateTime.now();
+    if (bd.day == now.day && bd.month == now.month) {
+      final nombre = userName ?? 'Vastoriano';
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          CelebrationCard.show(context, userName: nombre);
+        }
+      });
+    }
+  } catch (e) {
+    debugPrint('Error verificando cumpleanios: $e');
+  }
+}
+
+// Carga todos los usuarios con cumpleanos hoy e inyecta mensajes en el ticker
+Future<void> _cargarCumpleaniosTicker() async {
+  try {
+    final now = DateTime.now();
+    final snap = await FirebaseFirestore.instance.collection('users').get();
+    final cumpleaneros = <String>[];
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      final raw = data['fechaNacimiento'] ?? data['birthDate'];
+      DateTime? bd;
+      if (raw is Timestamp) bd = raw.toDate();
+      else if (raw is String) bd = DateTime.tryParse(raw);
+      if (bd == null) continue;
+      if (bd.day == now.day && bd.month == now.month) {
+        final nombre = (data['nombre'] ?? data['full_name'] ?? data['displayName'] ?? '').toString().trim();
+        if (nombre.isNotEmpty) cumpleaneros.add(nombre);
+      }
+    }
+    if (!mounted) return;
+
+    // Construir mensajes de cumpleanos
+    final birthdayMsgs = cumpleaneros.map((n) => TickerMessage(
+      '\ud83c\udf82 \u00a1Hoy es el cumplea\u00f1os de $n! Felicidades de todo el equipo Vastoria.',
+      'birthday',
+    )).toList();
+
+    // Si no hay cumpleanos hoy, mostrar mensaje neutral para que el ticker siempre sea visible
+    setState(() {
+      _tickerMessages = birthdayMsgs.isNotEmpty
+          ? birthdayMsgs
+          : const [TickerMessage('\u2728 Bienvenido a Vastoria Flow. Que tengas un gran dia.', 'ceo')];
+    });
+  } catch (e) {
+    debugPrint('Error cargando cumpleanios ticker: $e');
+  }
+}
+
 Future<void> _cargarTareasUsuario() async {
 
   final prefs = await SharedPreferences.getInstance();
@@ -450,15 +533,11 @@ Future<void> _cargarTareasUsuario() async {
 
   for (var doc in querySnapshot.docs) {
 
-    final data = doc.data();
+    final tareasSnapshot = await _firestore.collection("proyectos").doc(doc.id).collection("tareas").get();
 
-    List<dynamic> tareasRaw = data["tareas"] ?? [];
+    for (var tareaDoc in tareasSnapshot.docs) {
 
-
-
-    for (var tareaJson in tareasRaw) {
-
-      final tarea = Tarea.fromJson(tareaJson);
+      final tarea = Tarea.fromJson(tareaDoc.data());
 
 
 
@@ -731,6 +810,9 @@ Widget _buildMainScaffold(BuildContext context){
           ),
 
           actions: [
+            // 🔔 Campana de notificaciones
+            const NotificacionesBell(),
+
             // ☀️ Botón para Briefing del Día
             IconButton(
               icon: const Icon(Icons.wb_sunny),
@@ -955,6 +1037,12 @@ Widget _buildMainScaffold(BuildContext context){
             ),
 
           ],
+
+          // 📢 Ticker — siempre visible
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(36),
+            child: NotificationTicker(messages: _tickerMessages),
+          ),
 
         ),
 
@@ -1581,9 +1669,8 @@ Widget _mostrarTareasLibres() {
 
 
 
+        // Leer tareas del array del documento (stream síncrono)
         final List<dynamic> tareas = data["tareas"] ?? [];
-
-
 
         for (var tareaJson in tareas) {
 
@@ -1706,58 +1793,26 @@ Future<void> _asignarTareaUsuario(Tarea tarea) async {
 
   for (var doc in querySnapshot.docs) {
 
-    final data = doc.data() as Map<String, dynamic>;
+    final tareasRef = _firestore.collection("proyectos").doc(doc.id).collection("tareas");
+    final tareasSnapshot = await tareasRef.where("titulo", isEqualTo: tarea.titulo).get();
 
-    final List<dynamic> tareas = data["tareas"] ?? [];
+    for (var tareaDoc in tareasSnapshot.docs) {
+      final tareaData = tareaDoc.data();
+      List<String> responsables = List<String>.from(tareaData["responsables"] ?? []);
+      Map<String, dynamic> updates = {};
 
-    bool actualizada = false;
-
-
-
-    for (int i = 0; i < tareas.length; i++) {
-
-      if (tareas[i]["titulo"] == tarea.titulo) {
-
-        // Agregar usuario a responsables
-
-        List<String> responsables = List<String>.from(tareas[i]["responsables"] ?? []);
-
-        if (!responsables.contains(userId)) {
-
-          responsables.add(userId);
-
-          tareas[i]["responsables"] = responsables;
-
-        }
-
-
-
-        // Cambiar tipo de tarea a "Asignada" si estaba como "Libre"
-
-        if (tareas[i]["tipoTarea"] == "Libre") {
-
-          tareas[i]["tipoTarea"] = "Asignada";
-
-        }
-
-
-
-        actualizada = true;
-
+      if (!responsables.contains(userId)) {
+        responsables.add(userId);
+        updates["responsables"] = responsables;
       }
 
-    }
+      if (tareaData["tipoTarea"] == "Libre") {
+        updates["tipoTarea"] = "Asignada";
+      }
 
-
-
-    if (actualizada) {
-
-      await _firestore.collection("proyectos").doc(doc.id).update({
-
-        "tareas": tareas,
-
-      });
-
+      if (updates.isNotEmpty) {
+        await tareaDoc.reference.update(updates);
+      }
     }
 
   }
@@ -1825,117 +1880,109 @@ Widget _mostrarTareasAsignadas() {
 }
 
 Widget _buildStreamTareasAsignadas(String userId) {
-
+  // Lee proyectos y luego las subcolecciones de tareas en tiempo real
   return StreamBuilder<QuerySnapshot>(
-
     stream: _firestore.collection("proyectos").snapshots(),
+    builder: (context, snapProyectos) {
+      if (!snapProyectos.hasData) {
+        return const Center(child: CircularProgressIndicator());
+      }
 
-    builder: (context, snapshot) {
+      final proyectoDocs = snapProyectos.data!.docs;
 
-      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-
-
-
-      List<Map<String, dynamic>> tareasAsignadas = [];
-
-
-
-      for (var doc in snapshot.data!.docs) {
-
-        final data = doc.data() as Map<String, dynamic>;
-
-        final nombreProyecto = data['nombre'] ?? 'Proyecto sin nombre';
-        final rawCategoria = data['categoria'] ?? data['categoriaProyecto'] ?? data['tipo'];
-        final categoriaProyecto = _normalizarCategoria(rawCategoria?.toString());
-        final imagenProyecto = data['imagenUrl'] ?? data['imagen'] ?? '';
-
-        List<dynamic> tareas = data["tareas"] ?? [];
-        if (!_pasaFiltroCategoria(categoriaProyecto)) continue;
-
-
-
-        for (var tareaJson in tareas) {
-
-          Tarea tarea = Tarea.fromJson(tareaJson);
-
-
-
-          if (tarea.responsables.contains(userId) && !tarea.completado) {
-
-            tareasAsignadas.add({
-
-              'tarea': tarea,
-
-              'proyecto': nombreProyecto,
-
-              'imagen': imagenProyecto,
-              'categoria': categoriaProyecto,
-
-            });
-
+      // FutureBuilder para cargar todas las subcolecciones de tareas
+      return FutureBuilder<List<Map<String, dynamic>>>(
+        future: _fetchTareasAsignadas(userId, proyectoDocs),
+        builder: (context, snapTareas) {
+          if (!snapTareas.hasData) {
+            return const Center(child: CircularProgressIndicator());
           }
 
-        }
+          final tareasAsignadas = snapTareas.data!;
 
-      }
+          // Actualizar contadores de progreso con datos reales
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final total = tareasAsignadas.length;
+            final completadas = tareasAsignadas.where((t) => (t['tarea'] as Tarea).completado).length;
+            if (totalTareas != total || tareasCompletadas != completadas) {
+              setState(() {
+                totalTareas = total;
+                tareasCompletadas = completadas;
+                tareasPendientes = total - completadas;
+              });
+            }
+          });
 
+          final pendientes = tareasAsignadas.where((t) => !(t['tarea'] as Tarea).completado).toList();
 
+          if (pendientes.isEmpty) {
+            final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+            final textColor = themeProvider.isDarkMode ? Colors.white : Colors.black87;
+            return Center(
+              child: Text("🎉 No tienes tareas pendientes.", style: TextStyle(color: textColor)),
+            );
+          }
 
-      if (tareasAsignadas.isEmpty) {
-        final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-        final textColor = themeProvider.isDarkMode ? Colors.white : Colors.black87;
-
-        return Center(
-
-          child: Text("🎉 No tienes tareas pendientes.",
-
-              style: TextStyle(color: textColor)),
-
-        );
-
-      }
-
-
-
-      return ListView.builder(
-
-        controller: _scrollControllerAsignadas,
-
-        itemCount: tareasAsignadas.length,
-
-        itemBuilder: (context, index) {
-
-          final tarea = tareasAsignadas[index]['tarea'] as Tarea;
-
-          final proyecto = tareasAsignadas[index]['proyecto'];
-
-          final imagen = tareasAsignadas[index]['imagen'] as String?;
-
-          return _buildTareaCard(
-
-            context,
-
-            tarea: tarea,
-
-            proyecto: proyecto,
-
-            userId: userId,
-
-            imagenProyecto: imagen,
-            categoria: tareasAsignadas[index]['categoria'] as String?,
-
-            onPrimaryAction: () => marcarTareaComoCompletada(tarea, proyecto),
-
+          return ListView.builder(
+            controller: _scrollControllerAsignadas,
+            itemCount: pendientes.length,
+            itemBuilder: (context, index) {
+              final tarea = pendientes[index]['tarea'] as Tarea;
+              final proyecto = pendientes[index]['proyecto'];
+              final imagen = pendientes[index]['imagen'] as String?;
+              return _buildTareaCard(
+                context,
+                tarea: tarea,
+                proyecto: proyecto,
+                userId: userId,
+                imagenProyecto: imagen,
+                categoria: pendientes[index]['categoria'] as String?,
+                onPrimaryAction: () => marcarTareaComoCompletada(tarea, proyecto),
+              );
+            },
           );
-
         },
-
       );
-
     },
-
   );
+}
 
+// Lee todas las tareas desde las SUBCOLECCIONES (fuente de verdad real)
+Future<List<Map<String, dynamic>>> _fetchTareasAsignadas(
+    String userId, List<QueryDocumentSnapshot> proyectoDocs) async {
+  final List<Map<String, dynamic>> resultado = [];
+
+  for (final doc in proyectoDocs) {
+    final data = doc.data() as Map<String, dynamic>;
+    final nombreProyecto = data['nombre'] ?? 'Proyecto sin nombre';
+    final rawCategoria = data['categoria'] ?? data['categoriaProyecto'] ?? data['tipo'];
+    final categoriaProyecto = _normalizarCategoria(rawCategoria?.toString());
+    final imagenProyecto = data['imagenUrl'] ?? data['imagen'] ?? '';
+
+    if (!_pasaFiltroCategoria(categoriaProyecto)) continue;
+
+    // Leer de la subcolección, no del campo data["tareas"]
+    final tareasSnap = await _firestore
+        .collection("proyectos")
+        .doc(doc.id)
+        .collection("tareas")
+        .get();
+
+    for (final tareaDoc in tareasSnap.docs) {
+      final tarea = Tarea.fromJson(tareaDoc.data());
+      if (tarea.responsables.contains(userId)) {
+        resultado.add({
+          'tarea': tarea,
+          'proyecto': nombreProyecto,
+          'imagen': imagenProyecto,
+          'categoria': categoriaProyecto,
+        });
+      }
+    }
+  }
+
+  return resultado;
 }
 
 
@@ -2307,30 +2354,17 @@ Future<void> marcarTareaComoCompletada(Tarea tarea, String nombreProyecto) async
 
 
 
-    List<dynamic> tareas = data["tareas"] ?? [];
+    // Actualizar tarea en subcolección
+    final tareasRef = _firestore.collection("proyectos").doc(doc.id).collection("tareas");
+    final tareasSnapshot = await tareasRef.where("titulo", isEqualTo: tarea.titulo).get();
 
-
-
-    for (int i = 0; i < tareas.length; i++) {
-
-      if (tareas[i]["titulo"] == tarea.titulo) {
-
-        tareas[i]["completado"] = true;
-
-        // Guardar la fecha y hora exacta de completado
-        tareas[i]["fechaCompletada"] = DateTime.now().toIso8601String();
-
-      }
-
+    for (var tareaDoc in tareasSnapshot.docs) {
+      await tareaDoc.reference.update({
+        "completado": true,
+        "estado": "completada",
+        "fechaCompletada": DateTime.now().toIso8601String(),
+      });
     }
-
-
-
-    await _firestore.collection("proyectos").doc(doc.id).update({
-
-      "tareas": tareas,
-
-    });
 
 
 
@@ -2611,7 +2645,22 @@ Future<void> _actualizarPuntosUsuario(String userId, Tarea tarea) async {
 
         const Divider(color: Colors.white24),
 
+        // Admin — Cumpleanos (solo para jamin.yauri@pucp.edu.pe)
+        if (FirebaseAuth.instance.currentUser?.email == 'jamin.yauri@pucp.edu.pe')
+          ListTile(
+            leading: const Icon(Icons.cake, color: Color(0xFFFF6B9D)),
+            title: const Text('Admin — Cumpleanos', style: TextStyle(color: Colors.white)),
+            subtitle: const Text('Gestionar fechas de usuarios', style: TextStyle(color: Colors.white38, fontSize: 11)),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AdminCumpleaniosPage()),
+              );
+            },
+          ),
 
+        const Divider(color: Colors.white12),
 
         ListTile(
 

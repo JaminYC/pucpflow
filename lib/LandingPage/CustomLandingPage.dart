@@ -168,7 +168,7 @@ Widget _buildHeroSection() {
         ),
         const SizedBox(height: 24),
         const Text(
-          '"En el vasto mundo de talentos, solo algunos hacemos historia."',
+          '"En un vasto mundo de talento, crecer es escribir historia."',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
         ),

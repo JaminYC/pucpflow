@@ -103,31 +103,62 @@ class BriefingService {
   ) async {
     final List<TareaBriefing> todasLasTareas = [];
 
+    debugPrint('🎯 BRIEFING: Obteniendo tareas para userId: $userId');
+    debugPrint('🎯 BRIEFING: Fecha objetivo: $fecha');
+
     try {
-      // Obtener todos los proyectos del usuario
-      final proyectosSnapshot = await _firestore
+      // Obtener proyectos donde el usuario es propietario O participante
+      // Firestore no soporta OR directo, así que hacemos dos consultas
+      final proyectosSnapshot1 = await _firestore
           .collection('proyectos')
-          .where('uid', isEqualTo: userId)
+          .where('propietario', isEqualTo: userId)
           .get();
 
+      final proyectosSnapshot2 = await _firestore
+          .collection('proyectos')
+          .where('participantes', arrayContains: userId)
+          .get();
+
+      // Combinar resultados eliminando duplicados
+      final Map<String, QueryDocumentSnapshot> proyectosMap = {};
+      for (var doc in proyectosSnapshot1.docs) {
+        proyectosMap[doc.id] = doc;
+      }
+      for (var doc in proyectosSnapshot2.docs) {
+        proyectosMap[doc.id] = doc;
+      }
+
+      final proyectosDocs = proyectosMap.values.toList();
+
+      debugPrint('📂 Proyectos encontrados: ${proyectosDocs.length}');
+
       // Para cada proyecto, obtener sus tareas
-      for (var proyectoDoc in proyectosSnapshot.docs) {
+      for (var proyectoDoc in proyectosDocs) {
         final proyectoId = proyectoDoc.id;
-        final proyectoData = proyectoDoc.data();
-        final proyectoNombre = proyectoData['nombre'] ?? 'Sin nombre';
+        final proyectoData = proyectoDoc.data() as Map<String, dynamic>?;
+        final proyectoNombre = proyectoData?['nombre'] ?? 'Sin nombre';
 
-        // Obtener tareas del proyecto
-        final tareasSnapshot = await _firestore
-            .collection('proyectos')
-            .doc(proyectoId)
-            .collection('tareas')
-            .where('completado', isEqualTo: false)
-            .get();
+        debugPrint('📁 Proyecto: $proyectoNombre (ID: $proyectoId)');
 
-        // Procesar cada tarea
-        for (var tareaDoc in tareasSnapshot.docs) {
-          final tareaData = tareaDoc.data();
+        // Leer tareas de la subcolección
+        final tareasSnapshot = await _firestore.collection("proyectos").doc(proyectoId).collection("tareas").get();
+        final tareasArray = tareasSnapshot.docs.map((d) => d.data()).toList();
+
+        debugPrint('   📊 TOTAL tareas en proyecto: ${tareasArray.length}');
+
+        // Filtrar tareas NO completadas
+        final tareasNoCompletadas = tareasArray.where((tareaData) {
+          final completado = tareaData['completado'] ?? false;
+          return !completado;
+        }).toList();
+
+        debugPrint('   📝 Tareas NO completadas: ${tareasNoCompletadas.length}');
+
+        // Procesar cada tarea no completada
+        int tareaIndex = 0;
+        for (var tareaData in tareasNoCompletadas) {
           final tarea = Tarea.fromJson(tareaData);
+          final tareaId = '${proyectoId}_tarea_$tareaIndex'; // Generar ID único
 
           // Filtrar solo tareas del día objetivo
           if (_esTareaDelDia(tarea, fecha)) {
@@ -143,7 +174,7 @@ class BriefingService {
             // Crear TareaBriefing enriquecida
             final tareaBriefing = TareaBriefing.fromTarea(
               tarea: tarea,
-              tareaId: tareaDoc.id,
+              tareaId: tareaId,
               proyectoId: proyectoId,
               proyectoNombre: proyectoNombre,
               tieneDependenciasPendientes: tieneDependencias,
@@ -152,12 +183,16 @@ class BriefingService {
 
             todasLasTareas.add(tareaBriefing);
           }
+
+          tareaIndex++;
         }
       }
     } catch (e) {
-      debugPrint('Error obteniendo tareas del día: $e');
+      debugPrint('❌ Error obteniendo tareas del día: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
     }
 
+    debugPrint('✅ Total tareas del día encontradas: ${todasLasTareas.length}');
     return todasLasTareas;
   }
 
@@ -166,17 +201,30 @@ class BriefingService {
     // Priorizar fechaProgramada, luego fechaLimite, luego fecha (legacy)
     DateTime? fechaRelevante = tarea.fechaProgramada ?? tarea.fechaLimite ?? tarea.fecha;
 
+    debugPrint('🔍 Verificando tarea: ${tarea.titulo}');
+    debugPrint('   fechaProgramada: ${tarea.fechaProgramada}');
+    debugPrint('   fechaLimite: ${tarea.fechaLimite}');
+    debugPrint('   fecha (legacy): ${tarea.fecha}');
+    debugPrint('   fechaRelevante: $fechaRelevante');
+    debugPrint('   Fecha objetivo briefing: $fecha');
+
     if (fechaRelevante == null) {
       // Si no tiene ninguna fecha, considerarla para hoy si no está completada
       final hoy = DateTime.now();
-      return fecha.year == hoy.year &&
+      final esHoy = fecha.year == hoy.year &&
           fecha.month == hoy.month &&
           fecha.day == hoy.day;
+      debugPrint('   ❓ Sin fecha → es hoy? $esHoy');
+      return esHoy;
     }
 
-    return fechaRelevante.year == fecha.year &&
+    final esDelDia = fechaRelevante.year == fecha.year &&
         fechaRelevante.month == fecha.month &&
         fechaRelevante.day == fecha.day;
+
+    debugPrint('   ${esDelDia ? "✅" : "❌"} Es del día? $esDelDia');
+
+    return esDelDia;
   }
 
   /// Verifica si una tarea tiene dependencias pendientes

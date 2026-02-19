@@ -103,19 +103,19 @@ class ProyectoIAGatewayPage extends StatelessWidget {
               padding: EdgeInsets.all(isMobile ? 16 : 24),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  // Blueprint Contextual
+                  // Proyecto Flexible
                   _buildProjectOptionCard(
                     context,
-                    icon: Icons.track_changes_outlined,
-                    title: 'Blueprint Contextual',
-                    subtitle: 'Proyectos ágiles y adaptativos',
+                    icon: Icons.rocket_launch_outlined,
+                    title: 'Proyecto Flexible',
+                    subtitle: 'Rápido, simple y enfocado en la acción',
                     description:
-                        'Genera un plan flexible basado en objetivos, habilidades del equipo y foco de negocio. Perfecto para proyectos ágiles, discovery o innovación.',
+                        'Crea proyectos en minutos eligiendo tu metodología (Estratégico, Ágil, Lean, Innovación). Solo nombre, objetivo y metodología - la IA hace el resto.',
                     features: [
-                      'Análisis contextual con IA',
-                      'Skills técnicas y blandas',
-                      'Metodologías flexibles',
-                      'Workflows adaptativos',
+                      'Configuración ultrarrápida',
+                      'Múltiples metodologías',
+                      'Sin formularios largos',
+                      'Listo para ejecutar',
                     ],
                     gradientColors: const [
                       Color(0xFF8B5CF6),

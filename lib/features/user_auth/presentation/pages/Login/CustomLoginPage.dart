@@ -84,6 +84,10 @@ class _CustomLoginPageState extends State<CustomLoginPage> {
     setState(() => _isLoggingIn = true);
 
     try {
+      // Limpiar sesión anterior antes de iniciar sesión
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+
       UserCredential userCredential = await _firebaseAuth.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
@@ -116,10 +120,17 @@ Future<void> _signInWithGoogle() async {
   if (_isNavigating) return;
 
   try {
+    // Cerrar cualquier sesión existente antes de iniciar sesión
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
     if (_firebaseAuth.currentUser != null) {
-      _isNavigating = true;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage()));
-      return;
+      await _firebaseAuth.signOut();
+    }
+
+    if (await _googleSignIn.isSignedIn()) {
+      await _googleSignIn.disconnect();
+      await _googleSignIn.signOut();
     }
 
     final googleUser = await _googleSignIn.signIn();
@@ -286,30 +297,6 @@ Widget build(BuildContext context) {
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'FLOW',
-                            style: TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              letterSpacing: 1.5,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Gestión de Proyectos con IA',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.white60,
-                              letterSpacing: 0.5,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 24),
-                          _buildLogo(),
                           const SizedBox(height: 30),
                           /// 🔹 Login estándar con email
                           _buildTextField(_emailController, "Email", false),
@@ -401,13 +388,11 @@ Widget build(BuildContext context) {
             child: InkWell(
               borderRadius: BorderRadius.circular(8),
               onTap: () {
-                if (kIsWeb) {
-                  // En web, navegar a la landing del ecosistema
-                  Navigator.pushReplacementNamed(context, '/ecosystem');
-                } else {
-                  // En móvil, mostrar mensaje o no hacer nada
-                  showToast(message: "Usa la navegación del sistema");
-                }
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/ecosystem',
+                  (route) => false,
+                );
               },
               child: Container(
                 padding: const EdgeInsets.all(8),
@@ -496,21 +481,6 @@ Widget build(BuildContext context) {
     ),
   );
 }
-
-  Widget _buildLogo() {
-    return Container(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: Color(0xFF133E87), width: 2),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: Offset(0, 5)),
-        ],
-      ),
-      child: ClipOval(
-        child: Image.asset('assets/logo.jpg', height: 120, width: 120, fit: BoxFit.cover),
-      ),
-    );
-  }
 
   Widget _buildTextField(TextEditingController controller, String hint, bool obscureText) {
     return Center(

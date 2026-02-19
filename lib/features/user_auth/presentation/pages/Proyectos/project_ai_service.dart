@@ -14,6 +14,11 @@ class ProjectAIService {
     List<UserSkillModel>? habilidadesEquipo,
     Map<String, dynamic>? workflowContext,
   }) async {
+    print('🚀 Iniciando generación de blueprint contextual...');
+    print('   📋 Proyecto: $nombreProyecto');
+    print('   📄 Documentos: ${documentosBase64.length}');
+    print('   🎯 Metodología: ${config.methodology.apiName}');
+
     final payload = {
       'documentosBase64': documentosBase64,
       'nombreProyecto': nombreProyecto,
@@ -25,6 +30,7 @@ class ProjectAIService {
     };
 
     try {
+      print('☁️ Llamando a Cloud Function generarBlueprintProyecto...');
       final callable = _functions.httpsCallable(
         'generarBlueprintProyecto',
         options: HttpsCallableOptions(
@@ -33,18 +39,27 @@ class ProjectAIService {
       );
       final result = await callable.call(payload);
 
+      print('✅ Respuesta recibida de Cloud Function');
+
       // Convertir explícitamente a Map<String, dynamic>
       final data = Map<String, dynamic>.from(result.data as Map);
 
-      if (data['error'] != null) throw Exception(data['error']);
+      print('📦 Datos convertidos: ${data.keys}');
+
+      if (data['error'] != null) {
+        print('❌ Error en respuesta: ${data['error']}');
+        throw Exception(data['error']);
+      }
 
       // Convertir el blueprint también
       if (data['blueprint'] != null) {
+        print('✨ Blueprint generado correctamente');
         return Map<String, dynamic>.from(data['blueprint'] as Map);
       }
+      print('⚠️ No se recibió blueprint en la respuesta');
       return null;
     } catch (e) {
-      print('Error generando blueprint contextual: $e');
+      print('❌ Error generando blueprint contextual: $e');
       return null;
     }
   }
@@ -58,6 +73,11 @@ class ProjectAIService {
     String? objetivo,
     List<String>? macroEntregables,
   }) async {
+    print('🚀 Iniciando generación de workflow contextual...');
+    print('   📋 Proyecto: $nombreProyecto');
+    print('   👥 Habilidades del equipo: ${habilidadesEquipo.length}');
+    print('   🎯 Metodología: ${config.methodology.apiName}');
+
     final payload = {
       'nombreProyecto': nombreProyecto,
       'objective': objetivo,
@@ -69,6 +89,7 @@ class ProjectAIService {
     };
 
     try {
+      print('☁️ Llamando a Cloud Function generarWorkflowContextual...');
       final callable = _functions.httpsCallable(
         'generarWorkflowContextual',
         options: HttpsCallableOptions(
@@ -77,18 +98,27 @@ class ProjectAIService {
       );
       final result = await callable.call(payload);
 
+      print('✅ Respuesta recibida de Cloud Function');
+
       // Convertir explícitamente a Map<String, dynamic>
       final data = Map<String, dynamic>.from(result.data as Map);
 
-      if (data['error'] != null) throw Exception(data['error']);
+      print('📦 Datos convertidos: ${data.keys}');
+
+      if (data['error'] != null) {
+        print('❌ Error en respuesta: ${data['error']}');
+        throw Exception(data['error']);
+      }
 
       // Convertir el workflow también
       if (data['workflow'] != null) {
+        print('✨ Workflow generado correctamente');
         return Map<String, dynamic>.from(data['workflow'] as Map);
       }
+      print('⚠️ No se recibió workflow en la respuesta');
       return null;
     } catch (e) {
-      print('Error generando workflow contextual: $e');
+      print('❌ Error generando workflow contextual: $e');
       return null;
     }
   }

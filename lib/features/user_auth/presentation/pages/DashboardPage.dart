@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pucpflow/features/user_auth/Usuario/UserModel.dart';
 import 'package:pucpflow/features/user_auth/firebase_auth_implementation/firebase_auth_services.dart';
 import 'package:pucpflow/features/user_auth/tarea_service.dart';
+import 'package:pucpflow/utils/notificaciones_bell_widget.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({Key? key}) : super(key: key);
@@ -70,6 +71,7 @@ class _DashboardPageState extends State<DashboardPage> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, letterSpacing: 0.3),
         ),
         actions: [
+          const NotificacionesBell(),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: () {
@@ -648,60 +650,59 @@ class _DashboardPageState extends State<DashboardPage> {
 
       for (final doc in query.docs) {
         final data = doc.data();
-        final tareas = data['tareas'] as List<dynamic>? ?? [];
         final projectName = (data['nombre'] ?? data['titulo'] ?? 'Proyecto').toString();
 
-        for (final tareaJson in tareas) {
-          if (tareaJson is Map<String, dynamic>) {
-            final responsables = List<String>.from(tareaJson['responsables'] ?? []);
-            final completado = tareaJson['completado'] == true;
-            if (!completado || !responsables.contains(uid)) continue;
+        final tareasSnapshot = await FirebaseFirestore.instance.collection('proyectos').doc(doc.id).collection('tareas').get();
+        for (final tareaDoc in tareasSnapshot.docs) {
+          final tareaJson = tareaDoc.data();
+          final responsables = List<String>.from(tareaJson['responsables'] ?? []);
+          final completado = tareaJson['completado'] == true;
+          if (!completado || !responsables.contains(uid)) continue;
 
-            final titulo = (tareaJson['titulo'] ?? 'Sin titulo').toString();
+          final titulo = (tareaJson['titulo'] ?? 'Sin titulo').toString();
 
-            // Leer la fecha de completado (no la fecha límite)
-            final fechaCompletadaRaw = tareaJson['fechaCompletada'];
-            DateTime? fechaCompletada;
-            if (fechaCompletadaRaw is Timestamp) {
-              fechaCompletada = fechaCompletadaRaw.toDate();
-            } else if (fechaCompletadaRaw is String) {
-              fechaCompletada = DateTime.tryParse(fechaCompletadaRaw);
-            }
-
-            // Si no hay fechaCompletada, usar la fecha límite como fallback (para tareas antiguas)
-            if (fechaCompletada == null) {
-              final fechaRaw = tareaJson['fecha'];
-              if (fechaRaw is Timestamp) {
-                fechaCompletada = fechaRaw.toDate();
-              } else if (fechaRaw is String) {
-                fechaCompletada = DateTime.tryParse(fechaRaw);
-              }
-            }
-
-            final day = fechaCompletada != null ? _formatDay(fechaCompletada) : '--';
-            final time = fechaCompletada != null ? _formatHour(fechaCompletada) : '--';
-
-            // Verificar si se completó tarde comparando con la fecha límite
-            final fechaLimiteRaw = tareaJson['fecha'];
-            DateTime? fechaLimite;
-            if (fechaLimiteRaw is Timestamp) {
-              fechaLimite = fechaLimiteRaw.toDate();
-            } else if (fechaLimiteRaw is String) {
-              fechaLimite = DateTime.tryParse(fechaLimiteRaw);
-            }
-            final late = (fechaCompletada != null && fechaLimite != null)
-                ? fechaCompletada.isAfter(fechaLimite)
-                : false;
-
-            collected.add(_TaskCompletion(
-              day: day,
-              time: time,
-              title: titulo,
-              project: projectName,
-              late: late,
-              timestamp: fechaCompletada,
-            ));
+          // Leer la fecha de completado (no la fecha límite)
+          final fechaCompletadaRaw = tareaJson['fechaCompletada'];
+          DateTime? fechaCompletada;
+          if (fechaCompletadaRaw is Timestamp) {
+            fechaCompletada = fechaCompletadaRaw.toDate();
+          } else if (fechaCompletadaRaw is String) {
+            fechaCompletada = DateTime.tryParse(fechaCompletadaRaw);
           }
+
+          // Si no hay fechaCompletada, usar la fecha límite como fallback (para tareas antiguas)
+          if (fechaCompletada == null) {
+            final fechaRaw = tareaJson['fecha'];
+            if (fechaRaw is Timestamp) {
+              fechaCompletada = fechaRaw.toDate();
+            } else if (fechaRaw is String) {
+              fechaCompletada = DateTime.tryParse(fechaRaw);
+            }
+          }
+
+          final day = fechaCompletada != null ? _formatDay(fechaCompletada) : '--';
+          final time = fechaCompletada != null ? _formatHour(fechaCompletada) : '--';
+
+          // Verificar si se completó tarde comparando con la fecha límite
+          final fechaLimiteRaw = tareaJson['fecha'];
+          DateTime? fechaLimite;
+          if (fechaLimiteRaw is Timestamp) {
+            fechaLimite = fechaLimiteRaw.toDate();
+          } else if (fechaLimiteRaw is String) {
+            fechaLimite = DateTime.tryParse(fechaLimiteRaw);
+          }
+          final late = (fechaCompletada != null && fechaLimite != null)
+              ? fechaCompletada.isAfter(fechaLimite)
+              : false;
+
+          collected.add(_TaskCompletion(
+            day: day,
+            time: time,
+            title: titulo,
+            project: projectName,
+            late: late,
+            timestamp: fechaCompletada,
+          ));
         }
       }
 

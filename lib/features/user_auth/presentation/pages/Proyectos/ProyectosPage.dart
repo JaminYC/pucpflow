@@ -16,6 +16,7 @@ import 'package:intl/intl.dart'; // ⬅️ Esto permite formatear fechas
 import 'package:flutter_dropzone/flutter_dropzone.dart';
 import 'crear_proyecto_pmi_page.dart';
 import 'proyecto_ia_gateway_page.dart';
+import 'run_migration.dart';
 
 import 'dart:typed_data';
 import 'dart:io' as io;
@@ -701,6 +702,16 @@ Widget build(BuildContext context) {
                     ),
                   )))
               .toList(),
+        ),
+        IconButton(
+          icon: const Icon(Icons.build_circle, color: Colors.orange),
+          tooltip: "Herramientas de Migración",
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RunMigrationPage()),
+            );
+          },
         ),
         SizedBox(width: isMobile ? 8 : 16),
       ],

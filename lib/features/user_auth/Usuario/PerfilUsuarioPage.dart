@@ -11,6 +11,7 @@ import 'package:pucpflow/features/skills/pages/upload_cv_page.dart';
 import 'package:pucpflow/features/skills/services/skills_service.dart';
 import 'package:pucpflow/features/skills/models/skill_model.dart';
 import 'package:pucpflow/features/skills/init_skills_db.dart';
+import 'package:pucpflow/features/user_auth/tarea_service.dart';
 
 class PerfilUsuarioPage extends StatefulWidget {
   final String uid;
@@ -24,10 +25,12 @@ class PerfilUsuarioPage extends StatefulWidget {
 class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTickerProviderStateMixin {
   UserModel? user;
   bool loading = true;
+  bool _isRefreshing = false;
   late VideoPlayerController _videoController;
   late TabController _tabController;
   final TextEditingController _tipoController = TextEditingController();
   final SkillsService _skillsService = SkillsService();
+  final TareaService _tareaService = TareaService();
 
   List<UserSkillModel> _professionalSkills = [];
   Map<String, List<UserSkillModel>> _skillsBySector = {};
@@ -58,8 +61,17 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
         // Si falla el video, continuamos sin Ã©l
         print('Error inicializando video: $error');
       });
-    cargarUsuario();
-    _cargarSkillsProfesionales();
+    _inicializarDatos();
+  }
+
+  Future<void> _inicializarDatos() async {
+    // Sincronizar tareas primero para asegurar datos correctos
+    await _tareaService.sincronizarTareasDeUsuario(widget.uid);
+    // Luego cargar los datos
+    await Future.wait([
+      cargarUsuario(),
+      _cargarSkillsProfesionales(),
+    ]);
   }
 
   Future<void> _cargarSkillsProfesionales() async {
@@ -87,11 +99,31 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
 
   Future<void> cargarUsuario() async {
     final data = await FirebaseAuthService().getUserFromFirestore(widget.uid);
-    setState(() {
-      user = data;
-      loading = false;
-      _tipoController.text = user?.tipoPersonalidad ?? "";
-    });
+    if (mounted) {
+      setState(() {
+        user = data;
+        loading = false;
+        _tipoController.text = user?.tipoPersonalidad ?? "";
+      });
+    }
+  }
+
+  Future<void> _refreshData() async {
+    setState(() => _isRefreshing = true);
+    try {
+      // Primero sincronizar las tareas del usuario con los proyectos
+      await _tareaService.sincronizarTareasDeUsuario(widget.uid);
+
+      // Luego cargar los datos actualizados
+      await Future.wait([
+        cargarUsuario(),
+        _cargarSkillsProfesionales(),
+      ]);
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
   }
 
   Future<void> actualizarPerfilConIA() async {
@@ -99,7 +131,7 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
       setState(() => loading = true);
       user!.tipoPersonalidad = _tipoController.text;
       await OpenAIAssistantService().generarResumenYHabilidades(user!);
-      await cargarUsuario();
+      await _refreshData();
     }
   }
 
@@ -208,6 +240,20 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
                   ),
                   onPressed: () => Navigator.pop(context),
                 ),
+                actions: [
+                  if (_isRefreshing)
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.blue.shade400,
+                        ),
+                      ),
+                    ),
+                ],
               ),
 
               // Tabs
@@ -223,9 +269,9 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
                     labelPadding: const EdgeInsets.symmetric(horizontal: 8),
                     padding: EdgeInsets.zero,
                     tabs: const [
-                      Tab(icon: Icon(Icons.dashboard, size: 20), text: "Overview", height: 60),
+                      Tab(icon: Icon(Icons.dashboard, size: 20), text: "Dashboard", height: 60),
                       Tab(icon: Icon(Icons.workspace_premium, size: 20), text: "Skills", height: 60),
-                      Tab(icon: Icon(Icons.analytics, size: 20), text: "AnÃ¡lisis", height: 60),
+                      Tab(icon: Icon(Icons.analytics, size: 20), text: "Análisis", height: 60),
                     ],
                   ),
                 ),
@@ -234,13 +280,17 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
               // Tab content
               SliverFillRemaining(
                 hasScrollBody: true,
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildOverviewTab(),
-                    _buildSkillsTab(),
-                    _buildAnalysisTab(),
-                  ],
+                child: RefreshIndicator(
+                  onRefresh: _refreshData,
+                  color: Colors.blue.shade400,
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildOverviewTab(),
+                      _buildSkillsTab(),
+                      _buildAnalysisTab(),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -567,6 +617,109 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
                   if (meta.isNotEmpty) _buildInfoChip(Icons.flag_outlined, meta, Colors.green.shade300),
                 ],
               ),
+              const SizedBox(height: 16),
+              // ── Fecha de nacimiento ──────────────────────────────────
+              const Text(
+                "Fecha de nacimiento",
+                style: TextStyle(color: Colors.white70, fontSize: 13, letterSpacing: 0.4),
+              ),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: () async {
+                  final now = DateTime.now();
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: user!.fechaNacimiento ?? DateTime(now.year - 25),
+                    firstDate: DateTime(1940),
+                    lastDate: DateTime(now.year - 5),
+                    helpText: 'Selecciona tu fecha de nacimiento',
+                    builder: (ctx, child) => Theme(
+                      data: ThemeData.dark().copyWith(
+                        colorScheme: const ColorScheme.dark(
+                          primary: Color(0xFF8B5CF6),
+                          onPrimary: Colors.white,
+                          surface: Color(0xFF1A1F3A),
+                          onSurface: Colors.white,
+                        ),
+                      ),
+                      child: child!,
+                    ),
+                  );
+                  if (picked != null) {
+                    await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(widget.uid)
+                        .update({'fechaNacimiento': Timestamp.fromDate(picked)});
+                    setState(() => user = UserModel.fromMap({
+                      ...user!.toMap(),
+                      'fechaNacimiento': Timestamp.fromDate(picked),
+                    }, widget.uid));
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Fecha de nacimiento guardada'),
+                          backgroundColor: const Color(0xFF8B5CF6),
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: user!.fechaNacimiento != null
+                          ? const Color(0xFF8B5CF6).withValues(alpha: 0.5)
+                          : Colors.white.withValues(alpha: 0.12),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.cake_outlined,
+                        color: user!.fechaNacimiento != null
+                            ? const Color(0xFF8B5CF6)
+                            : Colors.grey.shade500,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          user!.fechaNacimiento != null
+                              ? '${user!.fechaNacimiento!.day.toString().padLeft(2,'0')}/'
+                                '${user!.fechaNacimiento!.month.toString().padLeft(2,'0')}/'
+                                '${user!.fechaNacimiento!.year}'
+                              : 'Toca para seleccionar tu fecha...',
+                          style: TextStyle(
+                            color: user!.fechaNacimiento != null
+                                ? Colors.white
+                                : Colors.grey.shade500,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.edit_calendar_outlined, color: Colors.grey.shade500, size: 16),
+                    ],
+                  ),
+                ),
+              ),
+              if (user!.fechaNacimiento != null) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(Icons.cake, size: 13, color: Color(0xFFFF6B9D)),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Flow te felicitara en tu cumpleanos!',
+                      style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -896,7 +1049,7 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
                   context,
                   MaterialPageRoute(builder: (context) => const UploadCVPage()),
                 );
-                _cargarSkillsProfesionales();
+                _refreshData();
               },
               icon: const Icon(Icons.upload_file, size: 20),
               label: const Text("Cargar CV"),
@@ -967,7 +1120,7 @@ class _PerfilUsuarioPageState extends State<PerfilUsuarioPage> with SingleTicker
                 context,
                 MaterialPageRoute(builder: (context) => const UploadCVPage()),
               );
-              _cargarSkillsProfesionales();
+              _refreshData();
             },
             icon: const Icon(Icons.upload_file, size: 24),
             label: const Text("Cargar CV Ahora", style: TextStyle(fontSize: 16)),

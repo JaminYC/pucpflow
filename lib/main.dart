@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart'; // Importa Firebase Authentication
 import 'package:firebase_core/firebase_core.dart'; // Importa Firebase Core para inicializar Firebase
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart'; // Permite detectar la plataforma (Web o Móvil)
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Para manejar variables de entorno
@@ -14,6 +15,9 @@ import 'package:pucpflow/features/user_auth/presentation/pages/Login/sign_up_pag
 import 'package:pucpflow/features/user_auth/presentation/pages/proyectos/ProyectosPage.dart';
 import 'package:pucpflow/LandingPage/VastoriaMainLanding.dart'; // Landing principal del ecosistema con SSO
 import 'package:pucpflow/Cafillari/screens/home/CafillariHomePage.dart'; // Cafillari - IoT para cafetales
+import 'package:provider/provider.dart';
+import 'package:pucpflow/providers/theme_provider.dart';
+import 'package:pucpflow/utils/notification_service.dart';
 
 import 'package:webview_flutter/webview_flutter.dart' as webview;
 import 'package:webview_flutter_android/webview_flutter_android.dart'; // SurfaceAndroidWebView ✅
@@ -37,6 +41,8 @@ Future<void> main() async {
     await FirebaseAuth.instance.setPersistence(Persistence.LOCAL); // 🔐 importante para mantener sesión
   } else {
     await Firebase.initializeApp();
+    // Registrar handler de notificaciones background (solo móvil)
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
   await initializeDateFormatting('es_ES', null);
@@ -74,12 +80,14 @@ class MyApp extends StatelessWidget {
 
 @override
 Widget build(BuildContext context) {
-  return MaterialApp(
-    debugShowCheckedModeBanner: false, // Oculta el banner de "Debug"
-    title: kIsWeb && Uri.base.host.contains('flow.')
-        ? 'Flow - Gestión de Proyectos | Vastoria'
-        : 'Vastoria - Ecosistema de Soluciones',
-    theme: ThemeData(
+  return ChangeNotifierProvider(
+    create: (_) => ThemeProvider(),
+    child: MaterialApp(
+      debugShowCheckedModeBanner: false, // Oculta el banner de "Debug"
+      title: kIsWeb && Uri.base.host.contains('flow.')
+          ? 'Flow - Gestión de Proyectos | Vastoria'
+          : 'Vastoria - Ecosistema de Soluciones',
+      theme: ThemeData(
       fontFamily: 'Poppins', // 🔥 Aplica Poppins a toda la app
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
           backgroundColor: Colors.black,
@@ -96,14 +104,26 @@ Widget build(BuildContext context) {
     ),
     home: _getInitialPage(),
     routes: {
+      // 🌐 Ecosistema Vastoria
+      '/ecosystem': (context) => const VastoriaMainLanding(),
+
+      // 🍅 FLOW - Gestión de Proyectos
+      '/flow': (context) => const SplashScreen(), // Entry point de Flow
+      '/flow/login': (context) => const CustomLoginPage(),
+      '/flow/signup': (context) => const SignUpPage(),
+      '/flow/home': (context) => HomePage(),
+      '/flow/proyectos': (context) => ProyectosPage(),
+
+      // ☕ CAFILLARI - IoT para Cafetales (acceso sin login)
+      '/cafillari': (context) => const CafillariHomePage(),
+
+      // ⚠️ Rutas legacy (mantener por compatibilidad)
       '/home': (context) => HomePage(),
       '/login': (context) => const CustomLoginPage(),
       '/signUp': (context) => const SignUpPage(),
-      '/proyectos': (context) =>  ProyectosPage(),
-      '/ecosystem': (context) => const VastoriaMainLanding(),
-      '/cafillari': (context) => const CafillariHomePage(),
+      '/proyectos': (context) => ProyectosPage(),
     },
-
+   ),
   );
 }
 

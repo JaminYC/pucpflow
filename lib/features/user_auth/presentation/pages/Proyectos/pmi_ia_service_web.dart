@@ -108,7 +108,9 @@ class PMIIAServiceWeb {
     String? descripcionBreve,
   }) async {
     try {
-      print('🤖 Llamando a Cloud Function generarProyectoPMI...');
+      print('🤖 [PMI] Llamando a Cloud Function generarProyectoPMI...');
+      print('📄 [PMI] Documentos a enviar: ${documentosBase64.length}');
+      print('📝 [PMI] Nombre del proyecto: $nombreProyecto');
 
       final callable = _functions.httpsCallable(
         'generarProyectoPMI',
@@ -117,26 +119,32 @@ class PMIIAServiceWeb {
         ),
       );
 
+      print('⏳ [PMI] Enviando petición a Firebase Functions...');
       final result = await callable.call({
         'documentosBase64': documentosBase64,
         'nombreProyecto': nombreProyecto,
         'descripcionBreve': descripcionBreve ?? '',
       });
 
-      final data = result.data;
+      print('📥 [PMI] Respuesta recibida de Cloud Function');
+      final data = Map<String, dynamic>.from(result.data as Map);
 
       if (data['error'] != null) {
+        print('❌ [PMI] Error en respuesta: ${data['error']}');
         throw Exception(data['error']);
       }
 
       if (!data['success']) {
+        print('❌ [PMI] Generación no exitosa');
         throw Exception('La generación no fue exitosa');
       }
 
-      print('✅ Proyecto PMI generado por IA exitosamente');
-      return data['proyecto'];
+      print('✅ [PMI] Proyecto PMI generado por IA exitosamente');
+      final proyecto = Map<String, dynamic>.from(data['proyecto'] as Map);
+      print('📊 [PMI] Estructura recibida: ${proyecto.keys}');
+      return proyecto;
     } catch (e) {
-      print('❌ Error generando proyecto PMI con IA: $e');
+      print('❌ [PMI] Error generando proyecto PMI con IA: $e');
       return null;
     }
   }

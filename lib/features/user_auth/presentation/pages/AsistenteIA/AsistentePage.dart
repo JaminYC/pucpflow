@@ -55,7 +55,7 @@ class _AsistentePageState extends State<AsistentePage> {
   // ===== TTS =====
   List<Map<String, String>> _voiceList = []; // [{name, locale, id}]
   Map<String, String>? _selectedVoice;       // voz activa
-  double _rate = 0.9;
+  double _rate = 1.0;
   double _pitch = 1.02;
 
   // ===== ElevenLabs =====
@@ -130,13 +130,12 @@ class _AsistentePageState extends State<AsistentePage> {
     await _loadPrefs();
     await _initTTS();
     await _initSTT();
-    _startListening();
   }
 
   // ----------------- PREFS -----------------
   Future<void> _loadPrefs() async {
     final sp = await SharedPreferences.getInstance();
-    _rate = sp.getDouble(_kRateKey) ?? 0.9;
+    _rate = sp.getDouble(_kRateKey) ?? 1.0;
     _pitch = sp.getDouble(_kPitchKey) ?? 1.02;
     _elevenLabsVoiceId = sp.getString(_kElevenLabsVoiceKey) ?? 'pNInz6obpgDQGcFmaJgB';
     _useElevenLabs = sp.getBool(_kUseElevenLabsKey) ?? false; // Por defecto TTS nativo
@@ -376,9 +375,6 @@ class _AsistentePageState extends State<AsistentePage> {
     setState(() {
       _isPlaying = false;
     });
-    if (_wasListeningBeforePlayback && !_isListening) {
-      await _startListening();
-    }
     _wasListeningBeforePlayback = false;
   }
 
@@ -443,9 +439,6 @@ class _AsistentePageState extends State<AsistentePage> {
       _currentFullMessage = '';
     });
     _wasListeningBeforePlayback = false;
-    if (!_isListening) {
-      await _startListening();
-    }
     debugPrint('⏹️ Audio detenido');
   }
 
@@ -597,8 +590,6 @@ class _AsistentePageState extends State<AsistentePage> {
         _history.add('ADAN: $msg');
       });
       await _speak("Lo siento, hubo un problema al consultar la IA.");
-    } finally {
-      if (mounted && !_isListening && !_isPlaying) _startListening();
     }
   }
 
@@ -688,6 +679,7 @@ class _AsistentePageState extends State<AsistentePage> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
     final isSmallScreen = screenWidth < 600;
 
     return Scaffold(
@@ -748,6 +740,69 @@ class _AsistentePageState extends State<AsistentePage> {
                 padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
                 child: Column(
                   children: [
+                    // Conversacion
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Conversacion', style: TextStyle(fontWeight: FontWeight.w700, fontSize: isSmallScreen ? 14 : 16)),
+                        IconButton(
+                          icon: Icon(Icons.delete_outline, size: isSmallScreen ? 20 : 24),
+                          onPressed: () => setState(() => _history.clear()),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: isSmallScreen ? screenHeight * 0.6 : screenHeight * 0.65,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: _history.isEmpty
+                          ? const Center(child: Text('Sin mensajes aun.'))
+                          : ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              itemCount: _history.length,
+                              itemBuilder: (_, i) {
+                                final msg = _history[i];
+                                final isAssistant = msg.startsWith('ADAN:');
+                                var display = msg;
+                                final sepIndex = msg.indexOf(': ');
+                                if (sepIndex != -1 && sepIndex <= 6) {
+                                  display = msg.substring(sepIndex + 2);
+                                }
+                                final bubbleColor = isAssistant ? Colors.white : Colors.indigo.shade50;
+                                final borderColor = isAssistant ? Colors.grey.shade300 : Colors.indigo.shade200;
+
+                                return Align(
+                                  alignment: isAssistant ? Alignment.centerLeft : Alignment.centerRight,
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxWidth: screenWidth * (isSmallScreen ? 0.9 : 0.7),
+                                    ),
+                                    child: Container(
+                                      margin: const EdgeInsets.symmetric(vertical: 6),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        color: bubbleColor,
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: borderColor),
+                                      ),
+                                      child: Text(
+                                        display,
+                                        style: TextStyle(
+                                          fontSize: isSmallScreen ? 13 : 15,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+
+                    SizedBox(height: isSmallScreen ? 12 : 16),
             // ===== CARD PRINCIPAL: Estado de ADAN =====
             Card(
               elevation: 4,
@@ -769,7 +824,7 @@ class _AsistentePageState extends State<AsistentePage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Container(
-                          padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+                          padding: EdgeInsets.all(isSmallScreen ? 6 : 10),
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.2),
                             shape: BoxShape.circle,
@@ -777,7 +832,7 @@ class _AsistentePageState extends State<AsistentePage> {
                           child: Icon(
                             _isListening ? Icons.mic : Icons.mic_off,
                             color: Colors.white,
-                            size: isSmallScreen ? 24 : 32,
+                            size: isSmallScreen ? 22 : 28,
                           ),
                         ),
                         SizedBox(width: isSmallScreen ? 12 : 16),
@@ -835,19 +890,22 @@ class _AsistentePageState extends State<AsistentePage> {
                           color: Colors.white.withOpacity(0.9),
                           borderRadius: BorderRadius.circular(12),
                         ),
+                        constraints: BoxConstraints(
+                          minHeight: isSmallScreen ? 120 : 140,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.record_voice_over, color: Colors.indigo.shade700, size: isSmallScreen ? 18 : 20),
+                                Icon(Icons.record_voice_over, color: Colors.indigo.shade700, size: isSmallScreen ? 16 : 18),
                                 SizedBox(width: isSmallScreen ? 6 : 8),
                                 Flexible(
                                   child: Text(
                                     'ADAN está hablando:',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      fontSize: isSmallScreen ? 12 : 14,
+                                      fontSize: isSmallScreen ? 11 : 12,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -859,7 +917,7 @@ class _AsistentePageState extends State<AsistentePage> {
                               _currentFullMessage,
                               style: TextStyle(
                                 color: Colors.grey.shade800,
-                                fontSize: isSmallScreen ? 12 : 14,
+                                fontSize: isSmallScreen ? 13 : 15,
                                 height: 1.4,
                               ),
                             ),
@@ -870,21 +928,31 @@ class _AsistentePageState extends State<AsistentePage> {
                       // Controles de audio
                       SizedBox(height: isSmallScreen ? 10 : 12),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           IconButton(
                             onPressed: _isPlaying ? _pauseAudio : () => _speak(_currentFullMessage),
                             icon: Icon(
                               _isPlaying ? Icons.pause_circle : Icons.play_circle,
-                              size: isSmallScreen ? 32 : 40,
+                              size: isSmallScreen ? 24 : 28,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            constraints: BoxConstraints(
+                              minWidth: isSmallScreen ? 36 : 40,
+                              minHeight: isSmallScreen ? 36 : 40,
                             ),
                             color: Colors.white,
                             tooltip: _isPlaying ? 'Pausar' : 'Reproducir',
                           ),
-                          SizedBox(width: isSmallScreen ? 12 : 16),
+                          SizedBox(width: isSmallScreen ? 8 : 12),
                           IconButton(
                             onPressed: _stopAudio,
-                            icon: Icon(Icons.stop_circle, size: isSmallScreen ? 32 : 40),
+                            icon: Icon(Icons.stop_circle, size: isSmallScreen ? 24 : 28),
+                            visualDensity: VisualDensity.compact,
+                            constraints: BoxConstraints(
+                              minWidth: isSmallScreen ? 36 : 40,
+                              minHeight: isSmallScreen ? 36 : 40,
+                            ),
                             color: Colors.white,
                             tooltip: 'Detener',
                           ),
@@ -892,14 +960,17 @@ class _AsistentePageState extends State<AsistentePage> {
                       ),
 
                       SizedBox(height: isSmallScreen ? 6 : 8),
-                      TextButton.icon(
-                        onPressed: _currentFullMessage.isNotEmpty ? () => _speak(_currentFullMessage) : null,
-                        icon: Icon(Icons.replay, size: isSmallScreen ? 16 : 20),
-                        label: Text(
-                          isSmallScreen ? 'Repetir' : 'Reproducir última respuesta',
-                          style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: _currentFullMessage.isNotEmpty ? () => _speak(_currentFullMessage) : null,
+                          icon: Icon(Icons.replay, size: isSmallScreen ? 14 : 16),
+                          label: Text(
+                            isSmallScreen ? 'Repetir' : 'Reproducir última respuesta',
+                            style: TextStyle(fontSize: isSmallScreen ? 11 : 12),
+                          ),
+                          style: TextButton.styleFrom(foregroundColor: Colors.white),
                         ),
-                        style: TextButton.styleFrom(foregroundColor: Colors.white),
                       ),
                     ],
                   ],
@@ -958,321 +1029,295 @@ class _AsistentePageState extends State<AsistentePage> {
 
             SizedBox(height: isSmallScreen ? 12 : 16),
 
-            // Switch para elegir entre TTS Nativo y ElevenLabs
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.indigo.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.indigo.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _useElevenLabs ? Icons.cloud : Icons.phone_android,
-                    color: Colors.indigo.shade700,
-                    size: isSmallScreen ? 20 : 24,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Motor de Voz',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: isSmallScreen ? 12 : 14,
-                            color: Colors.indigo.shade900,
+            // Opciones
+            ExpansionTile(
+              title: Text('Opciones', style: TextStyle(fontWeight: FontWeight.w700, fontSize: isSmallScreen ? 14 : 16)),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(top: 8, bottom: 4),
+              children: [
+              // Switch para elegir entre TTS Nativo y ElevenLabs
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.indigo.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _useElevenLabs ? Icons.cloud : Icons.phone_android,
+                      color: Colors.indigo.shade700,
+                      size: isSmallScreen ? 20 : 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Motor de Voz',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: isSmallScreen ? 12 : 14,
+                              color: Colors.indigo.shade900,
+                            ),
                           ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _useElevenLabs
+                                ? 'ElevenLabs (cloud, premium)'
+                                : 'TTS Nativo (local, gratis)',
+                            style: TextStyle(
+                              fontSize: isSmallScreen ? 10 : 11,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: _useElevenLabs,
+                      onChanged: (value) async {
+                        setState(() {
+                          _useElevenLabs = value;
+                        });
+                        await _savePrefs();
+                        debugPrint('✅ Motor de voz cambiado a: ${value ? "ElevenLabs" : "TTS Nativo"}');
+  
+                        // Probar nueva configuración
+                        final msg = value
+                            ? 'Ahora uso ElevenLabs, voz premium en la nube.'
+                            : 'Ahora uso el motor nativo de tu dispositivo.';
+                        _speak(msg);
+                      },
+                      activeColor: Colors.indigo,
+                    ),
+                  ],
+                ),
+              ),
+  
+              SizedBox(height: isSmallScreen ? 8 : 12),
+  
+              // Selector de voz ElevenLabs (solo si está activado)
+              if (_useElevenLabs)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Voz ElevenLabs:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: isSmallScreen ? 12 : 14)),
+                  SizedBox(height: isSmallScreen ? 4 : 8),
+                  DropdownButton<String>(
+                    isExpanded: true,
+                    value: _elevenLabsVoices.any((v) => v['id'] == _elevenLabsVoiceId)
+                        ? _elevenLabsVoiceId
+                        : _elevenLabsVoices.first['id'],
+                    items: _elevenLabsVoices.map((v) {
+                      return DropdownMenuItem<String>(
+                        value: v['id'],
+                        child: Text(
+                          isSmallScreen ? '${v['name']}' : '${v['name']} - ${v['desc']}',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _useElevenLabs
-                              ? 'ElevenLabs (cloud, premium)'
-                              : 'TTS Nativo (local, gratis)',
-                          style: TextStyle(
-                            fontSize: isSmallScreen ? 10 : 11,
-                            color: Colors.grey.shade600,
+                      );
+                    }).toList(),
+                    onChanged: (voiceId) async {
+                      if (voiceId != null) {
+                        setState(() {
+                          _elevenLabsVoiceId = voiceId;
+                        });
+                        await _savePrefs();
+                        debugPrint('✅ Voz ElevenLabs cambiada a: $voiceId');
+  
+                        // Probar la nueva voz
+                        final voiceName = _elevenLabsVoices.firstWhere((v) => v['id'] == voiceId)['name'];
+                        _speak('Hola, soy $voiceName. Esta es mi voz.');
+                      }
+                    },
+                  ),
+                ],
+              ),
+              SizedBox(height: isSmallScreen ? 6 : 8),
+  
+              // Selector de voz nativa (fallback)
+              if (_voiceList.isNotEmpty)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Voz Nativa (Fallback):', style: TextStyle(fontWeight: FontWeight.w600, fontSize: isSmallScreen ? 11 : 12)),
+                    SizedBox(height: isSmallScreen ? 4 : 8),
+                    DropdownButton<Map<String, String>>(
+                      isExpanded: true,
+                      value: _selectedVoice,
+                      items: _voiceList.map((v) {
+                        final show = isSmallScreen ? '${v['name']}' : '${v['name']}  (${v['locale']})';
+                        return DropdownMenuItem(
+                          value: v,
+                          child: Text(show, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: isSmallScreen ? 11 : 12)),
+                        );
+                      }).toList(),
+                      onChanged: (v) async {
+                        _selectedVoice = v;
+                        await _applyVoiceAndParams();
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                  ],
+                ),
+  
+              SizedBox(height: isSmallScreen ? 8 : 12),
+  
+              // sliders
+              if (!isSmallScreen)
+                Row(
+                  children: [
+                    const Text('Velocidad'),
+                    Expanded(
+                      child: Slider(
+                        value: _rate,
+                        min: 0.5,
+                        max: 1.3,
+                        divisions: 8,
+                        label: _rate.toStringAsFixed(2),
+                        onChanged: (v) => setState(() => _rate = v),
+                        onChangeEnd: (_) async { await _applyVoiceAndParams(); },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text('Tono'),
+                    Expanded(
+                      child: Slider(
+                        value: _pitch,
+                        min: 0.8,
+                        max: 1.3,
+                        divisions: 10,
+                        label: _pitch.toStringAsFixed(2),
+                        onChanged: (v) => setState(() => _pitch = v),
+                        onChangeEnd: (_) async { await _applyVoiceAndParams(); },
+                      ),
+                    ),
+                  ],
+                ),
+  
+              // Sliders apilados para móvil
+              if (isSmallScreen) ...[
+                Row(
+                  children: [
+                    Text('Velocidad', style: TextStyle(fontSize: 12)),
+                    Expanded(
+                      child: Slider(
+                        value: _rate,
+                        min: 0.5,
+                        max: 1.3,
+                        divisions: 8,
+                        label: _rate.toStringAsFixed(2),
+                        onChanged: (v) => setState(() => _rate = v),
+                        onChangeEnd: (_) async { await _applyVoiceAndParams(); },
+                      ),
+                    ),
+                    Text(_rate.toStringAsFixed(1), style: TextStyle(fontSize: 11)),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text('Tono', style: TextStyle(fontSize: 12)),
+                    Expanded(
+                      child: Slider(
+                        value: _pitch,
+                        min: 0.8,
+                        max: 1.3,
+                        divisions: 10,
+                        label: _pitch.toStringAsFixed(2),
+                        onChanged: (v) => setState(() => _pitch = v),
+                        onChangeEnd: (_) async { await _applyVoiceAndParams(); },
+                      ),
+                    ),
+                    Text(_pitch.toStringAsFixed(1), style: TextStyle(fontSize: 11)),
+                  ],
+                ),
+              ],
+  
+              SizedBox(height: isSmallScreen ? 12 : 16),
+  
+              // ===== Token Usage Display =====
+              Container(
+                padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.analytics_outlined, size: isSmallScreen ? 16 : 18, color: Colors.blue.shade700),
+                        SizedBox(width: isSmallScreen ? 6 : 8),
+                        Flexible(
+                          child: Text(
+                            isSmallScreen ? 'Tokens (GPT-4o-mini)' : 'Uso de Tokens (GPT-4o-mini)',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Colors.blue.shade900,
+                              fontSize: isSmallScreen ? 12 : 13,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  Switch(
-                    value: _useElevenLabs,
-                    onChanged: (value) async {
-                      setState(() {
-                        _useElevenLabs = value;
-                      });
-                      await _savePrefs();
-                      debugPrint('✅ Motor de voz cambiado a: ${value ? "ElevenLabs" : "TTS Nativo"}');
-
-                      // Probar nueva configuración
-                      final msg = value
-                          ? 'Ahora uso ElevenLabs, voz premium en la nube.'
-                          : 'Ahora uso el motor nativo de tu dispositivo.';
-                      _speak(msg);
-                    },
-                    activeColor: Colors.indigo,
-                  ),
-                ],
-              ),
-            ),
-
-            SizedBox(height: isSmallScreen ? 8 : 12),
-
-            // Selector de voz ElevenLabs (solo si está activado)
-            if (_useElevenLabs)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Voz ElevenLabs:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: isSmallScreen ? 12 : 14)),
-                SizedBox(height: isSmallScreen ? 4 : 8),
-                DropdownButton<String>(
-                  isExpanded: true,
-                  value: _elevenLabsVoices.any((v) => v['id'] == _elevenLabsVoiceId)
-                      ? _elevenLabsVoiceId
-                      : _elevenLabsVoices.first['id'],
-                  items: _elevenLabsVoices.map((v) {
-                    return DropdownMenuItem<String>(
-                      value: v['id'],
-                      child: Text(
-                        isSmallScreen ? '${v['name']}' : '${v['name']} - ${v['desc']}',
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (voiceId) async {
-                    if (voiceId != null) {
-                      setState(() {
-                        _elevenLabsVoiceId = voiceId;
-                      });
-                      await _savePrefs();
-                      debugPrint('✅ Voz ElevenLabs cambiada a: $voiceId');
-
-                      // Probar la nueva voz
-                      final voiceName = _elevenLabsVoices.firstWhere((v) => v['id'] == voiceId)['name'];
-                      _speak('Hola, soy $voiceName. Esta es mi voz.');
-                    }
-                  },
-                ),
-              ],
-            ),
-            SizedBox(height: isSmallScreen ? 6 : 8),
-
-            // Selector de voz nativa (fallback)
-            if (_voiceList.isNotEmpty)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Voz Nativa (Fallback):', style: TextStyle(fontWeight: FontWeight.w600, fontSize: isSmallScreen ? 11 : 12)),
-                  SizedBox(height: isSmallScreen ? 4 : 8),
-                  DropdownButton<Map<String, String>>(
-                    isExpanded: true,
-                    value: _selectedVoice,
-                    items: _voiceList.map((v) {
-                      final show = isSmallScreen ? '${v['name']}' : '${v['name']}  (${v['locale']})';
-                      return DropdownMenuItem(
-                        value: v,
-                        child: Text(show, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: isSmallScreen ? 11 : 12)),
-                      );
-                    }).toList(),
-                    onChanged: (v) async {
-                      _selectedVoice = v;
-                      await _applyVoiceAndParams();
-                      if (mounted) setState(() {});
-                    },
-                  ),
-                ],
-              ),
-
-            SizedBox(height: isSmallScreen ? 8 : 12),
-
-            // sliders
-            if (!isSmallScreen)
-              Row(
-                children: [
-                  const Text('Velocidad'),
-                  Expanded(
-                    child: Slider(
-                      value: _rate,
-                      min: 0.5,
-                      max: 1.3,
-                      divisions: 8,
-                      label: _rate.toStringAsFixed(2),
-                      onChanged: (v) => setState(() => _rate = v),
-                      onChangeEnd: (_) async { await _applyVoiceAndParams(); },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text('Tono'),
-                  Expanded(
-                    child: Slider(
-                      value: _pitch,
-                      min: 0.8,
-                      max: 1.3,
-                      divisions: 10,
-                      label: _pitch.toStringAsFixed(2),
-                      onChanged: (v) => setState(() => _pitch = v),
-                      onChangeEnd: (_) async { await _applyVoiceAndParams(); },
-                    ),
-                  ),
-                ],
-              ),
-
-            // Sliders apilados para móvil
-            if (isSmallScreen) ...[
-              Row(
-                children: [
-                  Text('Velocidad', style: TextStyle(fontSize: 12)),
-                  Expanded(
-                    child: Slider(
-                      value: _rate,
-                      min: 0.5,
-                      max: 1.3,
-                      divisions: 8,
-                      label: _rate.toStringAsFixed(2),
-                      onChanged: (v) => setState(() => _rate = v),
-                      onChangeEnd: (_) async { await _applyVoiceAndParams(); },
-                    ),
-                  ),
-                  Text(_rate.toStringAsFixed(1), style: TextStyle(fontSize: 11)),
-                ],
-              ),
-              Row(
-                children: [
-                  Text('Tono', style: TextStyle(fontSize: 12)),
-                  Expanded(
-                    child: Slider(
-                      value: _pitch,
-                      min: 0.8,
-                      max: 1.3,
-                      divisions: 10,
-                      label: _pitch.toStringAsFixed(2),
-                      onChanged: (v) => setState(() => _pitch = v),
-                      onChangeEnd: (_) async { await _applyVoiceAndParams(); },
-                    ),
-                  ),
-                  Text(_pitch.toStringAsFixed(1), style: TextStyle(fontSize: 11)),
-                ],
-              ),
-            ],
-
-            SizedBox(height: isSmallScreen ? 12 : 16),
-
-            // ===== Token Usage Display =====
-            Container(
-              padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.analytics_outlined, size: isSmallScreen ? 16 : 18, color: Colors.blue.shade700),
-                      SizedBox(width: isSmallScreen ? 6 : 8),
-                      Flexible(
-                        child: Text(
-                          isSmallScreen ? 'Tokens (GPT-4o-mini)' : 'Uso de Tokens (GPT-4o-mini)',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: Colors.blue.shade900,
-                            fontSize: isSmallScreen ? 12 : 13,
+                    SizedBox(height: isSmallScreen ? 6 : 8),
+                    if (_lastTotalTokens > 0) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Último mensaje:', style: TextStyle(fontSize: isSmallScreen ? 11 : 12, fontWeight: FontWeight.w600)),
+                          Text(
+                            '$_lastTotalTokens tokens',
+                            style: TextStyle(fontSize: isSmallScreen ? 11 : 12, color: Colors.blue.shade700, fontWeight: FontWeight.bold),
                           ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        ],
                       ),
+                      SizedBox(height: isSmallScreen ? 3 : 4),
+                      if (!isSmallScreen)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('  • Prompt: $_lastPromptTokens', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            Text('Completion: $_lastCompletionTokens', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                          ],
+                        ),
+                      if (isSmallScreen)
+                        Text('  Prompt: $_lastPromptTokens | Comp: $_lastCompletionTokens', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      const Divider(height: 16),
                     ],
-                  ),
-                  SizedBox(height: isSmallScreen ? 6 : 8),
-                  if (_lastTotalTokens > 0) ...[
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Último mensaje:', style: TextStyle(fontSize: isSmallScreen ? 11 : 12, fontWeight: FontWeight.w600)),
+                        Text('Total sesión:', style: TextStyle(fontSize: isSmallScreen ? 11 : 12, fontWeight: FontWeight.w700)),
                         Text(
-                          '$_lastTotalTokens tokens',
-                          style: TextStyle(fontSize: isSmallScreen ? 11 : 12, color: Colors.blue.shade700, fontWeight: FontWeight.bold),
+                          '$_sessionTotalTokens tokens',
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 13 : 14,
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
                     SizedBox(height: isSmallScreen ? 3 : 4),
-                    if (!isSmallScreen)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('  • Prompt: $_lastPromptTokens', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                          Text('Completion: $_lastCompletionTokens', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                        ],
-                      ),
-                    if (isSmallScreen)
-                      Text('  Prompt: $_lastPromptTokens | Comp: $_lastCompletionTokens', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                    const Divider(height: 16),
+                    Text(
+                      'Costo aprox: \$${(_sessionTotalTokens * 0.00015 / 1000).toStringAsFixed(4)} USD',
+                      style: TextStyle(fontSize: isSmallScreen ? 9 : 10, color: Colors.grey),
+                    ),
                   ],
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Total sesión:', style: TextStyle(fontSize: isSmallScreen ? 11 : 12, fontWeight: FontWeight.w700)),
-                      Text(
-                        '$_sessionTotalTokens tokens',
-                        style: TextStyle(
-                          fontSize: isSmallScreen ? 13 : 14,
-                          color: Colors.green.shade700,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: isSmallScreen ? 3 : 4),
-                  Text(
-                    'Costo aprox: \$${(_sessionTotalTokens * 0.00015 / 1000).toStringAsFixed(4)} USD',
-                    style: TextStyle(fontSize: isSmallScreen ? 9 : 10, color: Colors.grey),
-                  ),
-                ],
+                ),
               ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Historial
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Historial', style: TextStyle(fontWeight: FontWeight.w700, fontSize: isSmallScreen ? 14 : 16)),
-                IconButton(
-                  icon: Icon(Icons.delete_outline, size: isSmallScreen ? 20 : 24),
-                  onPressed: () => setState(() => _history.clear()),
-                )
+  
               ],
             ),
-            const SizedBox(height: 8),
-            Container(
-              height: 200,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: _history.isEmpty
-                  ? const Center(child: Text('Sin mensajes aún.'))
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(8),
-                      itemCount: _history.length,
-                      itemBuilder: (_, i) => ListTile(
-                        dense: true,
-                        leading: Icon(Icons.chat_bubble_outline, size: isSmallScreen ? 16 : 18),
-                        title: Text(
-                          _history[i],
-                          style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
-                        ),
-                      ),
-                    ),
-            ),
+
                   ],
                 ),
               ),
@@ -1403,3 +1448,4 @@ class _AsistentePageState extends State<AsistentePage> {
     _textFocusNode.unfocus();
   }
 }
+

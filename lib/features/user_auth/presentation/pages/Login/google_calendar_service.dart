@@ -452,7 +452,240 @@ Future<bool> verificarDisponibilidadHorario(calendar.CalendarApi calendarApi, St
   return busyPeriods.isNotEmpty;
 }
 
+/// 🆕 **Segmenta una tarea en sesiones de máximo 2 horas**
+/// Retorna lista de duraciones en minutos (max 120 cada una)
+List<int> segmentarTarea(int duracionTotalMinutos) {
+  const int maxSesion = 120; // 2 horas máximo por sesión
+  List<int> sesiones = [];
 
+  int duracionRestante = duracionTotalMinutos;
+
+  while (duracionRestante > 0) {
+    if (duracionRestante <= maxSesion) {
+      sesiones.add(duracionRestante);
+      duracionRestante = 0;
+    } else {
+      sesiones.add(maxSesion);
+      duracionRestante -= maxSesion;
+    }
+  }
+
+  return sesiones;
+}
+
+/// 🆕 **Agendar tarea manualmente con fecha/hora seleccionada por el usuario**
+/// Retorna mapa con resultado y lista de IDs de eventos creados
+Future<Map<String, dynamic>> agendarTareaManualmente({
+  required Tarea tarea,
+  required DateTime fechaHoraInicio,
+  required String responsableUid,
+}) async {
+  try {
+    final calendarApi = await signInAndGetCalendarApi(silentOnly: true);
+    if (calendarApi == null) {
+      return {
+        'success': false,
+        'error': 'No se pudo conectar con Google Calendar',
+      };
+    }
+
+    // Segmentar la tarea si es mayor a 2 horas
+    final sesiones = segmentarTarea(tarea.duracion);
+    final List<String> eventIds = [];
+    DateTime inicioActual = fechaHoraInicio;
+
+    // Crear evento para cada sesión
+    for (int i = 0; i < sesiones.length; i++) {
+      final duracionSesion = sesiones[i];
+
+      // Crear copia de la tarea para esta sesión
+      final tareaSegmento = Tarea(
+        titulo: sesiones.length > 1
+            ? "${tarea.titulo} (Sesión ${i + 1}/${sesiones.length})"
+            : tarea.titulo,
+        descripcion: tarea.descripcion,
+        duracion: duracionSesion,
+        fechaProgramada: inicioActual,
+        responsables: tarea.responsables,
+        tipoTarea: tarea.tipoTarea,
+        prioridad: tarea.prioridad,
+        colorId: tarea.colorId,
+      );
+
+      // Crear evento en Google Calendar
+      final eventId = await agendarEventoEnCalendario(
+        calendarApi,
+        tareaSegmento,
+        responsableUid,
+      );
+
+      if (eventId != null) {
+        eventIds.add(eventId);
+        print("✅ Sesión ${i + 1} agendada: $inicioActual (${duracionSesion}min)");
+      }
+
+      // Avanzar al siguiente slot (agregar duración + 15 min buffer)
+      inicioActual = inicioActual.add(Duration(minutes: duracionSesion + 15));
+    }
+
+    if (eventIds.isEmpty) {
+      return {
+        'success': false,
+        'error': 'No se pudo crear eventos en Google Calendar',
+      };
+    }
+
+    return {
+      'success': true,
+      'eventIds': eventIds,
+      'sesiones': sesiones.length,
+      'primeraFecha': fechaHoraInicio,
+      'ultimaFecha': inicioActual.subtract(const Duration(minutes: 15)),
+    };
+  } catch (e) {
+    return {
+      'success': false,
+      'error': 'Error al agendar manualmente: $e',
+    };
+  }
+}
+
+/// 🆕 **Agendar tarea automáticamente buscando slots libres**
+/// Retorna mapa con fecha propuesta para confirmación del usuario
+Future<Map<String, dynamic>> buscarSlotAutomatico({
+  required Tarea tarea,
+  required String responsableUid,
+}) async {
+  try {
+    final calendarApi = await signInAndGetCalendarApi(silentOnly: true);
+    if (calendarApi == null) {
+      return {
+        'success': false,
+        'error': 'No se pudo conectar con Google Calendar',
+      };
+    }
+
+    // Obtener email del responsable
+    final userQuery = await _firestore.collection("users").doc(responsableUid).get();
+    if (!userQuery.exists) {
+      return {
+        'success': false,
+        'error': 'Usuario no encontrado',
+      };
+    }
+
+    final responsibleEmail = userQuery["email"];
+    if (responsibleEmail == null || responsibleEmail.isEmpty) {
+      return {
+        'success': false,
+        'error': 'Email del usuario no encontrado',
+      };
+    }
+
+    // Segmentar la tarea
+    final sesiones = segmentarTarea(tarea.duracion);
+    final duracionPrimeraSesion = sesiones[0];
+
+    // Buscar primer slot disponible (próximos 14 días)
+    // ✅ Buscar desde AHORA en adelante (no retroceder en el tiempo)
+    final ahora = DateTime.now();
+
+    DateTime? slotEncontrado;
+
+    // Buscar en cada día (TODOS los días, incluyendo fines de semana)
+    for (int dia = 0; dia < 14; dia++) {
+      final fecha = ahora.add(Duration(days: dia));
+
+      // Buscar en horario extendido (8 AM - 9 PM)
+      for (int hora = 8; hora < 21; hora++) {
+        for (int minuto = 0; minuto < 60; minuto += 30) {
+          final slotInicio = DateTime(
+            fecha.year,
+            fecha.month,
+            fecha.day,
+            hora,
+            minuto,
+          );
+
+          // ✅ SALTAR horas que ya pasaron HOY
+          if (dia == 0 && slotInicio.isBefore(ahora)) {
+            continue;
+          }
+
+          final slotFin = slotInicio.add(Duration(minutes: duracionPrimeraSesion));
+
+          // Verificar que no exceda las 9 PM
+          if (slotFin.hour >= 21) {
+            continue;
+          }
+
+          // Verificar disponibilidad
+          final hayConflicto = await verificarDisponibilidadHorario(
+            calendarApi,
+            responsibleEmail,
+            slotInicio,
+            slotFin,
+          );
+
+          if (!hayConflicto) {
+            slotEncontrado = slotInicio;
+            break;
+          }
+        }
+
+        if (slotEncontrado != null) break;
+      }
+
+      if (slotEncontrado != null) break;
+    }
+
+    if (slotEncontrado == null) {
+      return {
+        'success': false,
+        'error': 'No se encontraron slots disponibles en los próximos 14 días',
+      };
+    }
+
+    // Retornar slot encontrado para confirmación
+    return {
+      'success': true,
+      'slotPropuesto': slotEncontrado,
+      'sesiones': sesiones.length,
+      'duracionTotal': tarea.duracion,
+      'mensaje': sesiones.length > 1
+          ? 'Se agendarán ${sesiones.length} sesiones comenzando el ${_formatearFecha(slotEncontrado)}'
+          : 'Se agendará el ${_formatearFecha(slotEncontrado)}',
+    };
+  } catch (e) {
+    return {
+      'success': false,
+      'error': 'Error al buscar slot automático: $e',
+    };
+  }
+}
+
+/// 🆕 **Confirmar y agendar automáticamente después de mostrar confirmación**
+Future<Map<String, dynamic>> confirmarAgendaAutomatica({
+  required Tarea tarea,
+  required DateTime fechaHoraInicio,
+  required String responsableUid,
+}) async {
+  // Usar el mismo método que agendamiento manual
+  return await agendarTareaManualmente(
+    tarea: tarea,
+    fechaHoraInicio: fechaHoraInicio,
+    responsableUid: responsableUid,
+  );
+}
+
+/// Helper para formatear fecha
+String _formatearFecha(DateTime fecha) {
+  final dias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+  final meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+  return '${dias[fecha.weekday - 1]} ${fecha.day} de ${meses[fecha.month - 1]} a las ${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
+}
 
 }
   

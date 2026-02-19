@@ -119,9 +119,11 @@ class _ResumenYGeneracionTareasPageState extends State<ResumenYGeneracionTareasP
         )
         .toList();
 
-    await _firestore.collection("proyectos").doc(widget.proyecto.id).update({
-      "tareas": FieldValue.arrayUnion(tareasFinales.map((t) => t.toJson()).toList()),
-    });
+    // Guardar tareas en subcolección
+    final tareasRef = _firestore.collection("proyectos").doc(widget.proyecto.id).collection("tareas");
+    for (var tarea in tareasFinales) {
+      await tareasRef.add(tarea.toJson());
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

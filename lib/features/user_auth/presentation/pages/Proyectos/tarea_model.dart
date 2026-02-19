@@ -29,6 +29,11 @@ class Tarea {
   DateTime? fechaCompletada; // Timestamp exacto de cuándo se completó la tarea
 
   // ========================================
+  // 🆕 ESTADO KANBAN
+  // ========================================
+  String estado; // "pendiente", "en_progreso", "completada"
+
+  // ========================================
   // 🆕 GOOGLE CALENDAR INTEGRATION
   // ========================================
   String? googleCalendarEventId; // ID del evento en Google Calendar para sincronización
@@ -59,6 +64,8 @@ class Tarea {
     this.fechaLimite,
     this.fechaProgramada,
     this.fechaCompletada,
+    // Estado Kanban
+    this.estado = 'pendiente',
     // Google Calendar integration
     this.googleCalendarEventId,
     this.responsablesNombres,
@@ -88,6 +95,8 @@ class Tarea {
       'fechaLimite': fechaLimite?.toIso8601String(),
       'fechaProgramada': fechaProgramada?.toIso8601String(),
       'fechaCompletada': fechaCompletada?.toIso8601String(),
+      // Estado Kanban
+      'estado': estado,
       // Google Calendar integration
       'googleCalendarEventId': googleCalendarEventId,
     };
@@ -142,6 +151,11 @@ class Tarea {
       fechaLimite: fechaLimiteMigrada,
       fechaProgramada: fechaProgramadaMigrada,
       fechaCompletada: fechaCompletadaMigrada,
+      // Estado Kanban (migración: inferir de completado/prioridad si no existe)
+      estado: json['estado'] ?? (
+        (json['completado'] ?? false) ? 'completada' :
+        ((json['prioridad'] ?? 2) >= 3 ? 'en_progreso' : 'pendiente')
+      ),
       // Google Calendar integration
       googleCalendarEventId: json['googleCalendarEventId'],
     );

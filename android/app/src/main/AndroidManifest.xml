@@ -29,7 +29,7 @@
         <!-- Meta-data para Google Maps -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyAIxbm_eohVKVyb5wgvIa9YI6RUAFDkDOs" />
+            android:value="" />
         <!-- Meta-data para Firebase -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"

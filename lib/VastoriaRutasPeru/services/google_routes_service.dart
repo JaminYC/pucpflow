@@ -5,7 +5,7 @@ import 'package:latlong2/latlong.dart';
 /// Servicio para integración con Google Maps APIs
 class GoogleRoutesService {
   // Google Maps API Key (configurado en AndroidManifest y Info.plist)
-  static const String _apiKey = 'AIzaSyAIxbm_eohVKVyb5wgvIa9YI6RUAFDkDOs';
+  static const String _apiKey = ''; // Clave eliminada — configurar en entorno seguro
   static const String _directionsBaseUrl = 'https://maps.googleapis.com/maps/api/directions/json';
   static const String _placesBaseUrl = 'https://maps.googleapis.com/maps/api/place';
 

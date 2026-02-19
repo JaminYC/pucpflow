@@ -7,7 +7,7 @@ import 'curso_model.dart'; // Importa el modelo del curso que contiene el nombre
 class GoogleSheetsService {
   final String spreadsheetId = '1GXXEfVbwwhAPCMG2MKHzL_fyPjnR7vEegbETfftPhtk'; // ID general de la lista de cursos
   final String sheetName = 'Octavo Ciclo'; // Nombre de la hoja de cálculo de cursos
-  final String apiKey = 'AIzaSyAIxbm_eohVKVyb5wgvIa9YI6RUAFDkDOs'; // Tu API Key
+  final String apiKey = ''; // Clave eliminada — configurar en entorno seguro
 
   // Función para obtener la lista de cursos y sus IDs de hoja de cálculo
   Future<List<Curso>> fetchCourses() async {

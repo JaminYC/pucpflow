@@ -195,96 +195,115 @@ class AsignacionInteligenteService {
 
     List<Tarea> tareasActualizadas = List.from(tareas);
 
+    // Carga acumulada por participante (en minutos) para balanceo
+    final cargaPorUid = <String, int>{
+      for (final uid in participantesIds) uid: 0,
+    };
+
+    // Pre-cargar carga actual desde tareas existentes
+    for (final t in tareas) {
+      if (t.completado) continue;
+      for (final uid in t.responsables) {
+        cargaPorUid[uid] = (cargaPorUid[uid] ?? 0) + t.duracion;
+      }
+    }
+
     for (int i = 0; i < tareasActualizadas.length; i++) {
       final tarea = tareasActualizadas[i];
 
-      // Solo asignar si no tiene responsables
-      if (tarea.responsables.isEmpty && tarea.habilidadesRequeridas.isNotEmpty) {
+      // Solo asignar tareas sin responsables
+      if (tarea.responsables.isNotEmpty) continue;
+
+      List<String> uidsAsignados = [];
+
+      if (tarea.habilidadesRequeridas.isNotEmpty) {
+        // --- Con habilidades: usar scoring de compatibilidad ---
         final sugerencias = await sugerirAsignaciones(
           tarea: tarea,
           participantesIds: participantesIds,
         );
 
-        // Filtrar candidatos con score >= umbralMinimo
         final candidatosValidos = sugerencias
             .where((s) => (s['matchScore'] as int) >= umbralMinimo)
             .toList();
 
-        // Crear lista de UIDs asignados
-        final uidsAsignados = candidatosValidos
-            .map((c) => c['uid'] as String)
-            .toList();
+        uidsAsignados = candidatosValidos.map((c) => c['uid'] as String).toList();
 
-        // ✅ SIEMPRE incluir al propietario del proyecto
         if (propietarioId != null && !uidsAsignados.contains(propietarioId)) {
-          uidsAsignados.insert(0, propietarioId); // Agregar al inicio de la lista
+          uidsAsignados.insert(0, propietarioId);
         }
-
-        // Si después de agregar propietario sigue vacío, marcar como sin candidatos
-        if (uidsAsignados.isEmpty) {
+      } else {
+        // --- Sin habilidades: asignar al participante con menor carga ---
+        if (participantesIds.isEmpty) {
           sinCandidatos++;
           continue;
         }
 
-        // Crear tarea actualizada con MÚLTIPLES responsables
-        final tareaActualizada = Tarea(
-          titulo: tarea.titulo,
-          fecha: tarea.fecha,
-          duracion: tarea.duracion,
-          prioridad: tarea.prioridad,
-          completado: tarea.completado,
-          colorId: tarea.colorId,
-          responsables: uidsAsignados, // ✅ Asignar TODOS los candidatos válidos
-          tipoTarea: 'Asignada',
-          requisitos: tarea.requisitos,
-          dificultad: tarea.dificultad,
-          descripcion: tarea.descripcion,
-          tareasPrevias: tarea.tareasPrevias,
-          area: tarea.area,
-          habilidadesRequeridas: tarea.habilidadesRequeridas,
-          fasePMI: tarea.fasePMI,
-          entregable: tarea.entregable,
-          paqueteTrabajo: tarea.paqueteTrabajo,
-        );
-
-        tareasActualizadas[i] = tareaActualizada;
-        asignadas++;
-
-        // Agregar resultado con lista de asignados
-        List<String> nombresParaResultado = candidatosValidos
-            .map((c) => c['nombre'] as String)
-            .toList();
-
-        // Si el propietario fue agregado y no está en candidatosValidos, obtener su nombre
-        if (propietarioId != null && !candidatosValidos.any((c) => c['uid'] == propietarioId)) {
-          final propietarioDoc = await _firestore.collection('users').doc(propietarioId).get();
-          if (propietarioDoc.exists) {
-            final nombrePropietario = propietarioDoc.data()!['full_name'] ?? 'Propietario';
-            nombresParaResultado.insert(0, '$nombrePropietario (Propietario)');
-          }
-        }
-
-        final nombresAsignados = nombresParaResultado.join(', ');
-        final scorePromedio = candidatosValidos.isNotEmpty
-            ? candidatosValidos
-                .map((c) => c['matchScore'] as int)
-                .reduce((a, b) => a + b) ~/ candidatosValidos.length
-            : 0;
-
-        resultados.add({
-          'tarea': tarea.titulo,
-          'asignado': nombresAsignados,
-          'matchScore': scorePromedio,
-          'totalAsignados': uidsAsignados.length, // ✅ Total real incluyendo propietario
-        });
+        final uidMenorCarga = participantesIds.reduce((a, b) =>
+            (cargaPorUid[a] ?? 0) <= (cargaPorUid[b] ?? 0) ? a : b);
+        uidsAsignados = [uidMenorCarga];
       }
+
+      if (uidsAsignados.isEmpty) {
+        sinCandidatos++;
+        continue;
+      }
+
+      // Actualizar carga acumulada del asignado principal
+      cargaPorUid[uidsAsignados.first] =
+          (cargaPorUid[uidsAsignados.first] ?? 0) + tarea.duracion;
+
+      final tareaActualizada = Tarea(
+        titulo: tarea.titulo,
+        fecha: tarea.fecha,
+        duracion: tarea.duracion,
+        prioridad: tarea.prioridad,
+        completado: tarea.completado,
+        colorId: tarea.colorId,
+        responsables: uidsAsignados,
+        tipoTarea: 'Asignada',
+        requisitos: tarea.requisitos,
+        dificultad: tarea.dificultad,
+        descripcion: tarea.descripcion,
+        tareasPrevias: tarea.tareasPrevias,
+        area: tarea.area,
+        habilidadesRequeridas: tarea.habilidadesRequeridas,
+        fasePMI: tarea.fasePMI,
+        entregable: tarea.entregable,
+        paqueteTrabajo: tarea.paqueteTrabajo,
+      );
+
+      tareasActualizadas[i] = tareaActualizada;
+      asignadas++;
+
+      resultados.add({
+        'tarea': tarea.titulo,
+        'asignado': uidsAsignados.join(', '),
+        'matchScore': tarea.habilidadesRequeridas.isNotEmpty ? umbralMinimo : 100,
+        'totalAsignados': uidsAsignados.length,
+      });
     }
 
-    // Guardar todas las tareas actualizadas
+    // Guardar en la SUBCOLECCIÓN real (fuente de verdad)
     if (asignadas > 0) {
-      await _firestore.collection('proyectos').doc(proyectoId).update({
-        'tareas': tareasActualizadas.map((t) => t.toJson()).toList(),
-      });
+      final batch = _firestore.batch();
+      for (final tarea in tareasActualizadas) {
+        // Buscar el doc existente en la subcolección por título
+        final query = await _firestore
+            .collection('proyectos')
+            .doc(proyectoId)
+            .collection('tareas')
+            .where('titulo', isEqualTo: tarea.titulo)
+            .limit(1)
+            .get();
+        if (query.docs.isNotEmpty) {
+          batch.update(query.docs.first.reference, {
+            'responsables': tarea.responsables,
+            'tipoTarea': tarea.tipoTarea,
+          });
+        }
+      }
+      await batch.commit();
     }
 
     return {

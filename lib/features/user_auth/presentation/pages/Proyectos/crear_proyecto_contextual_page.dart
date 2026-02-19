@@ -314,7 +314,7 @@ class _CrearProyectoContextualPageState
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  _attachments.isEmpty ? 'Seleccionar documentos PDF' : '${_attachments.length} archivo(s) seleccionado(s)',
+                  _attachments.isEmpty ? 'Seleccionar PDFs (máx. 4 MB c/u)' : '${_attachments.length} archivo(s) seleccionado(s)',
                   style: TextStyle(
                     color: _generando ? const Color(0xFFB8BCC8).withOpacity(0.5) : const Color(0xFFFFFFFF),
                     fontSize: 15,
@@ -621,6 +621,9 @@ class _CrearProyectoContextualPageState
         .toList();
   }
 
+  static const _maxArchivosKB = 4 * 1024; // 4 MB por archivo
+  static const _maxTotalKB   = 8 * 1024; // 8 MB total
+
   Future<void> _pickDocuments() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -633,16 +636,36 @@ class _CrearProyectoContextualPageState
       if (result == null) return;
 
       final attachments = <_LocalAttachment>[];
-      String? warning;
+      final rechazados  = <String>[];
+
       for (final file in result.files) {
-        if (file.bytes != null) {
-          attachments.add(
-            _LocalAttachment(name: file.name, bytes: file.bytes!),
-          );
-        } else {
-          warning =
-              'Algunos archivos no pudieron leerse. Intenta seleccionarlos nuevamente.';
+        if (file.bytes == null) {
+          rechazados.add('${file.name} (no se pudo leer)');
+          continue;
         }
+        final kb = file.bytes!.length ~/ 1024;
+        if (kb > _maxArchivosKB) {
+          rechazados.add('${file.name} (${kb ~/ 1024} MB — máx. 4 MB)');
+          continue;
+        }
+        attachments.add(_LocalAttachment(name: file.name, bytes: file.bytes!));
+      }
+
+      // Verificar tamaño total
+      final totalKb = attachments.fold<int>(
+          0, (acc, f) => acc + f.bytes.length ~/ 1024);
+      if (totalKb > _maxTotalKB) {
+        setState(() {
+          _docError =
+              'El total de documentos excede 8 MB. Reduce el número o el tamaño de los archivos.';
+          _attachments = [];
+        });
+        return;
+      }
+
+      String? warning;
+      if (rechazados.isNotEmpty) {
+        warning = 'Archivos omitidos por ser demasiado grandes:\n${rechazados.join('\n')}';
       }
 
       setState(() {
@@ -669,39 +692,56 @@ class _CrearProyectoContextualPageState
 
     final config = ProjectBlueprintConfig(
       methodology: _methodology,
-      focusAreas: const [], // Simplificado: sin foco estratégico manual
-      softSkillFocus: const [], // Simplificado: IA infiere skills
-      businessDrivers: const [], // Simplificado: IA infiere drivers
-      customContext: null, // Simplificado: sin contexto custom
+      focusAreas: const [],
+      softSkillFocus: const [],
+      businessDrivers: const [],
+      customContext: null,
     );
 
-    // ✅ Usar generarWorkflow en lugar de generarBlueprint (formato nuevo)
-    print('🚀 INICIANDO GENERACIÓN DE WORKFLOW');
-    print('   📋 Proyecto: ${_nombreController.text.trim()}');
-    print('   🎯 Metodología: ${_methodology.label} (${_methodology.apiName})');
-    print('   💡 Objetivo: ${_visionController.text.trim()}');
+    Map<String, dynamic>? result;
 
-    final result = await _aiService.generarWorkflow(
-      nombreProyecto: _nombreController.text.trim(),
-      config: config,
-      habilidadesEquipo: const [], // Sin habilidades específicas del equipo
-      objetivo: _visionController.text.trim(),
-      macroEntregables: _attachments.isNotEmpty
-          ? ['Documentos adjuntos']
-          : null,
-    );
+    if (_attachments.isNotEmpty) {
+      // Con documentos: convertir a Base64 y usar generarBlueprint
+      print('🚀 INICIANDO GENERACIÓN CON DOCUMENTOS (${_attachments.length} PDFs)');
+      final documentosBase64 = _attachments
+          .map((a) => base64Encode(a.bytes))
+          .toList();
+      print('   📄 Base64 generado: ${documentosBase64.length} docs');
+
+      result = await _aiService.generarBlueprint(
+        documentosBase64: documentosBase64,
+        nombreProyecto: _nombreController.text.trim(),
+        config: config,
+        descripcionBreve: _visionController.text.trim(),
+      );
+
+      // generarBlueprint devuelve el blueprint directo (ya procesado en service)
+      // pero el preview espera el formato workflow — normalizar si es necesario
+      if (result != null && !result.containsKey('workflow')) {
+        // Si el resultado tiene 'backlog' o 'fases', mapearlo a 'workflow'
+        final fases = result['fases'] as List? ??
+            result['backlog'] as List? ?? [];
+        if (fases.isNotEmpty) {
+          result['workflow'] = fases;
+        }
+      }
+    } else {
+      // Sin documentos: usar generarWorkflow
+      print('🚀 INICIANDO GENERACIÓN DE WORKFLOW (sin documentos)');
+      result = await _aiService.generarWorkflow(
+        nombreProyecto: _nombreController.text.trim(),
+        config: config,
+        habilidadesEquipo: const [],
+        objetivo: _visionController.text.trim(),
+      );
+    }
 
     if (!mounted) return;
 
-    print('📦 RESULTADO RECIBIDO:');
-    print('   - Es null: ${result == null}');
-    if (result != null) {
-      print('   - Keys: ${result.keys.toList()}');
-      print('   - Tiene workflow: ${result.containsKey("workflow")}');
-      if (result.containsKey("workflow")) {
-        final wf = result["workflow"] as List?;
-        print('   - Fases en workflow: ${wf?.length ?? 0}');
-      }
+    print('📦 RESULTADO: ${result == null ? "null" : result.keys.toList()}');
+    if (result != null && result.containsKey('workflow')) {
+      final wf = result['workflow'] as List?;
+      print('   - Fases: ${wf?.length ?? 0}');
     }
 
     setState(() {

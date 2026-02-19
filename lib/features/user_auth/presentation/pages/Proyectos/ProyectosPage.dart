@@ -75,22 +75,37 @@ Stream<List<Proyecto>> obtenerProyectos() async* {
       .collection("proyectos")
       .where("participantes", arrayContains: uid)
       .snapshots()
-      .map((snapshot) {
+      .asyncMap((snapshot) async {
         print("📦 Documentos recibidos: ${snapshot.docs.length}");
+        final proyectos = <Proyecto>[];
         for (var doc in snapshot.docs) {
-          print("📄 Proyecto: ${doc.data()}");
+          var proyecto = Proyecto.fromJson({...doc.data(), 'id': doc.id});
+
+          // Leer tareas desde la subcolección real (fuente de verdad)
+          try {
+            final tareasSnap = await _firestore
+                .collection("proyectos")
+                .doc(doc.id)
+                .collection("tareas")
+                .get();
+            if (tareasSnap.docs.isNotEmpty) {
+              proyecto = proyecto.copyWith(
+                tareas: tareasSnap.docs
+                    .map((t) => Tarea.fromJson(t.data()))
+                    .toList(),
+              );
+            }
+          } catch (_) {}
+
+          final coincideVisibilidad =
+              filtroVisibilidad == "Todos" || proyecto.visibilidad == filtroVisibilidad;
+          final coincideCategoria =
+              filtroCategoria == "Todas" || proyecto.categoria == filtroCategoria;
+          if (coincideVisibilidad && coincideCategoria) {
+            proyectos.add(proyecto);
+          }
         }
-        return snapshot.docs
-            .map((doc) => Proyecto.fromJson(doc.data()))
-            .where((proyecto) {
-              print("🔎 Proyecto ${proyecto.nombre} → visibilidad: ${proyecto.visibilidad}");
-              final coincideVisibilidad =
-                filtroVisibilidad == "Todos" || proyecto.visibilidad == filtroVisibilidad;
-              final coincideCategoria =
-                filtroCategoria == "Todas" || proyecto.categoria == filtroCategoria;
-              return coincideVisibilidad && coincideCategoria;
-            })
-            .toList();
+        return proyectos;
       });
 }
 

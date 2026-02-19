@@ -48,10 +48,12 @@ class _ProyectoAsistenteChatWidgetState extends State<ProyectoAsistenteChatWidge
 
   /// Cargar contexto completo del proyecto
   Future<void> _cargarContextoProyecto() async {
+    if (!mounted) return;
     setState(() => _cargandoContexto = true);
 
     try {
       final contexto = await _asistenteService.obtenerContextoProyecto(widget.proyectoId);
+      if (!mounted) return;
 
       setState(() {
         _datosProyecto = contexto;
@@ -71,6 +73,7 @@ class _ProyectoAsistenteChatWidgetState extends State<ProyectoAsistenteChatWidge
             '¿En qué puedo ayudarte?',
       );
     } catch (e) {
+      if (!mounted) return;
       setState(() => _cargandoContexto = false);
       _agregarMensaje(
         role: 'assistant',
@@ -81,6 +84,7 @@ class _ProyectoAsistenteChatWidgetState extends State<ProyectoAsistenteChatWidge
 
   /// Agregar mensaje al chat
   void _agregarMensaje({required String role, required String content}) {
+    if (!mounted) return;
     setState(() {
       _mensajes.add({
         'role': role,
@@ -91,6 +95,7 @@ class _ProyectoAsistenteChatWidgetState extends State<ProyectoAsistenteChatWidge
 
     // Auto-scroll al último mensaje
     Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
@@ -109,22 +114,18 @@ class _ProyectoAsistenteChatWidgetState extends State<ProyectoAsistenteChatWidge
     _inputController.clear();
     _agregarMensaje(role: 'user', content: texto);
 
+    if (!mounted) return;
     setState(() => _procesando = true);
 
     try {
-      print('🤖 [Chat] Enviando pregunta: $texto');
-      print('🤖 [Chat] Contexto tiene ${_contextoProyecto?.length ?? 0} caracteres');
-
       // Preparar historial de conversación
       final historial = _mensajes.map((m) => {
         'role': m['role'],
         'content': m['content'],
       }).toList();
-      print('🤖 [Chat] Historial: ${historial.length} mensajes');
 
       // Llamar a Cloud Function con contexto del proyecto
       final callable = _functions.httpsCallable('adanProyectoConsulta');
-      print('🤖 [Chat] Llamando a adanProyectoConsulta...');
 
       final result = await callable.call({
         'pregunta': texto,
@@ -133,7 +134,7 @@ class _ProyectoAsistenteChatWidgetState extends State<ProyectoAsistenteChatWidge
         'historialConversacion': historial,
       });
 
-      print('🤖 [Chat] Respuesta recibida: ${result.data}');
+      if (!mounted) return;
 
       final respuesta = result.data['respuesta'] as String? ??
           'Lo siento, no pude procesar tu pregunta.';
@@ -145,12 +146,13 @@ class _ProyectoAsistenteChatWidgetState extends State<ProyectoAsistenteChatWidge
         await _cargarContextoProyecto();
       }
     } catch (e) {
+      if (!mounted) return;
       _agregarMensaje(
         role: 'assistant',
         content: '❌ Error: No pude procesar tu mensaje. $e',
       );
     } finally {
-      setState(() => _procesando = false);
+      if (mounted) setState(() => _procesando = false);
     }
   }
 

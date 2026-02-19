@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -16,6 +17,9 @@ import 'widgets/pmi_tree_view.dart';
 import 'widgets/timeline_calendar_view.dart';
 import 'widgets/personal_stats_view.dart';
 import 'widgets/proyecto_asistente_chat_widget.dart';
+import 'widgets/proyecto_chat_widget.dart';
+import 'widgets/generador_informe_widget.dart';
+import 'package:pucpflow/features/user_auth/presentation/pages/Proyectos/ResumenYGeneracionTareasPage.dart';
 import 'widgets/inventario_view.dart';
 import 'widgets/repositorio_conocimiento_view.dart';
 import 'widgets/informes_view.dart';
@@ -52,17 +56,40 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
   String searchQuery = '';
   String? filtroResponsable;
   String? filtroPrioridad;
-  bool esPMI = false; // Detecta si el proyecto es PMI
+  bool esPMI = false;
+
+  // Chat grupal
+  int _mensajesNoLeidos = 0;
+  StreamSubscription<QuerySnapshot>? _chatSubscription;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _cargarDatos();
+    _suscribirChatNoLeidos();
+  }
+
+  void _suscribirChatNoLeidos() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    _chatSubscription = _firestore
+        .collection('proyectos')
+        .doc(widget.proyectoId)
+        .collection('chat')
+        .snapshots()
+        .listen((snap) {
+      final noLeidos = snap.docs.where((d) {
+        final leidos = List<String>.from((d.data())['leidoPor'] ?? []);
+        return !leidos.contains(uid);
+      }).length;
+      if (mounted) setState(() => _mensajesNoLeidos = noLeidos);
+    });
   }
 
   @override
   void dispose() {
+    _chatSubscription?.cancel();
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -158,6 +185,7 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
             "uid": uid,
             "nombre": _resolverNombreUsuario(uData),
             "email": uData["email"]?.toString() ?? "",
+            "foto": uData["photoURL"]?.toString() ?? uData["foto"]?.toString() ?? "",
           });
         }
       }
@@ -274,6 +302,39 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
           tooltip: 'Participantes',
           onPressed: _mostrarGestionParticipantes,
         ),
+        // Botón Chat grupal con badge de no leídos
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chat_bubble_outline, color: Colors.white70, size: 22),
+              tooltip: 'Chat del proyecto',
+              onPressed: _abrirChat,
+            ),
+            if (_mensajesNoLeidos > 0)
+              Positioned(
+                right: 6,
+                top: 8,
+                child: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      _mensajesNoLeidos > 9 ? '9+' : '$_mensajesNoLeidos',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
         // Botón Asistente IA (visible)
         IconButton(
           icon: const Icon(Icons.smart_toy, color: Color(0xFF8B5CF6), size: 22),
@@ -296,10 +357,12 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
             Icons.more_vert,
             color: (filtroResponsable != null || filtroPrioridad != null)
                 ? const Color(0xFF8B5CF6)
-                : Colors.white70,
+                : Colors.white,
             size: 22,
           ),
           tooltip: 'Más opciones',
+          color: Colors.white,
+          surfaceTintColor: Colors.white,
           onSelected: (value) {
             if (value == 'asignar_ia') {
               _asignarTareasConIA();
@@ -307,6 +370,10 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
               _redistribuirTareasPendientes();
             } else if (value == 'reunion') {
               _navegarAReunion();
+            } else if (value == 'generar_texto') {
+              _abrirGeneradorDesdeTexto();
+            } else if (value == 'informe_pdf') {
+              _abrirInformePDF();
             } else if (value == 'info') {
               _scaffoldKey.currentState?.openDrawer();
             } else if (value == 'diagnostico') {
@@ -325,7 +392,7 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
                 children: [
                   Icon(Icons.psychology, color: Color(0xFF8B5CF6), size: 20),
                   SizedBox(width: 12),
-                  Text('Asignación Automática'),
+                  Text('Asignación Automática', style: TextStyle(color: Colors.black87)),
                 ],
               ),
             ),
@@ -333,9 +400,9 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
               value: 'redistribuir',
               child: Row(
                 children: [
-                  Icon(Icons.swap_horiz, color: Colors.blue, size: 20),
+                  Icon(Icons.swap_horiz, color: Color(0xFF3B82F6), size: 20),
                   SizedBox(width: 12),
-                  Text('Redistribuir Tareas'),
+                  Text('Redistribuir Tareas', style: TextStyle(color: Colors.black87)),
                 ],
               ),
             ),
@@ -343,9 +410,29 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
               value: 'reunion',
               child: Row(
                 children: [
-                  Icon(Icons.video_call, color: Colors.blue, size: 20),
+                  Icon(Icons.video_call, color: Color(0xFF3B82F6), size: 20),
                   SizedBox(width: 12),
-                  Text('Reunión Presencial'),
+                  Text('Reuni\u00f3n Presencial', style: TextStyle(color: Colors.black87)),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'generar_texto',
+              child: Row(
+                children: [
+                  Icon(Icons.text_snippet_outlined, color: Color(0xFF10B981), size: 20),
+                  SizedBox(width: 12),
+                  Text('Generar tareas desde texto', style: TextStyle(color: Colors.black87)),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'informe_pdf',
+              child: Row(
+                children: [
+                  Icon(Icons.picture_as_pdf, color: Color(0xFF8B5CF6), size: 20),
+                  SizedBox(width: 12),
+                  Text('Generar informe PDF', style: TextStyle(color: Colors.black87)),
                 ],
               ),
             ),
@@ -353,9 +440,9 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
               value: 'info',
               child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.white54, size: 20),
+                  Icon(Icons.info_outline, color: Color(0xFF6B7280), size: 20),
                   SizedBox(width: 12),
-                  Text('Info del Proyecto'),
+                  Text('Info del Proyecto', style: TextStyle(color: Colors.black87)),
                 ],
               ),
             ),
@@ -372,7 +459,7 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
                   children: [
                     Icon(Icons.clear_all, color: Colors.red, size: 20),
                     SizedBox(width: 12),
-                    Text('Limpiar Filtros'),
+                    Text('Limpiar Filtros', style: TextStyle(color: Colors.black87)),
                   ],
                 ),
               ),
@@ -1073,10 +1160,27 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
         tareas: todasLasTareas,
       );
 
-      // Guardar tareas actualizadas en Firestore
-      final tareasJson = resultado.tareasActualizadas.map((t) => t.toJson()).toList();
+      // Guardar tareas actualizadas en la SUBCOLECCIÓN real
+      final batch = _firestore.batch();
+      for (final tarea in resultado.tareasActualizadas) {
+        final query = await _firestore
+            .collection('proyectos')
+            .doc(widget.proyectoId)
+            .collection('tareas')
+            .where('titulo', isEqualTo: tarea.titulo)
+            .limit(1)
+            .get();
+        if (query.docs.isNotEmpty) {
+          batch.update(query.docs.first.reference, {
+            'fechaProgramada': tarea.fecha?.toIso8601String(),
+            'fecha': tarea.fecha?.toIso8601String(),
+            'duracion': tarea.duracion,
+          });
+        }
+      }
+      await batch.commit();
+      // Actualizar también timestamp del proyecto
       await _firestore.collection('proyectos').doc(widget.proyectoId).update({
-        'tareas': tareasJson,
         'fechaActualizacion': FieldValue.serverTimestamp(),
       });
 
@@ -1408,6 +1512,83 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
     final int hash = uid.hashCode;
     final double hue = 40 + (hash % 280);
     return HSLColor.fromAHSL(1.0, hue, 0.7, 0.7).toColor();
+  }
+
+  /// Abrir chat grupal del proyecto
+  void _abrirChat() {
+    final uid = _auth.currentUser?.uid ?? '';
+    final me = participantes.firstWhere(
+      (p) => p['uid'] == uid,
+      orElse: () => {'uid': uid, 'nombre': 'Yo', 'foto': ''},
+    );
+    // Leer nombre del proyecto desde Firestore y abrir el chat
+    _firestore.collection('proyectos').doc(widget.proyectoId).get().then((doc) {
+      final nombre = (doc.data()?['nombre'] as String?) ?? 'Proyecto';
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProyectoChatWidget(
+            proyectoId       : widget.proyectoId,
+            proyectoNombre   : nombre,
+            currentUserUid   : uid,
+            currentUserNombre: me['nombre'] ?? 'Yo',
+            currentUserFoto  : me['foto'],
+            participantes    : participantes,
+          ),
+        ),
+      );
+    });
+  }
+
+  /// Abrir generador de tareas desde texto externo (sin micr\u00f3fono)
+  void _abrirGeneradorDesdeTexto() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF111827),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _TextoExternoSheet(
+        onProcesar: (texto) {
+          Navigator.pop(context);
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ResumenYGeneracionTareasPage(
+                texto  : texto,
+                proyecto: _proyectoActual(),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Abrir generador de informe PDF
+  void _abrirInformePDF() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GeneradorInformeWidget(
+          proyecto: _proyectoActual(),
+        ),
+      ),
+    );
+  }
+
+  /// Construye un objeto Proyecto con los datos actuales cargados
+  Proyecto _proyectoActual() {
+    return Proyecto(
+      id          : widget.proyectoId,
+      nombre      : '',           // se lee en GeneradorInformeWidget desde Firestore
+      descripcion : '',
+      fechaInicio : DateTime.now(),
+      propietario : _auth.currentUser?.uid ?? '',
+      participantes: participantes.map((p) => p['uid']!).toList(),
+    );
   }
 
   /// Abrir asistente conversacional del proyecto
@@ -1932,6 +2113,112 @@ class _ProyectoDetalleKanbanPageState extends State<ProyectoDetalleKanbanPage>
           },
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sheet para ingresar texto externo y generar tareas con IA
+// ─────────────────────────────────────────────────────────────────────────────
+class _TextoExternoSheet extends StatefulWidget {
+  final void Function(String texto) onProcesar;
+  const _TextoExternoSheet({required this.onProcesar});
+
+  @override
+  State<_TextoExternoSheet> createState() => _TextoExternoSheetState();
+}
+
+class _TextoExternoSheetState extends State<_TextoExternoSheet> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20, right: 20, top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(children: [
+            Icon(Icons.text_snippet_outlined, color: Color(0xFF10B981), size: 20),
+            SizedBox(width: 10),
+            Text('Generar tareas desde texto',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 6),
+          Text(
+            'Pega un acta, correo, descripci\u00f3n o cualquier texto. '
+            'La IA detectar\u00e1 tareas nuevas y reconfigurar\u00e1 las existentes.',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _ctrl,
+            maxLines: 8,
+            minLines: 5,
+            autofocus: true,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'Escribe o pega el texto aqu\u00ed...',
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+              filled: true,
+              fillColor: const Color(0xFF1E293B),
+              contentPadding: const EdgeInsets.all(14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF10B981)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                final texto = _ctrl.text.trim();
+                if (texto.length < 20) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('El texto es demasiado corto para procesar.'),
+                    ),
+                  );
+                  return;
+                }
+                widget.onProcesar(texto);
+              },
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: const Text('Procesar con IA'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

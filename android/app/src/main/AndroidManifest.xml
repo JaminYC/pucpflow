@@ -30,10 +30,6 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyAIxbm_eohVKVyb5wgvIa9YI6RUAFDkDOs" />
-        <meta-data
-            android:name="com.mapbox.token"
-            android:value="pk.eyJ1IjoiamFtaW55YyIsImEiOiJjbTY2eTBzbGEwNTA4MmtxYm8xMTgyb2R1In0.X6xadgq6AAS3pPKEu7SM6g" />
-
         <!-- Meta-data para Firebase -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"

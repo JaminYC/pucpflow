@@ -44,8 +44,7 @@ class _PeruMapState extends State<PeruMap> with TickerProviderStateMixin {
   static const _labelLayerId = 'departments_labels';
 
   // Token de Mapbox
-  static const _fallbackToken =
-      'pk.eyJ1IjoiamFtaW55YyIsImEiOiJjbTY2eTBzbGEwNTA4MmtxYm8xMTgyb2R1In0.X6xadgq6AAS3pPKEu7SM6g';
+  static const _fallbackToken = '';
 
   MapboxMap? _mapboxMap;
   bool _styleReady = false;

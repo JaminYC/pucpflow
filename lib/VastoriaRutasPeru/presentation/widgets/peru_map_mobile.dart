@@ -21,8 +21,7 @@ class _PeruMapState extends State<PeruMap> {
   static const _fillLayerId = 'peru_departments_fill';
   static const _lineLayerId = 'peru_departments_line';
   static const _highlightLayerId = 'peru_departments_highlight';
-  static const _fallbackToken =
-      'pk.eyJ1IjoiamFtaW55YyIsImEiOiJjbTY2eTBzbGEwNTA4MmtxYm8xMTgyb2R1In0.X6xadgq6AAS3pPKEu7SM6g';
+  static const _fallbackToken = '';
 
   MapboxMap? _mapboxMap;
   bool _styleReady = false;

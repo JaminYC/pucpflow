@@ -29,8 +29,7 @@ class _PeruMapPremiumState extends State<PeruMapPremium> {
   static const _featuredLayerId = 'departments_featured';
 
   // Token de Mapbox (usar fallback o env variable)
-  static const _fallbackToken =
-      'pk.eyJ1IjoiamFtaW55YyIsImEiOiJjbTY2eTBzbGEwNTA4MmtxYm8xMTgyb2R1In0.X6xadgq6AAS3pPKEu7SM6g';
+  static const _fallbackToken = '';
 
   MapboxMap? _mapboxMap;
   bool _styleReady = false;
